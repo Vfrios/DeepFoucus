@@ -1,0 +1,21 @@
+{
+  "name": "wall-dashboard",
+  "private": true,
+  "version": "1.0.0",
+  "workspaces": [
+    "frontend",
+    "backend"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "dev": "concurrently -n api,web -c cyan,magenta \"npm -w backend run dev\" \"wait-on --timeout 30000 http://localhost:3001/healthz && npm -w frontend run dev\"",
+    "build": "npm -w frontend run build && npm -w backend run build",
+    "start": "node backend/dist/index.js"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2",
+    "wait-on": "^9.5.1"
+  }
+}
