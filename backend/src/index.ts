@@ -3,7 +3,7 @@ import express from 'express';
 import cors from 'cors';
 import path from 'path';
 import { deviceMiddleware } from './middleware/device';
-import { requireAuth } from './middleware/auth';
+import { jwtAuth } from './middleware/jwtAuth';
 import deviceRoute from './routes/device';
 import googleAuthRoute from './routes/googleAuth';
 import calendarRoute from './routes/calendar';
@@ -27,10 +27,10 @@ app.use('/api/device', deviceRoute);
 app.use('/api/auth', googleAuthRoute);
 
 // Protegidas por Bearer
-app.use('/api/calendar', requireAuth, calendarRoute);
-app.use('/api/tasks', requireAuth, tasksRoute);
-app.use('/api/stats', requireAuth, statsRoute);
-app.use('/api/push', requireAuth, pushRoute);
+app.use('/api/calendar', jwtAuth, calendarRoute);
+app.use('/api/tasks', jwtAuth, tasksRoute);
+app.use('/api/stats', jwtAuth, statsRoute);
+app.use('/api/push', jwtAuth, pushRoute);
 app.use('/api', (_req, res) => res.status(404).json({ error: 'not_found' }));
 
 // Em produção o Express também serve o build do Vite

@@ -2,15 +2,15 @@ import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import App from './App';
 import { DeviceProvider } from './device/DeviceProvider';
-import { captureTokenFromUrl } from './lib/api';
+import { captureJwtFromUrl } from './lib/api';
 import './styles.css';
 
-captureTokenFromUrl();
+const loginResult = captureJwtFromUrl();
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <DeviceProvider>
-      <App />
+      <App loginResult={loginResult} />
     </DeviceProvider>
   </StrictMode>
 );

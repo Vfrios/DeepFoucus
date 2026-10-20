@@ -21,21 +21,35 @@ export function oauthClient() {
 
 // ---- OAuth: "state" assinado (HMAC) para proteger o callback contra CSRF ----
 const sign = (v: string) =>
-  crypto.createHmac('sha256', process.env.API_TOKEN || '').update(v).digest('hex').slice(0, 32);
+  crypto.createHmac('sha256', process.env.JWT_SECRET || '').update(v).digest('hex').slice(0, 32);
 
-export function authUrl(): string {
+export type OAuthFlow = 'setup' | 'login';
+
+export function authUrl(flow: OAuthFlow = 'setup'): string {
   const ts = Date.now().toString();
   return oauthClient().generateAuthUrl({
     access_type: 'offline',
     prompt: 'consent',
     scope: SCOPES,
-    state: `${ts}.${sign(ts)}`,
+    state: `${flow}.${ts}.${sign(`${flow}.${ts}`)}`,
   });
 }
 
-export function checkState(state: string): boolean {
-  const [ts, sig] = (state || '').split('.');
-  return !!ts && !!sig && sig === sign(ts) && Date.now() - Number(ts) < 10 * 60 * 1000;
+export function checkState(state: string): OAuthFlow | null {
+  const [flow, ts, sig] = (state || '').split('.');
+  const age = Date.now() - Number(ts);
+  if (
+    (flow !== 'setup' && flow !== 'login') ||
+    !ts ||
+    !sig ||
+    !Number.isFinite(age) ||
+    age < 0 ||
+    age > 10 * 60 * 1000 ||
+    sig !== sign(`${flow}.${ts}`)
+  ) {
+    return null;
+  }
+  return flow;
 }
 
 export interface GoogleProfile {
@@ -44,37 +58,41 @@ export interface GoogleProfile {
   picture: string | null;
 }
 
-export async function saveCode(code: string): Promise<GoogleProfile> {
+export async function saveCode(code: string, expectedEmail?: string): Promise<GoogleProfile> {
   const auth = oauthClient();
   const { tokens } = await auth.getToken(code);
-  if (!tokens.refresh_token) {
+  auth.setCredentials(tokens);
+
+  const oauth2 = google.oauth2({ version: 'v2', auth });
+  const { data } = await oauth2.userinfo.get();
+  const profile: GoogleProfile = {
+    email: data.email ?? null,
+    name: data.name ?? null,
+    picture: data.picture ?? null,
+  };
+  if (!profile.email || data.verified_email !== true) {
+    throw new Error('Google não retornou um e-mail verificado.');
+  }
+  if (expectedEmail && profile.email.toLowerCase() !== expectedEmail.toLowerCase()) {
+    throw new Error('google_account_not_allowed');
+  }
+
+  const db = await getDb();
+  const existing = tokens.refresh_token
+    ? null
+    : await db.collection<any>('auth').findOne({ _id: 'google' });
+  const refreshToken = tokens.refresh_token || existing?.refresh_token;
+  if (!refreshToken) {
     throw new Error(
       'Google não devolveu refresh_token. Revogue o acesso em myaccount.google.com/permissions e repita.'
     );
   }
-  auth.setCredentials(tokens);
 
-  // Busca perfil + email usando o access_token recém obtido
-  let profile: GoogleProfile = { email: null, name: null, picture: null };
-  try {
-    const oauth2 = google.oauth2({ version: 'v2', auth });
-    const { data } = await oauth2.userinfo.get();
-    profile = {
-      email: data.email ?? null,
-      name: data.name ?? null,
-      picture: data.picture ?? null,
-    };
-  } catch (e: any) {
-    // Não impede o salvamento do refresh_token se userinfo falhar
-    console.warn('[google] falha ao obter userinfo:', e?.message || e);
-  }
-
-  const db = await getDb();
   await db.collection<any>('auth').updateOne(
     { _id: 'google' },
     {
       $set: {
-        refresh_token: tokens.refresh_token,
+        refresh_token: refreshToken,
         email: profile.email,
         name: profile.name,
         picture: profile.picture,

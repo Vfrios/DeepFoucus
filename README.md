@@ -25,11 +25,15 @@ cp .env.example .env     # preencha os valores (seções abaixo)
 npm run dev              # API :3001; Vite :5173 inicia após a checagem de saúde da API (proxy /api)
 ```
 
-Abra `http://localhost:5173/?token=SEU_API_TOKEN` (o token é salvo no navegador e removido da URL; se faltar, o app pede).
+Abra `http://localhost:5173` e entre com a conta Google autorizada.
 
 > Service Worker e push só funcionam no build de produção: `npm run build && NODE_ENV=production npm start` e abra `http://localhost:3001`. (Push em dispositivos reais exige HTTPS — use o deploy no Render.)
 
-Gere o token: `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"`
+Na primeira configuração local, inicie o fluxo de autorização administrativa uma vez em
+`http://localhost:3001/api/auth/google?token=SEU_API_TOKEN`. Isso registra a conta Google que poderá
+entrar no aplicativo. Depois, o botão **Entrar com o Google** usa o fluxo normal de login para essa
+mesma conta. Configure
+`JWT_SECRET` com um segredo aleatório longo; ele é usado para assinar sessões de 30 dias.
 
 ## 2. MongoDB Atlas (M0)
 
@@ -49,7 +53,7 @@ Coleções criadas automaticamente: `tasks`, `auth`, `subscriptions`.
    - Redirect URI local: `http://localhost:3001/api/auth/google/callback`
    - Redirect URI produção: `https://SEU-APP.onrender.com/api/auth/google/callback`
 5. Copie Client ID/Secret para `.env`.
-6. **Rode o fluxo uma vez**: abra no navegador `/api/auth/google?token=SEU_API_TOKEN` (local: `http://localhost:3001/...`), autorize, e o `refresh_token` é salvo na coleção `auth`. Confira em `/api/auth/status` (com header Bearer).
+6. **Rode o fluxo inicial uma vez**: abra `/api/auth/google?token=SEU_API_TOKEN`, autorize a conta proprietária e o `refresh_token` será salvo na coleção `auth`. Depois, entre pela tela de login do aplicativo.
 
 O refresh token fica só no servidor; o front nunca o recebe.
 
@@ -67,12 +71,13 @@ Push é disparado em: tarefa criada, tarefa concluída e evento começando em at
 
 1. Suba o projeto para um repositório Git.
 2. Render → *New → Blueprint* → selecione o repo (lê `render.yaml`).
-3. Configure `MONGODB_URI` e pelo menos uma chave entre `GROQ_API_KEY`, `GEMINI_API_KEY` e `OPENROUTER_API_KEY`. As variáveis do Google (`GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_REDIRECT_URI`, `FRONTEND_URL`) e VAPID (`VAPID_*`) só são necessárias se for usar essas integrações. `API_TOKEN` é gerado automaticamente (veja em *Environment*); `MONGODB_DB` usa `wall_dashboard` por padrão.
+3. Configure `MONGODB_URI`, `JWT_SECRET` e pelo menos uma chave entre `GROQ_API_KEY`, `GEMINI_API_KEY` e `OPENROUTER_API_KEY`. As variáveis do Google (`GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_REDIRECT_URI`, `FRONTEND_URL`) e VAPID (`VAPID_*`) só são necessárias se for usar essas integrações. `API_TOKEN` e `JWT_SECRET` são gerados automaticamente pelo Blueprint (veja em *Environment*); `MONGODB_DB` usa `wall_dashboard` por padrão.
 4. Após o 1º deploy você terá `https://SEU-APP.onrender.com`. Defina:
    - `GOOGLE_REDIRECT_URI=https://SEU-APP.onrender.com/api/auth/google/callback`
    - `FRONTEND_URL=https://SEU-APP.onrender.com`
 5. No Google Cloud, adicione essa mesma URL em *Authorized redirect URIs*.
-6. Rode o fluxo OAuth (seção 3, passo 6) apontando para a URL do Render.
+6. Autorize a conta proprietária uma vez em `https://SEU-APP.onrender.com/api/auth/google?token=SEU_API_TOKEN`, substituindo pelo `API_TOKEN` visível em *Environment*. A tela pública de login só emite uma sessão para essa mesma conta Google.
+7. Depois do deploy, confirme que as políticas públicas estão acessíveis em `/privacy.html` e `/terms.html`; informe esses endereços na configuração de publicação do Google.
 
 Build: `npm install --include=dev && npm run build` · Start: `node backend/dist/index.js`. O Express serve `/api/*` e o `frontend/dist`.
 
@@ -92,7 +97,7 @@ Forçar o modo (persiste em localStorage): `?view=web`, `?view=mobile`. Voltar a
 
 ### Tablet na parede (Android)
 
-Use o **Fully Kiosk Browser**: Start URL `https://SEU-APP.onrender.com/?view=web&token=SEU_API_TOKEN`, ative *Keep Screen On*, *Fullscreen* e *Auto reload on network reconnect*.
+Use o **Fully Kiosk Browser**: Start URL `https://SEU-APP.onrender.com/?view=web`, ative *Keep Screen On*, *Fullscreen* e *Auto reload on network reconnect*.
 
 ### Adicionar à Tela de Início
 
@@ -107,6 +112,6 @@ Use o **Fully Kiosk Browser**: Start URL `https://SEU-APP.onrender.com/?view=web
 
 ## Notas
 
-- Autenticação: toda a API (exceto `/api/device`, `/healthz` e o fluxo OAuth) exige `Authorization: Bearer <API_TOKEN>`.
+- Autenticação: toda a API protegida exige `Authorization: Bearer <JWT>`. O `API_TOKEN` é usado somente para iniciar a autorização inicial do proprietário em `/api/auth/google?token=...`.
 - Fotos/tabelas: edite `frontend/src/content.ts`. Novas páginas: `frontend/src/config.ts`.
 - Atualizações do app: o SW usa rede primeiro para a navegação; se algo ficar preso, aumente `CACHE` em `src/sw.ts`.

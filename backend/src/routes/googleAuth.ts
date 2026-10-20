@@ -1,6 +1,8 @@
 import { Router } from 'express';
+import jwt from 'jsonwebtoken';
 import { authUrl, checkState, saveCode, isConnected, getProfile } from '../lib/google';
-import { requireAuth, safeEqual } from '../middleware/auth';
+import { safeEqual } from '../middleware/auth';
+import { jwtAuth } from '../middleware/jwtAuth';
 
 const r = Router();
 
@@ -14,19 +16,61 @@ r.get('/google', (req, res) => {
   res.redirect(authUrl());
 });
 
-// Passo 2: o Google volta aqui com ?code=... ; validamos o state, guardamos
-// o refresh_token e também nome/email/avatar do perfil.
-r.get('/google/callback', async (req, res) => {
+// Login público restrito à conta Google autorizada no bootstrap do app.
+r.get('/login', async (_req, res) => {
   try {
-    if (!checkState(String(req.query.state || ''))) throw new Error('state inválido ou expirado');
-    await saveCode(String(req.query.code || ''));
-    res.redirect((process.env.FRONTEND_URL || '/') + '?google=ok');
-  } catch (e: any) {
-    res.status(400).send('Falha na autorização: ' + (e?.message || 'erro'));
+    const profile = await getProfile();
+    if (!profile.email) {
+      res.status(503).send('O proprietário ainda precisa configurar o acesso Google do aplicativo.');
+      return;
+    }
+    res.redirect(authUrl('login'));
+  } catch {
+    res.status(500).send('Não foi possível iniciar o login Google.');
   }
 });
 
-r.get('/status', requireAuth, async (_req, res) => {
+// O callback valida o fluxo, verifica a conta autorizada e emite o JWT da sessão.
+r.get('/google/callback', async (req, res) => {
+  try {
+    const flow = checkState(String(req.query.state || ''));
+    if (!flow) throw new Error('state inválido ou expirado');
+
+    const authorizedProfile = flow === 'login' ? await getProfile() : null;
+    if (flow === 'login' && !authorizedProfile?.email) {
+      throw new Error('A conta Google do aplicativo ainda não foi configurada.');
+    }
+
+    const profile = await saveCode(
+      String(req.query.code || ''),
+      authorizedProfile?.email || undefined
+    );
+    const secret = process.env.JWT_SECRET;
+    if (!secret) throw new Error('JWT_SECRET não configurado.');
+
+    const token = jwt.sign(
+      { email: profile.email, name: profile.name, picture: profile.picture },
+      secret,
+      { algorithm: 'HS256', expiresIn: '30d', subject: profile.email || undefined }
+    );
+    const frontendUrl = process.env.FRONTEND_URL || `${req.protocol}://${req.get('host')}`;
+    const destination = new URL(frontendUrl);
+    destination.search = '';
+    destination.hash = '';
+    destination.searchParams.set('login', 'success');
+    destination.searchParams.set('jwt', token);
+    res.redirect(destination.toString());
+  } catch (error) {
+    console.error('[auth] falha no login Google:', error);
+    const frontendUrl = process.env.FRONTEND_URL || `${req.protocol}://${req.get('host')}`;
+    const destination = new URL(frontendUrl);
+    destination.search = '?login=error';
+    destination.hash = '';
+    res.redirect(destination.toString());
+  }
+});
+
+r.get('/status', jwtAuth, async (_req, res) => {
   try {
     res.json({ connected: await isConnected() });
   } catch {
@@ -35,7 +79,7 @@ r.get('/status', requireAuth, async (_req, res) => {
 });
 
 // GET /api/auth/me -> { email, name, picture }
-r.get('/me', requireAuth, async (_req, res) => {
+r.get('/me', jwtAuth, async (_req, res) => {
   try {
     const profile = await getProfile();
     res.json(profile);

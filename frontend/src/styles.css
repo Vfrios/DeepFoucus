@@ -305,3 +305,111 @@ th { color: var(--mute); font-weight: 500; }
   border-color: var(--accent);
   color: var(--accent);
 }
+
+.sidebar-footer-actions {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+.sidebar-logout {
+  min-height: 44px;
+  padding: 0 10px;
+  background: transparent;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--paper);
+  font: inherit;
+  cursor: pointer;
+}
+.sidebar-logout:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.login-page {
+  min-height: 100dvh;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background:
+    radial-gradient(ellipse at 50% 0%, rgba(134, 215, 192, 0.12), transparent 55%),
+    var(--ink);
+}
+.login-card {
+  width: min(100%, 430px);
+  padding: 38px;
+  background: rgba(26, 34, 44, 0.94);
+  border: 1px solid var(--line);
+  border-radius: 20px;
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.28);
+  text-align: center;
+}
+.login-mark {
+  width: 54px;
+  height: 54px;
+  margin: 0 auto 20px;
+  display: grid;
+  place-items: center;
+  border-radius: 17px;
+  background: var(--accent);
+  color: var(--ink);
+  font-size: 1.8rem;
+  font-weight: 800;
+}
+.login-eyebrow {
+  margin: 0 0 8px;
+  color: var(--accent);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+}
+.login-card h1 {
+  font-size: 1.8rem;
+}
+.login-description {
+  margin: 12px 0 26px;
+  color: var(--mute);
+}
+.google-login {
+  min-height: 50px;
+  padding: 0 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  background: #fff;
+  border-radius: 10px;
+  color: #202124;
+  font-weight: 600;
+  text-decoration: none;
+  transition: background 0.15s ease, transform 0.15s ease;
+}
+.google-login:hover {
+  background: #f3f4f5;
+  transform: translateY(-1px);
+}
+.login-error {
+  padding: 10px 12px;
+  background: rgba(230, 124, 115, 0.12);
+  border: 1px solid rgba(230, 124, 115, 0.4);
+  border-radius: 8px;
+  color: #f2a39c;
+  font-size: 0.9rem;
+}
+.login-legal {
+  margin: 22px 0 0;
+  color: var(--mute);
+  font-size: 0.78rem;
+}
+.login-legal a {
+  color: var(--accent);
+  text-decoration: none;
+}
+.login-legal a:hover {
+  text-decoration: underline;
+}
+@media (max-width: 480px) {
+  .login-card {
+    padding: 30px 22px;
+  }
+}

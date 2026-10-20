@@ -3,6 +3,7 @@ import { useProfile } from '../hooks/useProfile';
 import DeviceOverride from './DeviceOverride';
 import PushButton from './PushButton';
 import type { PageDef } from '../config';
+import { clearToken } from '../lib/api';
 
 interface Props {
   open: boolean;
@@ -113,9 +114,20 @@ export default function Sidebar({ open, onClose, pages, currentIndex, onNavigate
         {/* ---- Rodapé ---- */}
         <footer className="sidebar-footer">
           <span>{VERSION}</span>
-          <a href={REPO_URL} target="_blank" rel="noopener noreferrer">
-            Repositório
-          </a>
+          <div className="sidebar-footer-actions">
+            <a href={REPO_URL} target="_blank" rel="noopener noreferrer">
+              Repositório
+            </a>
+            <button
+              className="sidebar-logout"
+              onClick={() => {
+                clearToken();
+                window.location.reload();
+              }}
+            >
+              Sair
+            </button>
+          </div>
         </footer>
       </aside>
     </div>

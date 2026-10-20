@@ -45,7 +45,7 @@ export default function PageCalendar() {
     <div className={`page cal ${view === 'web' ? 'cal-web' : ''}`}>
       {view === 'web' && <Clock />}
       {error.includes('google_not_connected') && (
-        <p className="notice">Google Calendar não conectado. Abra <code>/api/auth/google?token=SEU_API_TOKEN</code> uma vez para autorizar.</p>
+        <p className="notice">Google Calendar ainda não foi autorizado. Peça ao administrador para configurar a integração.</p>
       )}
       {error && !error.includes('google_not_connected') && <p className="notice">Não foi possível atualizar o calendário.</p>}
       {loading && !events.length && !error && <p className="muted">Carregando…</p>}
