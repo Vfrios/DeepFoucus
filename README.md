@@ -53,7 +53,7 @@ Coleções criadas automaticamente: `tasks`, `auth`, `subscriptions`.
    - Redirect URI local: `http://localhost:3001/api/auth/google/callback`
    - Redirect URI produção: `https://SEU-APP.onrender.com/api/auth/google/callback`
 5. Copie Client ID/Secret para `.env`.
-6. **Rode o fluxo inicial uma vez**: abra `/api/auth/google?token=SEU_API_TOKEN`, autorize a conta proprietária e o `refresh_token` será salvo na coleção `auth`. Depois, entre pela tela de login do aplicativo.
+6. **Rode o fluxo inicial uma vez**: abra `/api/auth/google?token=SEU_API_TOKEN`, autorize a conta proprietária e o `refresh_token` será salvo na coleção `auth`. Depois, entre pela tela de login do aplicativo. Se os escopos solicitados pelo app mudarem, repita essa autorização para conceder as novas permissões.
 
 O refresh token fica só no servidor; o front nunca o recebe.
 
@@ -76,7 +76,7 @@ Push é disparado em: tarefa criada, tarefa concluída e evento começando em at
    - `GOOGLE_REDIRECT_URI=https://SEU-APP.onrender.com/api/auth/google/callback`
    - `FRONTEND_URL=https://SEU-APP.onrender.com`
 5. No Google Cloud, adicione essa mesma URL em *Authorized redirect URIs*.
-6. Autorize a conta proprietária uma vez em `https://SEU-APP.onrender.com/api/auth/google?token=SEU_API_TOKEN`, substituindo pelo `API_TOKEN` visível em *Environment*. A tela pública de login só emite uma sessão para essa mesma conta Google.
+6. Autorize a conta proprietária em `https://SEU-APP.onrender.com/api/auth/google?token=SEU_API_TOKEN`, substituindo pelo `API_TOKEN` visível em *Environment*. Repita essa autorização quando os escopos solicitados pelo app mudarem. A tela pública de login só emite uma sessão para essa mesma conta Google.
 7. Depois do deploy, confirme que as políticas públicas estão acessíveis em `/privacy.html` e `/terms.html`; informe esses endereços na configuração de publicação do Google.
 
 Build: `npm install --include=dev && npm run build` · Start: `node backend/dist/index.js`. O Express serve `/api/*` e o `frontend/dist`.

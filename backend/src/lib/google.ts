@@ -2,10 +2,11 @@ import { google } from 'googleapis';
 import crypto from 'crypto';
 import { getDb } from './mongo';
 
-// FASE 4: escopo de ESCRITA para criar/atualizar eventos.
+// Escopos para listar calendários/eventos e criar/atualizar eventos.
 // + Perfil/e-mail para exibir nome, email e avatar na Sidebar.
-// ATENÇÃO: reautorize o Google após o deploy (/api/auth/google?token=...)
+// Reautorize o Google após mudanças nos escopos (/api/auth/google?token=...)
 const SCOPES = [
+  'https://www.googleapis.com/auth/calendar.calendarlist.readonly',
   'https://www.googleapis.com/auth/calendar.events',
   'https://www.googleapis.com/auth/userinfo.profile',
   'https://www.googleapis.com/auth/userinfo.email',

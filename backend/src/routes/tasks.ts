@@ -29,10 +29,7 @@ const todayKey = () => {
   return d.toISOString().slice(0, 10);
 };
 
-/**
- * FASE 2: upsert em `activity` do dia.
- * `inc` com defaults garante criação correta mesmo se o doc não existir.
- */
+/** FASE 2: incrementa a atividade do dia, criando o documento se necessário. */
 async function registrarAtividade(opts: {
   concluidas?: number;
   minutos?: number;
@@ -52,11 +49,9 @@ async function registrarAtividade(opts: {
       incOps.$inc[`tags.${k}`] = v;
     }
   }
-  // Garante que concluidas/minutosEstudo existam ao criar o doc
-  const setOnInsert = { concluidas: 0, minutosEstudo: 0, tags: {} };
   await c.updateOne(
     { _id: dia },
-    { ...incOps, $setOnInsert: setOnInsert },
+    incOps,
     { upsert: true }
   );
 }

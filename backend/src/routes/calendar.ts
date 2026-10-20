@@ -25,7 +25,10 @@ r.get('/events', async (req, res) => {
     res.json(data);
   } catch (e: any) {
     if (e?.message === 'google_not_connected') res.status(409).json({ error: 'google_not_connected' });
-    else res.status(502).json({ error: 'google_error' });
+    else {
+      console.error('[calendar] failed to list events:', e instanceof Error ? e.message : String(e));
+      res.status(502).json({ error: 'google_error' });
+    }
   }
 });
 
