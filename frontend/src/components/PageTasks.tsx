@@ -1,13 +1,15 @@
 import { FormEvent, useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { PreviewItem, Task, Tipo, useTasks } from '../hooks/useTasks';
+import { useGoogleCalendars } from '../hooks/useGoogleCalendars';
+import { getDefaultTaskColor } from '../lib/taskColors';
 
 // ---------- constantes de UI ----------
 
 const CORES_TIPO: Record<Tipo, string> = {
-  evento: '#9db4ff',
-  estudo: '#f0b95a',
-  tarefa: '#86d7c0',
+  evento: getDefaultTaskColor('evento'),
+  estudo: getDefaultTaskColor('estudo'),
+  tarefa: getDefaultTaskColor('tarefa'),
 };
 const LABEL_TIPO: Record<Tipo, string> = {
   evento: 'Evento',
@@ -204,25 +206,44 @@ function agrupar(tasks: Task[]): { ativos: Grupo[]; concluidos: Task[] } {
 interface ModalProps {
   open: boolean;
   inicial?: Task | null;
+  initialStart?: string | null;
+  initialEnd?: string | null;
+  onSuggest: (prompt: string) => Promise<PreviewItem[]>;
   onClose: () => void;
   onSave: (payload: {
     titulo: string;
     descricao: string;
     tipo: Tipo;
+    cor: string;
+    corPersonalizada: boolean;
     inicio: string | null;
     fim: string | null;
+    calendarId: string;
   }) => Promise<void>;
 }
 
-function TaskModal({ open, inicial, onClose, onSave }: ModalProps) {
+export function TaskModal({
+  open,
+  inicial,
+  initialStart,
+  initialEnd,
+  onSuggest,
+  onClose,
+  onSave,
+}: ModalProps) {
   const [titulo, setTitulo] = useState('');
   const [descricao, setDescricao] = useState('');
   const [tipo, setTipo] = useState<Tipo>('tarefa');
+  const [cor, setCor] = useState('');
+  const [corPersonalizada, setCorPersonalizada] = useState(false);
   const [inicio, setInicio] = useState('');
   const [fim, setFim] = useState('');
+  const [calendarId, setCalendarId] = useState('primary');
+  const { calendars } = useGoogleCalendars();
+  const [promptIA, setPromptIA] = useState('');
   const [salvando, setSalvando] = useState(false);
   const [sugerindo, setSugerindo] = useState(false);
-  const [sugestaoMsg, setSugestaoMsg] = useState('');
+  const [sugestaoMsg, setSugestaoMsg] = useState<{ tipo: 'ok' | 'err'; texto: string } | null>(null);
 
   // Reset ao abrir
   useEffect(() => {
@@ -230,14 +251,54 @@ function TaskModal({ open, inicial, onClose, onSave }: ModalProps) {
     setTitulo(inicial?.titulo ?? '');
     setDescricao(inicial?.descricao ?? '');
     setTipo(inicial?.tipo ?? 'tarefa');
-    setInicio(toLocalInput(inicial?.inicio ?? null));
-    setFim(toLocalInput(inicial?.fim ?? null));
-    setSugestaoMsg('');
+    setCor(
+      inicial?.cor &&
+        (inicial.corPersonalizada ?? inicial.cor.toLowerCase() !== getDefaultTaskColor(inicial.tipo))
+        ? inicial.cor
+        : ''
+    );
+    setCorPersonalizada(
+      inicial?.corPersonalizada ??
+        (!!inicial?.cor && inicial.cor.toLowerCase() !== getDefaultTaskColor(inicial.tipo))
+    );
+    setInicio(toLocalInput(inicial?.inicio ?? initialStart ?? null));
+    setFim(toLocalInput(inicial?.fim ?? initialEnd ?? null));
+    setCalendarId(inicial?.calendarId ?? 'primary');
+    setPromptIA('');
+    setSugestaoMsg(null);
     setSalvando(false);
     setSugerindo(false);
-  }, [open, inicial]);
+  }, [open, inicial, initialEnd, initialStart]);
 
   if (!open) return null;
+
+  const sugerirEvento = async () => {
+    const prompt = promptIA.trim();
+    if (!prompt || sugerindo) return;
+    setSugerindo(true);
+    setSugestaoMsg(null);
+    try {
+      const [suggestion] = await onSuggest(prompt);
+      if (!suggestion) {
+        setSugestaoMsg({ tipo: 'err', texto: 'A IA não encontrou um evento. Tente descrever de outra forma.' });
+        return;
+      }
+      setTitulo(suggestion.titulo);
+      setDescricao(suggestion.descricao);
+      setTipo(suggestion.tipo);
+      if (suggestion.inicio) setInicio(toLocalInput(suggestion.inicio));
+      if (suggestion.fim) setFim(toLocalInput(suggestion.fim));
+      setPromptIA('');
+      setSugestaoMsg({ tipo: 'ok', texto: 'Sugestão aplicada. Revise os campos e salve quando estiver pronto.' });
+    } catch (error) {
+      setSugestaoMsg({
+        tipo: 'err',
+        texto: `Falha ao consultar a IA: ${error instanceof Error ? error.message : 'erro desconhecido'}`,
+      });
+    } finally {
+      setSugerindo(false);
+    }
+  };
 
   const submit = async (e: FormEvent) => {
     e.preventDefault();
@@ -248,12 +309,15 @@ function TaskModal({ open, inicial, onClose, onSave }: ModalProps) {
         titulo: titulo.trim(),
         descricao: descricao.trim(),
         tipo,
+        cor: cor || CORES_TIPO[tipo],
+        corPersonalizada,
         inicio: fromLocalInput(inicio),
         fim: fromLocalInput(fim),
+        calendarId,
       });
       onClose();
     } catch (err: any) {
-      setSugestaoMsg('Falha ao salvar: ' + (err?.message || 'erro'));
+      setSugestaoMsg({ tipo: 'err', texto: 'Falha ao salvar: ' + (err?.message || 'erro') });
     } finally {
       setSalvando(false);
     }
@@ -268,6 +332,31 @@ function TaskModal({ open, inicial, onClose, onSave }: ModalProps) {
             ✕
           </button>
         </header>
+
+        <div className="task-ai-prompt">
+          <input
+            aria-label="Descreva o evento para a IA"
+            placeholder="Descreva o evento..."
+            value={promptIA}
+            maxLength={1000}
+            disabled={sugerindo}
+            onChange={(event) => setPromptIA(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter') {
+                event.preventDefault();
+                void sugerirEvento();
+              }
+            }}
+          />
+          <button
+            type="button"
+            className="btn ghost"
+            disabled={sugerindo || !promptIA.trim()}
+            onClick={() => void sugerirEvento()}
+          >
+            {sugerindo ? 'Gerando…' : '✨ IA'}
+          </button>
+        </div>
 
         <label className="field">
           <span>Título</span>
@@ -291,7 +380,31 @@ function TaskModal({ open, inicial, onClose, onSave }: ModalProps) {
               ))}
             </select>
           </label>
+          <label className="field">
+            <span>Cor</span>
+            <input
+              aria-label="Cor da tarefa"
+              type="color"
+              value={cor || CORES_TIPO[tipo]}
+              onChange={(event) => {
+                setCor(event.target.value);
+                setCorPersonalizada(true);
+              }}
+            />
+          </label>
         </div>
+
+        <label className="field">
+          <span>Salvar no calendário</span>
+          <select value={calendarId} onChange={(event) => setCalendarId(event.target.value)}>
+            <option value="primary">
+              {calendars.find((calendar) => calendar.primary)?.summary || 'Principal'}
+            </option>
+            {calendars.filter((calendar) => !calendar.primary).map((calendar) => (
+              <option key={calendar.id} value={calendar.id}>{calendar.summary}</option>
+            ))}
+          </select>
+        </label>
 
         <div className="field-row date-time-row">
           <label className="field">
@@ -356,38 +469,13 @@ function TaskModal({ open, inicial, onClose, onSave }: ModalProps) {
           />
         </label>
 
-        {sugestaoMsg && <p className="ai-feedback err">{sugestaoMsg}</p>}
+        {sugestaoMsg && (
+          <p className={`ai-feedback ${sugestaoMsg.tipo}`} role="status">
+            {sugestaoMsg.texto}
+          </p>
+        )}
 
         <footer className="modal-foot">
-          <button
-            type="button"
-            className="btn ghost"
-            disabled={sugerindo || !descricao.trim()}
-            onClick={async () => {
-              setSugerindo(true);
-              setSugestaoMsg('');
-              try {
-                const s = await import('../lib/api').then((m) =>
-                  m.api<{ ok: boolean; sugestao: { titulo: string; tipo: Tipo; descricao: string } }>(
-                    '/tasks/preview-roteiro',
-                    {
-                      method: 'POST',
-                      body: JSON.stringify({ modo: 'sugestao', descricao }),
-                    }
-                  )
-                );
-                if (s.sugestao.titulo) setTitulo(s.sugestao.titulo);
-                if (s.sugestao.tipo) setTipo(s.sugestao.tipo);
-                setSugestaoMsg('Sugestão aplicada ✓');
-              } catch (e: any) {
-                setSugestaoMsg('IA falhou: ' + (e?.message || 'erro'));
-              } finally {
-                setSugerindo(false);
-              }
-            }}
-          >
-            {sugerindo ? 'Sugerindo…' : '✨ Salvar com IA'}
-          </button>
           <div style={{ flex: 1 }} />
           <button type="button" className="btn ghost" onClick={onClose}>
             Cancelar
@@ -676,8 +764,11 @@ export default function PageTasks() {
     titulo: string;
     descricao: string;
     tipo: Tipo;
+    cor: string;
+    corPersonalizada: boolean;
     inicio: string | null;
     fim: string | null;
+    calendarId: string;
   }) => {
     if (editando) await update(editando._id, payload);
     else await create(payload);
@@ -799,6 +890,7 @@ export default function PageTasks() {
       <TaskModal
         open={modalOpen}
         inicial={editando}
+        onSuggest={previewFromIA}
         onClose={() => setModalOpen(false)}
         onSave={salvar}
       />

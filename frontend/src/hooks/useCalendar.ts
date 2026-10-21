@@ -3,6 +3,7 @@ import { api } from '../lib/api';
 
 export interface CalEvent {
   id: string;
+  calendarId: string;
   title: string;
   start: string;
   end: string;
@@ -11,23 +12,23 @@ export interface CalEvent {
   color: string;
 }
 
-export function useCalendar(days = 7) {
+export function useCalendar(from: Date, days: number) {
   const [events, setEvents] = useState<CalEvent[]>([]);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
 
+  const fromTime = from.getTime();
   const load = useCallback(async () => {
     try {
-      const from = new Date();
-      from.setHours(0, 0, 0, 0); // início do dia LOCAL
-      setEvents(await api<CalEvent[]>(`/calendar/events?days=${days}&from=${encodeURIComponent(from.toISOString())}`));
+      const start = new Date(fromTime);
+      setEvents(await api<CalEvent[]>(`/calendar/events?days=${days}&from=${encodeURIComponent(start.toISOString())}`));
       setError('');
     } catch (e: any) {
       setError(String(e?.message || 'erro'));
     } finally {
       setLoading(false);
     }
-  }, [days]);
+  }, [days, fromTime]);
 
   useEffect(() => {
     load();

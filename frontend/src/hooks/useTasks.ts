@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { api } from '../lib/api';
+import { getDefaultTaskColor } from '../lib/taskColors';
 
 export type Tipo = 'tarefa' | 'evento' | 'estudo';
 
@@ -8,6 +9,8 @@ export interface Task {
   titulo: string;
   descricao: string;
   tipo: Tipo;
+  cor?: string;
+  corPersonalizada?: boolean;
   inicio: string | null;
   fim: string | null;
   texto: string;
@@ -15,6 +18,10 @@ export interface Task {
   feito: boolean;
   ordem: number;
   googleEventId?: string | null;
+  calendarId?: string;
+  calendarBackgroundColor?: string;
+  externalCalendarEvent?: boolean;
+  allDay?: boolean;
 }
 
 /** Payload aceito por `create` — todos os campos ricos, todos opcionais exceto titulo. */
@@ -22,8 +29,11 @@ export interface TaskPayload {
   titulo: string;
   descricao?: string;
   tipo?: Tipo;
+  cor?: string;
+  corPersonalizada?: boolean;
   inicio?: string | null;
   fim?: string | null;
+  calendarId?: string;
 }
 
 /** Item retornado pelo preview da IA (ainda não persistido). */
@@ -89,12 +99,15 @@ export function useTasks() {
         texto: payload.titulo,
         descricao: payload.descricao ?? '',
         tipo: payload.tipo ?? 'tarefa',
+        cor: payload.cor ?? getDefaultTaskColor(payload.tipo ?? 'tarefa'),
+        corPersonalizada: payload.corPersonalizada ?? false,
         inicio: payload.inicio ?? null,
         fim: payload.fim ?? null,
         data: payload.inicio ?? null,
         feito: false,
         ordem: ref.current.length,
         googleEventId: null,
+        calendarId: payload.calendarId ?? 'primary',
       };
       setTasks((t) => [...t, tmp]);
       pending.current++;
@@ -105,8 +118,11 @@ export function useTasks() {
             titulo: payload.titulo,
             descricao: payload.descricao,
             tipo: payload.tipo,
+            cor: payload.cor,
+            corPersonalizada: payload.corPersonalizada,
             inicio: payload.inicio,
             fim: payload.fim,
+            calendarId: payload.calendarId,
           }),
         });
         setTasks((t) => t.map((x) => (x._id === tmp._id ? created : x)));
@@ -142,6 +158,10 @@ export function useTasks() {
                   ...(patch.titulo !== undefined ? { titulo: patch.titulo, texto: patch.titulo } : {}),
                   ...(patch.descricao !== undefined ? { descricao: patch.descricao } : {}),
                   ...(patch.tipo !== undefined ? { tipo: patch.tipo } : {}),
+                  ...(patch.cor !== undefined ? { cor: patch.cor } : {}),
+                  ...(patch.corPersonalizada !== undefined
+                    ? { corPersonalizada: patch.corPersonalizada }
+                    : {}),
                   ...(patch.inicio !== undefined
                     ? { inicio: patch.inicio, data: patch.inicio }
                     : {}),
@@ -219,8 +239,8 @@ export function useTasks() {
   const previewFromIA = useCallback(
     async (roteiro: string): Promise<PreviewItem[]> => {
       const res = await api<{ ok: boolean; tarefas: PreviewItem[] }>(
-        '/tasks/preview-roteiro',
-        { method: 'POST', body: JSON.stringify({ roteiro }) }
+        '/tasks/from-roteiro',
+        { method: 'POST', body: JSON.stringify({ roteiro, preview: true }) }
       );
       return res.tarefas ?? [];
     },

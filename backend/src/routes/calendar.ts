@@ -1,8 +1,22 @@
 import { Router } from 'express';
-import { listEvents, CalEvent } from '../lib/google';
+import { listCalendars, listEvents, CalEvent } from '../lib/google';
+import { jwtAuth } from '../middleware/jwtAuth';
 
 const r = Router();
 const cache = new Map<string, { at: number; data: CalEvent[] }>(); // cache curto: protege a cota do Google
+
+// GET /api/calendar/lists
+r.get('/lists', jwtAuth, async (_req, res) => {
+  try {
+    res.json(await listCalendars());
+  } catch (e: any) {
+    if (e?.message === 'google_not_connected') res.status(409).json({ error: 'google_not_connected' });
+    else {
+      console.error('[calendar] failed to list calendars:', e instanceof Error ? e.message : String(e));
+      res.status(502).json({ error: 'google_error' });
+    }
+  }
+});
 
 // GET /api/calendar/events?days=7&from=<ISO do início do dia local>
 r.get('/events', async (req, res) => {
@@ -14,7 +28,7 @@ r.get('/events', async (req, res) => {
   }
   const key = `${from.toISOString()}|${days}`;
   const hit = cache.get(key);
-  if (hit && Date.now() - hit.at < 60_000) {
+  if (hit && Date.now() - hit.at < 5 * 60_000) {
     res.json(hit.data);
     return;
   }

@@ -1,6 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Task, Tipo, useTasks } from '../hooks/useTasks';
+import { useCalendar } from '../hooks/useCalendar';
+import { useGoogleCalendars } from '../hooks/useGoogleCalendars';
 import { useDevice } from '../device/useDevice';
+import { getCalendarTasks, getEventColor } from './calendarUtils';
 
 // ---------- utilitários de data ----------
 
@@ -19,17 +22,11 @@ const hhmm = (iso: string | null) =>
 
 /** "14:00 – 15:00" ou "Sem horário" se inicio for null. */
 const faixa = (t: Task) => {
+  if (t.allDay) return 'Dia inteiro';
   if (!t.inicio) return 'Sem horário';
   const ini = hhmm(t.inicio);
   const fim = t.fim ? hhmm(t.fim) : null;
   return fim ? `${ini} – ${fim}` : ini;
-};
-
-/** Cores por tipo (mesmas do design system do app). */
-const CORES_TIPO: Record<Tipo, string> = {
-  evento: '#9db4ff', // azul
-  estudo: '#f0b95a', // laranja
-  tarefa: '#86d7c0', // verde-água
 };
 
 const LABEL_TIPO: Record<Tipo, string> = {
@@ -85,7 +82,7 @@ function DayBlock({
             <li key={t._id} className={`cal-item${t.feito ? ' done' : ''}`}>
               <span
                 className="type-bar"
-                style={{ background: CORES_TIPO[t.tipo] }}
+                style={{ background: getEventColor(t) }}
                 aria-hidden
               />
               <div className="cal-item-body">
@@ -94,8 +91,8 @@ function DayBlock({
                   <span
                     className="type-tag"
                     style={{
-                      color: CORES_TIPO[t.tipo],
-                      borderColor: CORES_TIPO[t.tipo],
+                      color: getEventColor(t),
+                      borderColor: getEventColor(t),
                     }}
                   >
                     {LABEL_TIPO[t.tipo]}
@@ -115,6 +112,18 @@ function DayBlock({
 export default function PageCalendar() {
   const { view } = useDevice();
   const { tasks, error, generateFromIA } = useTasks();
+  const { calendars, selectedIds } = useGoogleCalendars();
+  const [rangeStart] = useState(() => {
+    const start = new Date();
+    start.setHours(0, 0, 0, 0);
+    return start;
+  });
+  const { events: googleEvents, error: calendarError } = useCalendar(rangeStart, 2);
+  const visibleTasks = useMemo(
+    () => getCalendarTasks(tasks, googleEvents, calendars)
+      .filter((task) => selectedIds.includes(task.calendarId || 'primary')),
+    [tasks, googleEvents, calendars, selectedIds]
+  );
 
   // ---- input da IA inline ----
   const [prompt, setPrompt] = useState('');
@@ -156,7 +165,7 @@ export default function PageCalendar() {
     const kAmanha = dayKey(dAmanha);
 
     const doDia = (k: string) =>
-      tasks
+      visibleTasks
         .filter((t) => t.inicio && dayKey(new Date(t.inicio)) === k)
         .sort((a, b) => {
           const ta = a.inicio ? new Date(a.inicio).getTime() : 0;
@@ -177,7 +186,7 @@ export default function PageCalendar() {
       hojeLabel: labelDia(dHoje),
       amanhaLabel: labelDia(dAmanha),
     };
-  }, [tasks]);
+  }, [visibleTasks]);
 
   const vazio = hoje.length === 0 && amanha.length === 0;
 
@@ -211,6 +220,7 @@ export default function PageCalendar() {
         </p>
       )}
       {error && <p className="notice">{error}</p>}
+      {calendarError && <p className="notice">Não foi possível carregar eventos do Google Calendar.</p>}
 
       {/* ---- Blocos Hoje / Amanhã ---- */}
       <div className="cal-focus-grid">

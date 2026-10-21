@@ -1,38 +1,55 @@
-Contexto do projeto:
-- O app "Wall Dashboard" possui um sistema de páginas navegáveis horizontalmente usando `embla-carousel-react` (arquivo `frontend/src/components/Pager.tsx` e hook `frontend/src/hooks/usePager.ts`).
-- O indicador atual (Dots.tsx) mostra apenas a posição horizontal (1D).
-- A configuração das páginas está em `frontend/src/config.ts` (um array linear).
+Contexto:
+- O app "Wall Dashboard" usa o `react-big-calendar` na visão Semanal (`PageWeekCalendar.tsx`).
+- O calendário renderiza apenas um bloco fixo (08h às 19h) sem scroll.
+- Queremos que o calendário mostre as 24 horas, com scroll independente, e que já abra focado no horário atual.
+- A linha do tempo atual (Current Time Line) deve ser **sutil e elegante**, no estilo Notion Calendar, sem quebrar o visual dark do app.
 
-Objetivo:
-Transformar a navegação para um **Grid 2D (Matriz)**. O usuário poderá arrastar para a esquerda/direita (mudar de coluna) e para cima/baixo (mudar de linha). O pager deve ter comportamento de **Loop Infinito** ao chegar no fim das linhas e colunas.
+TAREFAS:
 
-### ETAPA 1: Atualizar a Configuração de Páginas
-1. Em `frontend/src/config.ts`, alterar o array `pages` para incluir uma propriedade `row` (número da linha, ex: 1 ou 2).
-   - Linha 1: Calendário, Tarefas, Progresso, Notas
-   - Linha 2: Calendário Mensal (novo componente placeholder)
-   - Exemplo: `{ id: 'calendar', title: 'Calendário', component: PageCalendar, mobile: true, row: 1 }`.
+### 1. Configuração do `react-big-calendar` (PageWeekCalendar.tsx)
+- Garantir que o calendário mostre todas as 24 horas:
+  - `min={new Date(0, 0, 0, 0, 0, 0)}` (00:00)
+  - `max={new Date(0, 0, 0, 23, 59, 59)}` (23:59)
+  - `step={30}` e `timeslots={2}` (para linhas de meia em meia hora)
+  - Remover qualquer `scrollToTime` que esteja limitando a tela.
 
-### ETAPA 2: Criar o Pager 2D (Matriz)
-1. No `Pager.tsx`, em vez de usar um único `useEmblaCarousel` (horizontal), precisamos de uma estrutura CSS Grid.
-   - O container principal deve ser um `grid` com `grid-template-columns: repeat(N, 100vw)` e `grid-template-rows: repeat(M, 100vh)`.
-   - O scroll deve ser gerenciado via `scroll-snap-type: both mandatory` (no CSS) para permitir o "snap" tanto na horizontal quanto na vertical (isso é nativo do navegador e funciona muito bem).
-   - *Alternativa com Embla:* Se preferir continuar com o Embla, crie dois EmblaCarousels aninhados (um vertical envolvendo um horizontal), mas o CSS Scroll Snap nativo é mais leve e mais fácil de implementar rolagem infinita.
+### 2. Habilitar o Scroll Vertical (CSS)
+- No `styles.css`, sobrescrever as classes do RBC:
+  - `.rbc-time-content` deve ter `overflow-y: auto !important;` e `max-height: 100%;`.
+  - `.rbc-time-view` deve ter `height: 100%; display: flex; flex-direction: column;`.
+  - A coluna de horas (`.rbc-time-gutter`) deve ser fixa (sticky) no topo.
+  - **Esconder a barra de rolagem padrão** e estilizar uma fina (6px), cor `var(--line)`, com `border-radius: 3px`.
 
-### ETAPA 3: Indicador de Posição (Dots 2D)
-1. Atualizar o `Dots.tsx` para mostrar uma grade de bolinhas (ex: 2 linhas de 4 bolinhas).
-2. A bolinha da página atual deve ficar destacada (cor --accent).
-3. O usuário deve poder clicar numa bolinha para pular direto para aquela tela (ex: clicar na bolinha da linha 2, coluna 3).
+### 3. Scroll Automático para a Hora Atual (Smart Scroll)
+- No `PageWeekCalendar.tsx`, usar `useEffect` com uma `ref` apontando para o `.rbc-time-content`:
+  - Ao montar, calcular a hora atual (ex: 14h30).
+  - Calcular a posição em pixels baseada na altura dos slots de 30 min.
+  - Executar `scrollTo({ top: alturaCalculada, behavior: 'smooth' })` para abrir focado na hora atual.
+  - Se estiver em Modo LOCK (Parede), manter a tela sempre focada na hora atual (ou atualizar automaticamente quando o tempo passar).
 
-### ETAPA 4: Rolagem Infinita
-1. Se o usuário estiver na última página da linha 1 e deslizar para a direita, ele deve voltar para a primeira página da linha 1.
-2. Se estiver na primeira página e deslizar para a esquerda, vai para a última.
-3. O mesmo comportamento para as linhas (vertical).
-
-### ETAPA 5: Novos Componentes
-1. Criar um placeholder `frontend/src/components/PageMonthCalendar.tsx` (Apenas um título "Calendário Mensal" e um grid de dias para preencher a linha 2).
-2. Criar placeholders (ex: "Finanças", "Hábitos") se precisar preencher os buracos na matriz.
-
-### Regras Gerais:
-- Manter o Modo LOCK (travar a tela) funcionando. Se travar numa tela, o usuário não consegue nem rolar para os lados, nem para cima/baixo.
-- Manter o visual dark e os estilos atuais.
-- O código do CSS deve ser preferencialmente `scroll-snap` nativo para garantir 60fps em tablets antigos.
+### 4. Linha do Tempo (Current Time Indicator) SUTIL
+- **Não usar vermelho vibrante.** A linha deve ser discreta e elegante.
+- Especificação visual:
+  - Cor base: `var(--accent)` (verde-água do app) ou `#e67c73` (um vermelho suave / terracota).
+  - Espessura: `1px`.
+  - A bolinha na ponta da linha deve ser pequena (4px de diâmetro) e ter a mesma cor.
+  - A linha não deve brilhar (sem `box-shadow`).
+  - O fundo do indicador (se houver) deve ser transparente.
+- No CSS, sobrescrever:
+  ```css
+  .rbc-current-time-indicator {
+    background-color: var(--accent); /* ou terracota */
+    height: 1px;
+    z-index: 5;
+  }
+  .rbc-current-time-indicator::before {
+    content: '';
+    display: inline-block;
+    width: 4px;
+    height: 4px;
+    border-radius: 50%;
+    background-color: var(--accent);
+    position: absolute;
+    left: -2px;
+    top: -1.5px;
+  }

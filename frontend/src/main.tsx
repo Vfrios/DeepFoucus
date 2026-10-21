@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client';
 import App from './App';
 import { DeviceProvider } from './device/DeviceProvider';
 import { captureJwtFromUrl } from './lib/api';
+import 'react-big-calendar/lib/css/react-big-calendar.css';
 import './styles.css';
 
 const loginResult = captureJwtFromUrl();

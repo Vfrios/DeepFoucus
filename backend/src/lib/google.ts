@@ -127,6 +127,7 @@ export async function getProfile(): Promise<GoogleProfile> {
 
 export interface CalEvent {
   id: string;
+  calendarId: string;
   title: string;
   start: string;
   end: string;
@@ -134,6 +135,13 @@ export interface CalEvent {
   location: string;
   color: string;
   calendar: string;
+}
+
+export interface UserCalendar {
+  id: string;
+  summary: string;
+  backgroundColor: string;
+  primary: boolean;
 }
 
 /** Cliente autenticado para escrita. Retorna null se não conectado. */
@@ -146,13 +154,28 @@ async function authedCalendar() {
   return google.calendar({ version: 'v3', auth });
 }
 
+export async function listCalendars(): Promise<UserCalendar[]> {
+  const cal = await authedCalendar();
+  if (!cal) throw new Error('google_not_connected');
+
+  const result = await cal.calendarList.list({ minAccessRole: 'reader', maxResults: 250 });
+  return (result.data.items || [])
+    .filter((item) => !!item.id)
+    .map((item) => ({
+      id: item.id!,
+      summary: item.summary || item.id!,
+      backgroundColor: item.backgroundColor || '#86d7c0',
+      primary: item.primary === true,
+    }));
+}
+
 export async function listEvents(from: Date, days: number): Promise<CalEvent[]> {
   const cal = await authedCalendar();
   if (!cal) throw new Error('google_not_connected');
 
   const to = new Date(from.getTime() + days * 86400000);
   const lists = await cal.calendarList.list({ minAccessRole: 'reader' });
-  const cals = (lists.data.items || []).filter((c) => c.selected !== false && c.id).slice(0, 10);
+  const cals = (lists.data.items || []).filter((c) => c.id).slice(0, 10);
 
   const perCal = await Promise.all(
     cals.map(async (c) => {
@@ -169,6 +192,7 @@ export async function listEvents(from: Date, days: number): Promise<CalEvent[]> 
           .filter((e) => e.status !== 'cancelled')
           .map<CalEvent>((e) => ({
             id: `${c.id}:${e.id}`,
+            calendarId: c.id!,
             title: e.summary || '(sem título)',
             start: e.start?.dateTime || e.start?.date || '',
             end: e.end?.dateTime || e.end?.date || '',
@@ -191,6 +215,7 @@ export interface CalendarTask {
   inicio: string;
   fim?: string | null;
   feito?: boolean;
+  calendarId?: string;
 }
 
 const calendarDateTime = (value: string) => new Date(value).toISOString();
@@ -207,7 +232,7 @@ export async function createCalendarEvent(task: CalendarTask): Promise<string | 
     }
 
     const r = await cal.events.insert({
-      calendarId: 'primary',
+      calendarId: task.calendarId || 'primary',
       requestBody: {
         summary: task.feito ? `[CONCLUÍDO] ${task.titulo}` : task.titulo,
         description: task.descricao || 'Criado pelo Wall Dashboard',
@@ -223,7 +248,11 @@ export async function createCalendarEvent(task: CalendarTask): Promise<string | 
   }
 }
 
-export async function updateCalendarEvent(eventId: string, task: CalendarTask): Promise<void> {
+export async function updateCalendarEvent(
+  eventId: string,
+  task: CalendarTask,
+  calendarId = 'primary'
+): Promise<void> {
   try {
     const cal = await authedCalendar();
     if (!cal) return;
@@ -235,7 +264,7 @@ export async function updateCalendarEvent(eventId: string, task: CalendarTask): 
     }
 
     await cal.events.patch({
-      calendarId: 'primary',
+      calendarId,
       eventId,
       requestBody: {
         summary: task.feito ? `[CONCLUÍDO] ${task.titulo}` : task.titulo,
@@ -249,11 +278,11 @@ export async function updateCalendarEvent(eventId: string, task: CalendarTask): 
   }
 }
 
-export async function deleteCalendarEvent(eventId: string): Promise<void> {
+export async function deleteCalendarEvent(eventId: string, calendarId = 'primary'): Promise<void> {
   try {
     const cal = await authedCalendar();
     if (!cal) return;
-    await cal.events.delete({ calendarId: 'primary', eventId });
+    await cal.events.delete({ calendarId, eventId });
   } catch (e: any) {
     console.warn('[google] falha ao excluir evento:', e instanceof Error ? e.message : e);
   }
@@ -323,10 +352,16 @@ export async function syncLinkedTaskEventsFromGoogle(): Promise<void> {
     }
 
     const eventIds = changes.events.map((event) => event.id).filter((id): id is string => !!id);
+    const primaryCalendarTaskFilter = {
+      $or: [{ calendarId: 'primary' }, { calendarId: { $exists: false } }],
+    };
     const linked = fullSync
-      ? await tasks.find({ googleEventId: { $type: 'string' } }).toArray()
+      ? await tasks.find({ googleEventId: { $type: 'string' }, ...primaryCalendarTaskFilter }).toArray()
       : eventIds.length
-        ? await tasks.find({ googleEventId: { $in: eventIds } }).toArray()
+        ? await tasks.find({
+            googleEventId: { $in: eventIds },
+            ...primaryCalendarTaskFilter,
+          }).toArray()
         : [];
     const byEventId = new Map(linked.map((task) => [task.googleEventId, task]));
     const operations = [];

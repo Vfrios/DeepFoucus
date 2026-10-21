@@ -18,6 +18,10 @@ const TIPOS = ['tarefa', 'evento', 'estudo'] as const;
 type Tipo = (typeof TIPOS)[number];
 const tipoValido = (v: unknown): v is Tipo =>
   typeof v === 'string' && (TIPOS as readonly string[]).includes(v);
+const corValida = (v: unknown): v is string =>
+  typeof v === 'string' && /^#[0-9a-fA-F]{6}$/.test(v);
+const corPadrao = (tipo: Tipo) =>
+  tipo === 'estudo' ? '#f0b95a' : tipo === 'evento' ? '#9db4ff' : '#86d7c0';
 
 function validarCamposItem(body: any): string | null {
   if (!body || typeof body !== 'object' || Array.isArray(body)) return 'body inválido';
@@ -25,6 +29,16 @@ function validarCamposItem(body: any): string | null {
   if (body.texto !== undefined && typeof body.texto !== 'string') return 'texto inválido';
   if (body.descricao !== undefined && typeof body.descricao !== 'string') return 'descricao inválida';
   if (body.tipo !== undefined && !tipoValido(body.tipo)) return 'tipo inválido';
+  if (body.cor !== undefined && !corValida(body.cor)) return 'cor inválida';
+  if (body.corPersonalizada !== undefined && typeof body.corPersonalizada !== 'boolean') {
+    return 'corPersonalizada inválida';
+  }
+  if (
+    body.calendarId !== undefined &&
+    (typeof body.calendarId !== 'string' || !body.calendarId.trim() || body.calendarId.length > 255)
+  ) {
+    return 'calendarId inválido';
+  }
   if (body.feito !== undefined && typeof body.feito !== 'boolean') return 'feito inválido';
   if (body.ordem !== undefined && (typeof body.ordem !== 'number' || !Number.isFinite(body.ordem))) {
     return 'ordem inválida';
@@ -44,24 +58,33 @@ function validarCamposItem(body: any): string | null {
   return null;
 }
 
-const toApi = (t: any) => ({
-  _id: String(t._id),
-  // Campos novos
-  titulo: t.titulo ?? t.texto ?? '',
-  descricao: t.descricao ?? '',
-  tipo: (t.tipo ?? 'tarefa') as Tipo,
-  inicio: t.inicio ?? t.data ?? null,
-  fim: t.fim ?? null,
-  // Campos legados (compatibilidade com UI não migrada)
-  texto: t.texto ?? t.titulo ?? '',
-  data: t.data ?? t.inicio ?? null,
-  // Comuns
-  feito: !!t.feito,
-  ordem: typeof t.ordem === 'number' ? t.ordem : 0,
-  googleEventId: t.googleEventId ?? null,
-  criadoEm: t.criadoEm,
-  atualizadoEm: t.atualizadoEm,
-});
+const toApi = (t: any) => {
+  const tipo = tipoValido(t.tipo) ? t.tipo : 'tarefa';
+  return {
+    _id: String(t._id),
+    // Campos novos
+    titulo: t.titulo ?? t.texto ?? '',
+    descricao: t.descricao ?? '',
+    tipo,
+    cor: corValida(t.cor) ? t.cor.toLowerCase() : corPadrao(tipo),
+    corPersonalizada:
+      typeof t.corPersonalizada === 'boolean'
+        ? t.corPersonalizada
+        : corValida(t.cor) && t.cor.toLowerCase() !== corPadrao(tipo),
+    inicio: t.inicio ?? t.data ?? null,
+    fim: t.fim ?? null,
+    // Campos legados (compatibilidade com UI não migrada)
+    texto: t.texto ?? t.titulo ?? '',
+    data: t.data ?? t.inicio ?? null,
+    // Comuns
+    feito: !!t.feito,
+    ordem: typeof t.ordem === 'number' ? t.ordem : 0,
+    googleEventId: t.googleEventId ?? null,
+    calendarId: t.calendarId ?? 'primary',
+    criadoEm: t.criadoEm,
+    atualizadoEm: t.atualizadoEm,
+  };
+};
 
 const oid = (s: string) => (ObjectId.isValid(s) ? new ObjectId(s) : null);
 
@@ -80,12 +103,15 @@ function lerCamposItem(body: any): Partial<{
   titulo: string;
   descricao: string;
   tipo: Tipo;
+  cor: string;
+  corPersonalizada: boolean;
   inicio: string | null;
   fim: string | null;
   texto: string;
   data: string | null;
   feito: boolean;
   ordem: number;
+  calendarId: string;
   atualizadoEm: Date;
 }> {
   const out: any = {};
@@ -94,6 +120,8 @@ function lerCamposItem(body: any): Partial<{
 
   if (typeof body?.descricao === 'string') out.descricao = body.descricao.trim().slice(0, 1000);
   if (tipoValido(body?.tipo)) out.tipo = body.tipo;
+  if (corValida(body?.cor)) out.cor = body.cor.toLowerCase();
+  if (typeof body?.corPersonalizada === 'boolean') out.corPersonalizada = body.corPersonalizada;
 
   const inicio = body?.inicio !== undefined ? body.inicio : body?.data;
   if (inicio === null || inicio === '') {
@@ -108,6 +136,7 @@ function lerCamposItem(body: any): Partial<{
   }
   if (typeof body?.feito === 'boolean') out.feito = body.feito;
   if (typeof body?.ordem === 'number') out.ordem = body.ordem;
+  if (typeof body?.calendarId === 'string') out.calendarId = body.calendarId.trim();
 
   // Espelhos legados: mantemos para o frontend não migrado continuar funcionando
   if (out.titulo !== undefined) out.texto = out.titulo;
@@ -151,9 +180,14 @@ r.post('/', async (req, res) => {
     texto: campos.titulo, // espelho legado
     descricao: campos.descricao ?? '',
     tipo: campos.tipo ?? 'tarefa',
+    cor: campos.cor ?? corPadrao(campos.tipo ?? 'tarefa'),
+    corPersonalizada:
+      campos.corPersonalizada ??
+      (campos.cor !== undefined && campos.cor.toLowerCase() !== corPadrao(campos.tipo ?? 'tarefa')),
     inicio: campos.inicio ?? null,
     data: campos.inicio ?? null, // espelho legado
     fim: campos.fim ?? null,
+    calendarId: campos.calendarId ?? 'primary',
     feito: false,
     ordem: (last[0]?.ordem ?? -1) + 1,
     criadoEm: now,
@@ -170,6 +204,7 @@ r.post('/', async (req, res) => {
       inicio: doc.inicio,
       fim: doc.fim,
       feito: doc.feito,
+      calendarId: doc.calendarId,
     });
     if (eventId) {
       await c.updateOne({ _id: ins.insertedId }, { $set: { googleEventId: eventId } });
@@ -183,6 +218,11 @@ r.post('/', async (req, res) => {
 
 // ---- IA: gerar itens a partir de um roteiro ----
 r.post('/from-roteiro', async (req, res) => {
+  const erro = validarCamposItem(req.body);
+  if (erro && req.body?.calendarId !== undefined) {
+    res.status(400).json({ error: erro });
+    return;
+  }
   const roteiro = String(req.body?.roteiro || '').trim();
   if (!roteiro) {
     res.status(400).json({ error: 'roteiro obrigatório' });
@@ -194,6 +234,11 @@ r.post('/from-roteiro', async (req, res) => {
     geradas = await gerarTarefasIA(roteiro);
   } catch (e: any) {
     res.status(500).json({ error: 'falha_ia', detalhe: e?.message || 'erro desconhecido' });
+    return;
+  }
+
+  if (req.body?.preview === true) {
+    res.json({ ok: true, tarefas: geradas });
     return;
   }
 
@@ -212,9 +257,11 @@ r.post('/from-roteiro', async (req, res) => {
     texto: t.titulo,
     descricao: t.descricao,
     tipo: t.tipo,
+    cor: corPadrao(t.tipo),
     inicio: t.inicio,
     data: t.inicio,
     fim: t.fim,
+    calendarId: typeof req.body?.calendarId === 'string' ? req.body.calendarId.trim() : 'primary',
     feito: false,
     ordem: ordemBase++,
     criadoEm: now,
@@ -236,6 +283,7 @@ r.post('/from-roteiro', async (req, res) => {
         inicio: docs[i].inicio,
         fim: docs[i].fim,
         feito: docs[i].feito,
+        calendarId: docs[i].calendarId,
       });
       if (evId) {
         docs[i].googleEventId = evId;
@@ -287,6 +335,10 @@ r.patch('/:id', async (req, res) => {
     return;
   }
   const merged = { ...before, ...set };
+  if (set.cor !== undefined && set.corPersonalizada === undefined) {
+    set.corPersonalizada = set.cor.toLowerCase() !== corPadrao(set.tipo ?? before.tipo ?? 'tarefa');
+    merged.corPersonalizada = set.corPersonalizada;
+  }
   if (merged.inicio && merged.fim && new Date(merged.fim) <= new Date(merged.inicio)) {
     res.status(400).json({ error: 'fim deve ser posterior ao início' });
     return;
@@ -300,11 +352,30 @@ r.patch('/:id', async (req, res) => {
   }
 
   // Sync Google: se tem evento, atualiza; senão, cria um novo
+  const previousCalendarId = before.calendarId || 'primary';
+  const calendarId = merged.calendarId || previousCalendarId;
   if (merged.googleEventId) {
     if (!merged.inicio && !merged.data) {
-      await deleteCalendarEvent(merged.googleEventId);
+      await deleteCalendarEvent(merged.googleEventId, previousCalendarId);
       await c.updateOne({ _id }, { $unset: { googleEventId: '' } });
       delete merged.googleEventId;
+    } else if (calendarId !== previousCalendarId) {
+      await deleteCalendarEvent(merged.googleEventId, previousCalendarId);
+      const evId = await createCalendarEvent({
+        titulo: merged.titulo || merged.texto || '',
+        descricao: merged.descricao,
+        inicio: merged.inicio || merged.data,
+        fim: merged.fim,
+        feito: merged.feito,
+        calendarId,
+      });
+      if (evId) {
+        await c.updateOne({ _id }, { $set: { googleEventId: evId } });
+        merged.googleEventId = evId;
+      } else {
+        await c.updateOne({ _id }, { $unset: { googleEventId: '' } });
+        delete merged.googleEventId;
+      }
     } else {
       await updateCalendarEvent(merged.googleEventId, {
         titulo: merged.titulo || merged.texto || '',
@@ -312,7 +383,7 @@ r.patch('/:id', async (req, res) => {
         inicio: merged.inicio || merged.data,
         fim: merged.fim,
         feito: merged.feito,
-      });
+      }, calendarId);
     }
   } else if (merged.inicio || merged.data) {
     const evId = await createCalendarEvent({
@@ -321,6 +392,7 @@ r.patch('/:id', async (req, res) => {
       inicio: merged.inicio || merged.data,
       fim: merged.fim,
       feito: merged.feito,
+      calendarId,
     });
     if (evId) {
       await c.updateOne({ _id }, { $set: { googleEventId: evId } });
@@ -344,7 +416,7 @@ r.delete('/:id', async (req, res) => {
     return;
   }
   if (before.googleEventId) {
-    await deleteCalendarEvent(before.googleEventId);
+    await deleteCalendarEvent(before.googleEventId, before.calendarId || 'primary');
   }
   await c.deleteOne({ _id });
   res.status(204).end();

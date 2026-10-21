@@ -91,7 +91,7 @@ export default function Sidebar({ open, onClose, pages, currentIndex, onNavigate
 
         {/* ---- Navegação rápida ---- */}
         <nav className="sidebar-nav" aria-label="Páginas">
-          {pages.map((p, i) => (
+          {pages.map((p, i) => p.navigable === false ? null : (
             <button
               key={p.id}
               className={`sidebar-link${i === currentIndex ? ' is-active' : ''}`}
