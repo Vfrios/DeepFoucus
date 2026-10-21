@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { addDays, addWeeks, format, startOfDay, startOfWeek } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { Calendar } from 'react-big-calendar';
@@ -19,10 +19,11 @@ import {
 
 const initialView: View = 'week';
 const availableViews: View[] = ['week', 'day'];
-const timeMin = new Date(1970, 0, 1, 8);
-const timeMax = new Date(1970, 0, 1, 20);
+const timeMin = new Date(1970, 0, 1, 0, 0, 0);
+const timeMax = new Date(1970, 0, 1, 23, 59, 59);
 
 export default function PageWeekCalendar() {
+  const calendarWrapRef = useRef<HTMLDivElement>(null);
   const { tasks, error, create, update, previewFromIA } = useTasks();
   const [date, setDate] = useState(() => new Date());
   const [view, setView] = useState<View>(initialView);
@@ -37,6 +38,31 @@ export default function PageWeekCalendar() {
   const [editing, setEditing] = useState<Task | null>(null);
   const [modalStart, setModalStart] = useState<string | null>(null);
   const [modalEnd, setModalEnd] = useState<string | null>(null);
+
+  useEffect(() => {
+    const scrollToCurrentTime = () => {
+      const wrap = calendarWrapRef.current;
+      const timeContent = wrap?.querySelector<HTMLElement>('.rbc-time-content');
+      if (!timeContent) return;
+
+      const now = new Date();
+      const minutesSinceMidnight = now.getHours() * 60 + now.getMinutes();
+      const currentPosition = timeContent.scrollHeight * (minutesSinceMidnight / (24 * 60));
+      const top = Math.max(0, currentPosition - timeContent.clientHeight / 3);
+
+      timeContent.scrollTo({ top, behavior: 'smooth' });
+    };
+
+    const animationFrame = window.requestAnimationFrame(scrollToCurrentTime);
+    const timer = window.setInterval(() => {
+      if (calendarWrapRef.current?.closest('.pager.is-locked')) scrollToCurrentTime();
+    }, 60_000);
+
+    return () => {
+      window.cancelAnimationFrame(animationFrame);
+      window.clearInterval(timer);
+    };
+  }, [date, view]);
 
   const visibleTasks = useMemo(
     () => getCalendarTasks(tasks, googleEvents, calendars)
@@ -117,6 +143,7 @@ export default function PageWeekCalendar() {
       {error && <p className="notice">{error}</p>}
       {calendarError && <p className="notice">Não foi possível carregar eventos do Google Calendar.</p>}
       <div
+        ref={calendarWrapRef}
         className="calendar-rbc-wrap week-calendar-wrap"
         onPointerDown={(event) => {
           if (event.target instanceof Element && event.target.closest('.rbc-time-content')) {
@@ -156,7 +183,6 @@ export default function PageWeekCalendar() {
           max={timeMax}
           step={30}
           timeslots={2}
-          scrollToTime={new Date(1970, 0, 1, 8)}
           messages={calendarMessages}
           style={{ height: '100%' }}
         />

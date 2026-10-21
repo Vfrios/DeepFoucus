@@ -207,8 +207,36 @@ th { color: var(--mute); font-weight: 500; }
 .wall-calendar .rbc-date-cell button { padding: 2px 4px; background: transparent; color: inherit; border: 0; font: inherit; }
 .wall-calendar .rbc-event { padding: 2px 5px; border: 1px solid transparent; border-radius: 6px; font-weight: 600; }
 .wall-calendar .rbc-event:focus { outline: 2px solid var(--paper); }
-.wall-calendar .rbc-current-time-indicator { height: 2px; background: var(--accent); }
+.week-calendar .rbc-time-view { height: 100%; display: flex; flex-direction: column; }
+.week-calendar .rbc-time-header { position: sticky; top: 0; z-index: 6; flex: 0 0 auto; }
+.week-calendar .rbc-time-header.rbc-overflowing { border-right: 0; }
+.week-calendar .rbc-time-content {
+  flex: 1 1 auto;
+  min-height: 0;
+  max-height: 100%;
+  overflow-y: auto !important;
+  scrollbar-color: var(--line) transparent;
+  scrollbar-width: thin;
+}
+.week-calendar .rbc-time-content > * + * > * { border-left: 0; }
+.week-calendar .rbc-time-content::-webkit-scrollbar { width: 6px; }
+.week-calendar .rbc-time-content::-webkit-scrollbar-track { background: transparent; }
+.week-calendar .rbc-time-content::-webkit-scrollbar-thumb { border-radius: 3px; background: var(--line); }
+.week-calendar .rbc-time-gutter { position: sticky; left: 0; z-index: 4; background: var(--ink); }
+.week-calendar .rbc-current-time-indicator { height: 1px; background-color: var(--accent); box-shadow: none; z-index: 5; }
+.week-calendar .rbc-current-time-indicator::before {
+  content: '';
+  display: inline-block;
+  position: absolute;
+  top: -1.5px;
+  left: -2px;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background-color: var(--accent);
+}
 .wall-calendar .rbc-show-more { color: var(--accent); background: transparent; }
+.month-calendar .rbc-row-segment { padding: 0 5px 2px; }
 .month-calendar .rbc-event { display: block; min-width: 0; max-width: 100%; min-height: 20px; padding: 2px 4px; overflow: hidden; border: 1px solid transparent; border-radius: 4px; font-size: 12px; }
 .month-calendar .rbc-event-content { display: block; min-width: 0; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .month-calendar .rbc-event-label { display: none; }
