@@ -833,7 +833,7 @@ export default function PageTasks() {
         />
         <div className="ai-block-actions">
           <button className="btn" onClick={gerarPreview} disabled={gerando || !roteiro.trim()}>
-            {gerando ? 'Gerando…' : 'Mágica!'}
+            {gerando ? 'Gerando…' : 'Gerar tarefas'}
           </button>
           {iaMsg && <span className={`ai-feedback ${iaMsg.tipo}`}>{iaMsg.msg}</span>}
         </div>
