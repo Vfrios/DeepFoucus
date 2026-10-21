@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react';
 import Pager from '../components/Pager';
 import Sidebar from '../components/Sidebar';
-import { PomodoroBadge } from '../components/Pomodoro';
 import { pages } from '../config';
 import { api } from '../lib/api';
 
@@ -68,9 +67,6 @@ export default function WebShell() {
               </span>
             )}
           </h1>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <PomodoroBadge />
-          </div>
         </header>
       )}
 

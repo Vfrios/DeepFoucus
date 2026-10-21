@@ -12,6 +12,9 @@ const SCOPES = [
   'https://www.googleapis.com/auth/userinfo.email',
 ];
 
+let calendarSyncInProgress: Promise<void> | null = null;
+let lastCalendarSyncAt = 0;
+
 export function oauthClient() {
   return new google.auth.OAuth2(
     process.env.GOOGLE_CLIENT_ID,
@@ -182,43 +185,228 @@ export async function listEvents(from: Date, days: number): Promise<CalEvent[]> 
   return perCal.flat().sort((a, b) => new Date(a.start).getTime() - new Date(b.start).getTime());
 }
 
-export async function createCalendarEvent(task: {
-  texto: string;
-  data?: string | null;
-}): Promise<string | null> {
+export interface CalendarTask {
+  titulo: string;
+  descricao?: string;
+  inicio: string;
+  fim?: string | null;
+  feito?: boolean;
+}
+
+const calendarDateTime = (value: string) => new Date(value).toISOString();
+
+export async function createCalendarEvent(task: CalendarTask): Promise<string | null> {
   try {
     const cal = await authedCalendar();
     if (!cal) return null;
 
-    let startISO: string;
-    let endISO: string;
-    if (task.data && !isNaN(new Date(task.data).getTime())) {
-      const start = new Date(task.data);
-      startISO = start.toISOString();
-      endISO = new Date(start.getTime() + 60 * 60 * 1000).toISOString();
-    } else {
-      const start = new Date();
-      start.setMinutes(0, 0, 0);
-      start.setHours(start.getHours() + 1);
-      startISO = start.toISOString();
-      endISO = new Date(start.getTime() + 60 * 60 * 1000).toISOString();
+    const start = new Date(task.inicio);
+    const end = task.fim ? new Date(task.fim) : new Date(start.getTime() + 60 * 60 * 1000);
+    if (isNaN(start.getTime()) || isNaN(end.getTime()) || end <= start) {
+      throw new Error('intervalo de data inválido para evento do Google Calendar');
     }
 
     const r = await cal.events.insert({
       calendarId: 'primary',
       requestBody: {
-        summary: task.texto,
-        description: 'Tarefa criada pelo Wall Dashboard',
-        start: { dateTime: startISO, timeZone: 'America/Sao_Paulo' },
-        end: { dateTime: endISO, timeZone: 'America/Sao_Paulo' },
+        summary: task.feito ? `[CONCLUÍDO] ${task.titulo}` : task.titulo,
+        description: task.descricao || 'Criado pelo Wall Dashboard',
+        start: { dateTime: calendarDateTime(task.inicio), timeZone: 'America/Sao_Paulo' },
+        end: { dateTime: calendarDateTime(end.toISOString()), timeZone: 'America/Sao_Paulo' },
       },
     });
 
     return r.data.id || null;
   } catch (e: any) {
-    console.warn('[google] falha ao criar evento:', e?.message || e);
+    console.warn('[google] falha ao criar evento:', e instanceof Error ? e.message : e);
     return null;
   }
+}
+
+export async function updateCalendarEvent(eventId: string, task: CalendarTask): Promise<void> {
+  try {
+    const cal = await authedCalendar();
+    if (!cal) return;
+
+    const start = new Date(task.inicio);
+    const end = task.fim ? new Date(task.fim) : new Date(start.getTime() + 60 * 60 * 1000);
+    if (isNaN(start.getTime()) || isNaN(end.getTime()) || end <= start) {
+      throw new Error('intervalo de data inválido para evento do Google Calendar');
+    }
+
+    await cal.events.patch({
+      calendarId: 'primary',
+      eventId,
+      requestBody: {
+        summary: task.feito ? `[CONCLUÍDO] ${task.titulo}` : task.titulo,
+        description: task.descricao || 'Criado pelo Wall Dashboard',
+        start: { dateTime: calendarDateTime(task.inicio), timeZone: 'America/Sao_Paulo' },
+        end: { dateTime: calendarDateTime(end.toISOString()), timeZone: 'America/Sao_Paulo' },
+      },
+    });
+  } catch (e: any) {
+    console.warn('[google] falha ao atualizar evento:', e instanceof Error ? e.message : e);
+  }
+}
+
+export async function deleteCalendarEvent(eventId: string): Promise<void> {
+  try {
+    const cal = await authedCalendar();
+    if (!cal) return;
+    await cal.events.delete({ calendarId: 'primary', eventId });
+  } catch (e: any) {
+    console.warn('[google] falha ao excluir evento:', e instanceof Error ? e.message : e);
+  }
+}
+
+interface CalendarSyncEvent {
+  id?: string | null;
+  status?: string | null;
+  summary?: string | null;
+  description?: string | null;
+  start?: { dateTime?: string | null; date?: string | null } | null;
+  end?: { dateTime?: string | null; date?: string | null } | null;
+}
+
+async function carregarAlteracoesCalendario(
+  cal: NonNullable<Awaited<ReturnType<typeof authedCalendar>>>,
+  syncToken?: string
+): Promise<{ events: CalendarSyncEvent[]; nextSyncToken?: string }> {
+  const events: CalendarSyncEvent[] = [];
+  let pageToken: string | undefined;
+  let nextSyncToken: string | undefined;
+  do {
+    const result = await cal.events.list({
+      calendarId: 'primary',
+      maxResults: 2500,
+      showDeleted: true,
+      ...(syncToken ? { syncToken } : {}),
+      ...(pageToken ? { pageToken } : {}),
+    });
+    events.push(...(result.data.items || []));
+    pageToken = result.data.nextPageToken || undefined;
+    nextSyncToken = result.data.nextSyncToken || nextSyncToken;
+  } while (pageToken);
+
+  return { events, nextSyncToken };
+}
+
+/** Reconciles only Google events linked to tasks created by this app. */
+export async function syncLinkedTaskEventsFromGoogle(): Promise<void> {
+  if (Date.now() - lastCalendarSyncAt < 30_000) return;
+  if (calendarSyncInProgress) return calendarSyncInProgress;
+
+  calendarSyncInProgress = (async () => {
+    const db = await getDb();
+    const tasks = db.collection<any>('tasks');
+    if (!(await tasks.countDocuments({ googleEventId: { $type: 'string' } }))) {
+      lastCalendarSyncAt = Date.now();
+      return;
+    }
+
+    const auth = await db.collection<any>('auth').findOne({ _id: 'google' });
+    if (!auth?.refresh_token) {
+      lastCalendarSyncAt = Date.now();
+      return;
+    }
+    const cal = await authedCalendar();
+    if (!cal) return;
+
+    let changes;
+    let fullSync = !auth.calendarSyncToken;
+    try {
+      changes = await carregarAlteracoesCalendario(cal, auth.calendarSyncToken);
+    } catch (error) {
+      if (!auth.calendarSyncToken || (error as { code?: number })?.code !== 410) throw error;
+      fullSync = true;
+      changes = await carregarAlteracoesCalendario(cal);
+    }
+
+    const eventIds = changes.events.map((event) => event.id).filter((id): id is string => !!id);
+    const linked = fullSync
+      ? await tasks.find({ googleEventId: { $type: 'string' } }).toArray()
+      : eventIds.length
+        ? await tasks.find({ googleEventId: { $in: eventIds } }).toArray()
+        : [];
+    const byEventId = new Map(linked.map((task) => [task.googleEventId, task]));
+    const operations = [];
+    const availableEventIds = new Set(eventIds);
+
+    for (const event of changes.events) {
+      if (!event.id) continue;
+      const task = byEventId.get(event.id);
+      if (!task) continue;
+
+      if (event.status === 'cancelled') {
+        operations.push({
+          updateOne: {
+            filter: { _id: task._id, googleEventId: event.id },
+            update: { $unset: { googleEventId: '' }, $set: { atualizadoEm: new Date() } },
+          },
+        });
+        continue;
+      }
+
+      const startValue = event.start?.dateTime || event.start?.date;
+      if (!startValue) continue;
+      const toISO = (value: string) => {
+        const date = /^\d{4}-\d{2}-\d{2}$/.test(value)
+          ? new Date(`${value}T00:00:00-03:00`)
+          : new Date(value);
+        return isNaN(date.getTime()) ? null : date.toISOString();
+      };
+      const inicio = toISO(startValue);
+      const fimValue = event.end?.dateTime || event.end?.date;
+      const fim = fimValue ? toISO(fimValue) : null;
+      if (!inicio || (fim && new Date(fim) <= new Date(inicio))) continue;
+
+      const tituloGoogle = (event.summary || '(sem título)').trim().slice(0, 200);
+      const feito = /^\[CONCLUÍDO\]\s*/i.test(tituloGoogle);
+      const titulo = tituloGoogle.replace(/^\[CONCLUÍDO\]\s*/i, '');
+      operations.push({
+        updateOne: {
+          filter: { _id: task._id, googleEventId: event.id },
+          update: {
+            $set: {
+              titulo,
+              texto: titulo,
+              descricao: (event.description || '').slice(0, 1000),
+              inicio,
+              data: inicio,
+              fim,
+              feito,
+              atualizadoEm: new Date(),
+            },
+          },
+        },
+      });
+    }
+
+    if (fullSync) {
+      for (const task of linked) {
+        if (availableEventIds.has(task.googleEventId)) continue;
+        operations.push({
+          updateOne: {
+            filter: { _id: task._id, googleEventId: task.googleEventId },
+            update: { $unset: { googleEventId: '' }, $set: { atualizadoEm: new Date() } },
+          },
+        });
+      }
+    }
+
+    if (operations.length) await tasks.bulkWrite(operations);
+    if (changes.nextSyncToken) {
+      await db.collection<any>('auth').updateOne(
+        { _id: 'google' },
+        { $set: { calendarSyncToken: changes.nextSyncToken } }
+      );
+    }
+    lastCalendarSyncAt = Date.now();
+  })().finally(() => {
+    calendarSyncInProgress = null;
+  });
+
+  return calendarSyncInProgress;
 }
 
 export async function markCalendarEventDone(

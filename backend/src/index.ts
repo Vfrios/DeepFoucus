@@ -10,6 +10,7 @@ import calendarRoute from './routes/calendar';
 import tasksRoute from './routes/tasks';
 import statsRoute from './routes/stats';
 import pushRoute, { initVapid, startReminderJob } from './routes/push';
+import notesRoute from './routes/notes';
 
 const app = express();
 const PROD = process.env.NODE_ENV === 'production';
@@ -31,6 +32,7 @@ app.use('/api/calendar', jwtAuth, calendarRoute);
 app.use('/api/tasks', jwtAuth, tasksRoute);
 app.use('/api/stats', jwtAuth, statsRoute);
 app.use('/api/push', jwtAuth, pushRoute);
+app.use('/api/notes', jwtAuth, notesRoute);
 app.use('/api', (_req, res) => res.status(404).json({ error: 'not_found' }));
 
 // Em produção o Express também serve o build do Vite

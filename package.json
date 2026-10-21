@@ -10,8 +10,9 @@
     "node": ">=20"
   },
   "scripts": {
-    "dev": "concurrently -n api,web -c cyan,magenta \"npm -w backend run dev\" \"wait-on --timeout 30000 http://localhost:3001/healthz && npm -w frontend run dev\"",
+    "dev": "concurrently -n api,web -c cyan,magenta \"npm -w backend run dev\" \"wait-on --timeout 120000 http://localhost:3001/healthz && npm -w frontend run dev\"",
     "build": "npm -w frontend run build && npm -w backend run build",
+    "test": "npm -w backend run test",
     "start": "node backend/dist/index.js"
   },
   "devDependencies": {

@@ -8,8 +8,8 @@ Transformar a navegação para um **Grid 2D (Matriz)**. O usuário poderá arras
 
 ### ETAPA 1: Atualizar a Configuração de Páginas
 1. Em `frontend/src/config.ts`, alterar o array `pages` para incluir uma propriedade `row` (número da linha, ex: 1 ou 2).
-   - Linha 1: Calendário, Tarefas, Progresso (Fase 2), Fotos.
-   - Linha 2: Calendário Mensal (novo componente placeholder), Tabelas, e novos espaços (podem ser placeholders vazios por enquanto).
+   - Linha 1: Calendário, Tarefas, Progresso, Notas
+   - Linha 2: Calendário Mensal (novo componente placeholder)
    - Exemplo: `{ id: 'calendar', title: 'Calendário', component: PageCalendar, mobile: true, row: 1 }`.
 
 ### ETAPA 2: Criar o Pager 2D (Matriz)

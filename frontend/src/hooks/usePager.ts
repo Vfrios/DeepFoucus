@@ -33,12 +33,12 @@ export function usePager(count: number, lockable: boolean) {
   const options = useMemo(
     () => ({
       startIndex,
-      duration: 25,
+      duration: 20,
+      loop: count > 1,
       // Função: bloqueia o arrasto quando travado e ignora elementos [data-nodrag] (ex.: alça de reordenar tarefas)
       watchDrag: (_api: unknown, evt: Event) => !lockedRef.current && !(evt.target as HTMLElement)?.closest?.('[data-nodrag]'),
     }),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    []
+    [count, startIndex]
   );
   const [emblaRef, embla] = useEmblaCarousel(options);
 
@@ -48,6 +48,61 @@ export function usePager(count: number, lockable: boolean) {
     embla.on('select', onSelect);
     return () => {
       embla.off('select', onSelect);
+    };
+  }, [embla]);
+
+  useEffect(() => {
+    if (!embla) return;
+
+    let accumulated = 0;
+    let gestureConsumed = false;
+    let gestureReset: ReturnType<typeof setTimeout> | undefined;
+    const onWheel = (event: WheelEvent) => {
+      const target = event.target;
+      if (
+        lockedRef.current ||
+        event.ctrlKey ||
+        Math.abs(event.deltaX) <= Math.abs(event.deltaY) ||
+        !(target instanceof Element) ||
+        !target.closest('.shell') ||
+        target.closest('input, textarea, select, [data-no-page-swipe], .sidebar, .modal-backdrop')
+      ) {
+        return;
+      }
+
+      const forward = event.deltaX > 0;
+      if (!(forward ? embla.canScrollNext() : embla.canScrollPrev())) return;
+
+      event.preventDefault();
+      if (gestureReset) clearTimeout(gestureReset);
+      gestureReset = setTimeout(() => {
+        accumulated = 0;
+        gestureConsumed = false;
+        gestureReset = undefined;
+      }, 120);
+      if (gestureConsumed) return;
+
+      const deltaX = event.deltaMode === WheelEvent.DOM_DELTA_LINE
+        ? event.deltaX * 16
+        : event.deltaMode === WheelEvent.DOM_DELTA_PAGE
+          ? event.deltaX * window.innerWidth
+          : event.deltaX;
+      if (accumulated && Math.sign(accumulated) !== Math.sign(event.deltaX)) {
+        accumulated = 0;
+      }
+      accumulated += deltaX;
+      if (Math.abs(accumulated) < 18) return;
+
+      if (accumulated > 0) embla.scrollNext();
+      else embla.scrollPrev();
+      accumulated = 0;
+      gestureConsumed = true;
+    };
+
+    window.addEventListener('wheel', onWheel, { passive: false, capture: true });
+    return () => {
+      window.removeEventListener('wheel', onWheel, { capture: true });
+      if (gestureReset) clearTimeout(gestureReset);
     };
   }, [embla]);
 

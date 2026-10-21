@@ -2,19 +2,62 @@ import { Router } from 'express';
 import { ObjectId } from 'mongodb';
 import { getDb } from '../lib/mongo';
 import { gerarTarefasIA } from '../lib/ai';
-import { createCalendarEvent, markCalendarEventDone } from '../lib/google';
+import {
+  createCalendarEvent,
+  updateCalendarEvent,
+  deleteCalendarEvent,
+  syncLinkedTaskEventsFromGoogle,
+} from '../lib/google';
 import { notify } from './push';
 
 const r = Router();
 const col = async () => (await getDb()).collection<any>('tasks');
 const activityCol = async () => (await getDb()).collection<any>('activity');
 
+const TIPOS = ['tarefa', 'evento', 'estudo'] as const;
+type Tipo = (typeof TIPOS)[number];
+const tipoValido = (v: unknown): v is Tipo =>
+  typeof v === 'string' && (TIPOS as readonly string[]).includes(v);
+
+function validarCamposItem(body: any): string | null {
+  if (!body || typeof body !== 'object' || Array.isArray(body)) return 'body inválido';
+  if (body.titulo !== undefined && typeof body.titulo !== 'string') return 'titulo inválido';
+  if (body.texto !== undefined && typeof body.texto !== 'string') return 'texto inválido';
+  if (body.descricao !== undefined && typeof body.descricao !== 'string') return 'descricao inválida';
+  if (body.tipo !== undefined && !tipoValido(body.tipo)) return 'tipo inválido';
+  if (body.feito !== undefined && typeof body.feito !== 'boolean') return 'feito inválido';
+  if (body.ordem !== undefined && (typeof body.ordem !== 'number' || !Number.isFinite(body.ordem))) {
+    return 'ordem inválida';
+  }
+
+  for (const field of ['inicio', 'data', 'fim'] as const) {
+    const value = body[field];
+    if (
+      value !== undefined &&
+      value !== null &&
+      value !== '' &&
+      (typeof value !== 'string' || isNaN(new Date(value).getTime()))
+    ) {
+      return `${field} inválido`;
+    }
+  }
+  return null;
+}
+
 const toApi = (t: any) => ({
   _id: String(t._id),
-  texto: t.texto,
-  feito: t.feito,
-  ordem: t.ordem,
-  data: t.data ?? null,
+  // Campos novos
+  titulo: t.titulo ?? t.texto ?? '',
+  descricao: t.descricao ?? '',
+  tipo: (t.tipo ?? 'tarefa') as Tipo,
+  inicio: t.inicio ?? t.data ?? null,
+  fim: t.fim ?? null,
+  // Campos legados (compatibilidade com UI não migrada)
+  texto: t.texto ?? t.titulo ?? '',
+  data: t.data ?? t.inicio ?? null,
+  // Comuns
+  feito: !!t.feito,
+  ordem: typeof t.ordem === 'number' ? t.ordem : 0,
   googleEventId: t.googleEventId ?? null,
   criadoEm: t.criadoEm,
   atualizadoEm: t.atualizadoEm,
@@ -22,78 +65,123 @@ const toApi = (t: any) => ({
 
 const oid = (s: string) => (ObjectId.isValid(s) ? new ObjectId(s) : null);
 
-/** Chave do dia em horário de Brasília (UTC-3). */
 const todayKey = () => {
-  const d = new Date();
-  d.setHours(d.getHours() - 3);
-  return d.toISOString().slice(0, 10);
+  return new Date().toLocaleDateString('sv-SE', { timeZone: 'America/Sao_Paulo' });
 };
 
-/** FASE 2: incrementa a atividade do dia, criando o documento se necessário. */
-async function registrarAtividade(opts: {
-  concluidas?: number;
-  minutos?: number;
-  tags?: Record<string, number>;
-}) {
+async function registrarAtividadeConcluida() {
   const dia = todayKey();
   const c = await activityCol();
-  const inc: Record<string, number> = {};
-  if (opts.concluidas) inc.concluidas = opts.concluidas;
-  if (opts.minutos) inc.minutosEstudo = opts.minutos;
-  // tags são incrementadas individualmente
-  const incOps: any = {};
-  if (Object.keys(inc).length) incOps.$inc = inc;
-  if (opts.tags) {
-    for (const [k, v] of Object.entries(opts.tags)) {
-      incOps.$inc = incOps.$inc || {};
-      incOps.$inc[`tags.${k}`] = v;
-    }
+  await c.updateOne({ _id: dia }, { $inc: { concluidas: 1 } }, { upsert: true });
+}
+
+/** Normaliza entrada (aceita tanto o formato novo quanto o legado). */
+function lerCamposItem(body: any): Partial<{
+  titulo: string;
+  descricao: string;
+  tipo: Tipo;
+  inicio: string | null;
+  fim: string | null;
+  texto: string;
+  data: string | null;
+  feito: boolean;
+  ordem: number;
+  atualizadoEm: Date;
+}> {
+  const out: any = {};
+  if (typeof body?.titulo === 'string') out.titulo = body.titulo.trim().slice(0, 200);
+  else if (typeof body?.texto === 'string') out.titulo = body.texto.trim().slice(0, 200);
+
+  if (typeof body?.descricao === 'string') out.descricao = body.descricao.trim().slice(0, 1000);
+  if (tipoValido(body?.tipo)) out.tipo = body.tipo;
+
+  const inicio = body?.inicio !== undefined ? body.inicio : body?.data;
+  if (inicio === null || inicio === '') {
+    out.inicio = null;
+  } else if (typeof inicio === 'string' && !isNaN(new Date(inicio).getTime())) {
+    out.inicio = new Date(inicio).toISOString();
   }
-  await c.updateOne(
-    { _id: dia },
-    incOps,
-    { upsert: true }
-  );
+  if (body?.fim === null || body?.fim === '') {
+    out.fim = null;
+  } else if (typeof body?.fim === 'string' && !isNaN(new Date(body.fim).getTime())) {
+    out.fim = new Date(body.fim).toISOString();
+  }
+  if (typeof body?.feito === 'boolean') out.feito = body.feito;
+  if (typeof body?.ordem === 'number') out.ordem = body.ordem;
+
+  // Espelhos legados: mantemos para o frontend não migrado continuar funcionando
+  if (out.titulo !== undefined) out.texto = out.titulo;
+  if (out.inicio !== undefined) out.data = out.inicio;
+
+  return out;
 }
 
 // ---- CRUD ----
+
 r.get('/', async (_req, res) => {
+  // Do not make task loading wait for the external Calendar API.
+  void syncLinkedTaskEventsFromGoogle().catch((e) =>
+    console.warn('[tasks] falha ao sincronizar alterações do Google Calendar:', e)
+  );
   const list = await (await col()).find().sort({ ordem: 1, criadoEm: 1 }).toArray();
   res.json(list.map(toApi));
 });
 
 r.post('/', async (req, res) => {
-  const texto = String(req.body?.texto || '').trim().slice(0, 200);
-  if (!texto) {
-    res.status(400).json({ error: 'texto obrigatório' });
+  const erro = validarCamposItem(req.body);
+  if (erro) {
+    res.status(400).json({ error: erro });
     return;
   }
+  const campos = lerCamposItem(req.body);
+  if (!campos.titulo) {
+    res.status(400).json({ error: 'titulo obrigatório' });
+    return;
+  }
+  if (campos.inicio && campos.fim && new Date(campos.fim) <= new Date(campos.inicio)) {
+    res.status(400).json({ error: 'fim deve ser posterior ao início' });
+    return;
+  }
+
   const c = await col();
   const last = await c.find().sort({ ordem: -1 }).limit(1).toArray();
   const now = new Date();
   const doc: any = {
-    texto,
+    titulo: campos.titulo,
+    texto: campos.titulo, // espelho legado
+    descricao: campos.descricao ?? '',
+    tipo: campos.tipo ?? 'tarefa',
+    inicio: campos.inicio ?? null,
+    data: campos.inicio ?? null, // espelho legado
+    fim: campos.fim ?? null,
     feito: false,
     ordem: (last[0]?.ordem ?? -1) + 1,
-    data: typeof req.body?.data === 'string' ? req.body.data : null,
     criadoEm: now,
     atualizadoEm: now,
   };
   const ins = await c.insertOne(doc);
   doc._id = ins.insertedId;
 
-  // FASE 4: cria evento no Google, mas NÃO bloqueia nem falha se der erro.
-  const eventId = await createCalendarEvent({ texto: doc.texto, data: doc.data });
-  if (eventId) {
-    await c.updateOne({ _id: ins.insertedId }, { $set: { googleEventId: eventId } });
-    doc.googleEventId = eventId;
+  // Sync Google: cria evento se tiver início
+  if (doc.inicio) {
+    const eventId = await createCalendarEvent({
+      titulo: doc.titulo,
+      descricao: doc.descricao,
+      inicio: doc.inicio,
+      fim: doc.fim,
+      feito: doc.feito,
+    });
+    if (eventId) {
+      await c.updateOne({ _id: ins.insertedId }, { $set: { googleEventId: eventId } });
+      doc.googleEventId = eventId;
+    }
   }
 
-  notify('Nova tarefa', texto);
+  notify('Novo item', doc.titulo);
   res.status(201).json(toApi(doc));
 });
 
-// ---- IA: gerar tarefas a partir de um roteiro ----
+// ---- IA: gerar itens a partir de um roteiro ----
 r.post('/from-roteiro', async (req, res) => {
   const roteiro = String(req.body?.roteiro || '').trim();
   if (!roteiro) {
@@ -120,8 +208,13 @@ r.post('/from-roteiro', async (req, res) => {
 
   const now = new Date();
   const docs: any[] = geradas.map((t) => ({
-    texto: t.texto,
-    data: t.data,
+    titulo: t.titulo,
+    texto: t.titulo,
+    descricao: t.descricao,
+    tipo: t.tipo,
+    inicio: t.inicio,
+    data: t.inicio,
+    fim: t.fim,
     feito: false,
     ordem: ordemBase++,
     criadoEm: now,
@@ -131,11 +224,19 @@ r.post('/from-roteiro', async (req, res) => {
   const ins = await c.insertMany(docs);
   const ids = Object.values(ins.insertedIds);
 
-  // FASE 4: cria eventos no Google em paralelo, sem bloquear a resposta.
-  // Falhas individuais são ignoradas (createCalendarEvent já faz try/catch).
   await Promise.all(
     ids.map(async (id, i) => {
-      const evId = await createCalendarEvent({ texto: docs[i].texto, data: docs[i].data });
+      if (!docs[i].inicio) {
+        docs[i]._id = id;
+        return;
+      }
+      const evId = await createCalendarEvent({
+        titulo: docs[i].titulo,
+        descricao: docs[i].descricao,
+        inicio: docs[i].inicio,
+        fim: docs[i].fim,
+        feito: docs[i].feito,
+      });
       if (evId) {
         docs[i].googleEventId = evId;
         await c.updateOne({ _id: id }, { $set: { googleEventId: evId } });
@@ -145,7 +246,7 @@ r.post('/from-roteiro', async (req, res) => {
   );
 
   const inseridas = docs.map(toApi);
-  notify('Tarefas geradas por IA', `${inseridas.length} nova(s) tarefa(s)`);
+  notify('Itens gerados por IA', `${inseridas.length} novo(s) item(ns)`);
   res.status(201).json({ ok: true, inseridas: inseridas.length, tarefas: inseridas });
 });
 
@@ -167,11 +268,17 @@ r.patch('/:id', async (req, res) => {
     res.status(400).json({ error: 'id inválido' });
     return;
   }
-  const set: any = { atualizadoEm: new Date() };
-  if (typeof req.body?.texto === 'string') set.texto = req.body.texto.trim().slice(0, 200);
-  if (typeof req.body?.feito === 'boolean') set.feito = req.body.feito;
-  if (typeof req.body?.ordem === 'number') set.ordem = req.body.ordem;
-  if (typeof req.body?.data === 'string') set.data = req.body.data;
+  const erro = validarCamposItem(req.body);
+  if (erro) {
+    res.status(400).json({ error: erro });
+    return;
+  }
+  const set = lerCamposItem(req.body);
+  if ((set.titulo !== undefined && !set.titulo) || (set.texto !== undefined && !set.texto)) {
+    res.status(400).json({ error: 'titulo obrigatório' });
+    return;
+  }
+  set.atualizadoEm = new Date();
 
   const c = await col();
   const before = await c.findOne({ _id });
@@ -179,24 +286,49 @@ r.patch('/:id', async (req, res) => {
     res.status(404).json({ error: 'não encontrada' });
     return;
   }
+  const merged = { ...before, ...set };
+  if (merged.inicio && merged.fim && new Date(merged.fim) <= new Date(merged.inicio)) {
+    res.status(400).json({ error: 'fim deve ser posterior ao início' });
+    return;
+  }
   await c.updateOne({ _id }, { $set: set });
 
-  // FASE 2: ao concluir (transição false -> true), registra atividade do dia.
+  // Atividade ao concluir (transição false → true)
   if (set.feito === true && !before.feito) {
-    await registrarAtividade({ concluidas: 1 });
-    notify('Tarefa concluída', before.texto);
+    await registrarAtividadeConcluida();
+    notify('Item concluído', before.titulo || before.texto);
   }
 
-  // FASE 4: se tem evento no Google, sincroniza o título. Falha silenciosa.
-  if (before.googleEventId && typeof set.feito === 'boolean') {
-    await markCalendarEventDone(
-      before.googleEventId,
-      set.feito,
-      set.texto ?? before.texto
-    );
+  // Sync Google: se tem evento, atualiza; senão, cria um novo
+  if (merged.googleEventId) {
+    if (!merged.inicio && !merged.data) {
+      await deleteCalendarEvent(merged.googleEventId);
+      await c.updateOne({ _id }, { $unset: { googleEventId: '' } });
+      delete merged.googleEventId;
+    } else {
+      await updateCalendarEvent(merged.googleEventId, {
+        titulo: merged.titulo || merged.texto || '',
+        descricao: merged.descricao,
+        inicio: merged.inicio || merged.data,
+        fim: merged.fim,
+        feito: merged.feito,
+      });
+    }
+  } else if (merged.inicio || merged.data) {
+    const evId = await createCalendarEvent({
+      titulo: merged.titulo || merged.texto || '',
+      descricao: merged.descricao,
+      inicio: merged.inicio || merged.data,
+      fim: merged.fim,
+      feito: merged.feito,
+    });
+    if (evId) {
+      await c.updateOne({ _id }, { $set: { googleEventId: evId } });
+      merged.googleEventId = evId;
+    }
   }
 
-  res.json(toApi({ ...before, ...set }));
+  res.json(toApi(merged));
 });
 
 r.delete('/:id', async (req, res) => {
@@ -205,19 +337,70 @@ r.delete('/:id', async (req, res) => {
     res.status(400).json({ error: 'id inválido' });
     return;
   }
-  await (await col()).deleteOne({ _id });
+  const c = await col();
+  const before = await c.findOne({ _id });
+  if (!before) {
+    res.status(204).end();
+    return;
+  }
+  if (before.googleEventId) {
+    await deleteCalendarEvent(before.googleEventId);
+  }
+  await c.deleteOne({ _id });
   res.status(204).end();
 });
 
-// ---- FASE 3: incremento manual de minutos (usado pelo Pomodoro) ----
-r.post('/increment', async (req, res) => {
-  const minutos = Math.max(0, Math.min(600, Number(req.body?.minutos) || 0));
-  if (!minutos) {
-    res.status(400).json({ error: 'minutos obrigatório' });
+// ---- IA: PREVIEW (não persiste) ----
+// Usado pela Fase 3: o frontend mostra um modal de revisão antes de gravar.
+// Body:
+//   { roteiro: string }                     → modo "gerar"
+//   { modo: 'sugestao', descricao: string } → modo "sugestao" (sugere título/tipo)
+r.post('/preview-roteiro', async (req, res) => {
+  const modo = req.body?.modo === 'sugestao' ? 'sugestao' : 'gerar';
+
+  if (modo === 'sugestao') {
+    const descricao = String(req.body?.descricao || '').trim();
+    if (!descricao) {
+      res.status(400).json({ error: 'descricao obrigatória' });
+      return;
+    }
+    try {
+      // Reutilizamos o motor de tarefas: pedimos 1 item a partir da descrição
+      const itens = await gerarTarefasIA(descricao);
+      // Se a IA não achou nada, devolvemos a própria descrição como título
+      const sugerido = itens[0] ?? {
+        titulo: descricao.slice(0, 200),
+        tipo: 'tarefa' as const,
+        descricao,
+        inicio: new Date().toISOString(),
+        fim: null,
+      };
+      res.json({
+        ok: true,
+        sugestao: {
+          titulo: sugerido.titulo,
+          tipo: sugerido.tipo,
+          descricao: sugerido.descricao || descricao,
+        },
+      });
+    } catch (e: any) {
+      res.status(500).json({ error: 'falha_ia', detalhe: e?.message || 'erro' });
+    }
     return;
   }
-  await registrarAtividade({ minutos });
-  res.status(201).json({ ok: true, minutos });
+
+  // modo "gerar": só gera, não insere
+  const roteiro = String(req.body?.roteiro || '').trim();
+  if (!roteiro) {
+    res.status(400).json({ error: 'roteiro obrigatório' });
+    return;
+  }
+  try {
+    const itens = await gerarTarefasIA(roteiro);
+    res.json({ ok: true, tarefas: itens });
+  } catch (e: any) {
+    res.status(500).json({ error: 'falha_ia', detalhe: e?.message || 'erro' });
+  }
 });
 
 export default r;

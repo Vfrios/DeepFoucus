@@ -1,0 +1,140 @@
+{
+  "planHash": "1b2f17fc0c14c3024b53872ecbb2c5957abbdd8c9be200f42a5e5a075cf2ebf8",
+  "phase": "standalone",
+  "recordedAtUtc": "2026-10-20T23:50:33.1288517Z",
+  "retryCount": 1,
+  "resetBaseline": false,
+  "complete": true,
+  "result": {
+    "setupSucceeded": true,
+    "setupDurationMs": 434,
+    "setupFailureOutput": null,
+    "assertions": [
+      {
+        "name": "workspace-build",
+        "kind": "process",
+        "verificationMethod": "exit-code",
+        "passed": true,
+        "timedOut": false,
+        "skipped": false,
+        "skippedReason": null,
+        "exitCode": 0,
+        "outputSample": "$ npm -w frontend run build \u0026\u0026 npm -w backend run build\r\n\r\n\u003E @wall/frontend@1.0.0 build\r\n\u003E tsc --noEmit \u0026\u0026 vite build\r\n\r\n\u001B[36mvite v5.4.21 \u001B[32mbuilding for production...\u001B[36m\u001B[39m\r\ntransforming...\r\n\u001B[32m\u2713\u001B[39m 57 modules transformed.\r\nrendering chunks...\r\n\u001B[1m\u001B[33m[plugin:vite:reporter]\u001B[39m\u001B[22m \u001B[33m[plugin vite:reporter] \r\n(!) C:/Users/vitor/OneDrive/Reposit\u00F3rios/DeepFoucus/frontend/src/lib/api.ts is dynamically imported by C:/Users/vitor/OneDrive/Reposit\u00F3rios/DeepFoucus/frontend/src/components/PageTasks.tsx but also statically imported by C:/Users/vitor/OneDrive/Reposit\u00F3rios/DeepFoucus/frontend/src/App.tsx, C:/Users/vitor/OneDrive/Reposit\u00F3rios/DeepFoucus/frontend/src/components/PageNotes.tsx, C:/Users/vitor/OneDrive/Reposit\u00F3rios/DeepFoucus/frontend/src/components/PageStats.tsx, C:/Users/vitor/OneDrive/Reposit\u00F3rios/DeepFoucus/frontend/src/components/Sidebar.tsx, C:/Users/vitor/OneDrive/Reposit\u00F3rios/DeepFoucus/frontend/src/hooks/useProfile.ts, C:/Users/vitor/OneDrive/Reposit\u00F3rios/DeepFoucus/frontend/src/hooks/useTasks.ts, C:/Users/vitor/OneDrive/Reposit\u00F3rios/DeepFoucus/frontend/src/lib/push.ts, C:/Users/vitor/OneDrive/Reposit\u00F3rios/DeepFoucus/frontend/src/main.tsx, C:/Users/vitor/OneDrive/Reposit\u00F3rios/DeepFoucus/frontend/src/shells/WebShell.tsx, dynamic import will not move module into another chunk.\r\n\u001B[39m\r\ncomputing gzip size...\r\n\u001B[2mdist/\u001B[22m\u001B[32mindex.html                \u001B[39m\u001B[1m\u001B[2m  1.04 kB\u001B[22m\u001B[1m\u001B[22m\u001B[2m \u2502 gzip:  0.49 kB\u001B[22m\r\n\u001B[2mdist/\u001B[22m\u001B[35massets/main-CFxJQZ-U.css  \u001B[39m\u001B[1m\u001B[2m 23.33 kB\u001B[22m\u001B[1m\u001B[22m\u001B[2m \u2502 gzip:  5.29 kB\u001B[22m\r\n\u001B[2mdist/\u001B[22m\u001B[36msw.js                     \u001B[39m\u001B[1m\u001B[2m  1.42 kB\u001B[22m\u001B[1m\u001B[22m\u001B[2m \u2502 gzip:  0.68 kB\u001B[22m\r\n\u001B[2mdist/\u001B[22m\u001B[36massets/main-ijBcHjWa.js   \u001B[39m\u001B[1m\u001B[2m211.73 kB\u001B[22m\u001B[1m\u001B[22m\u001B[2m \u2502 gzip: 68.58 kB\u001B[22m\r\n\u001B[32m\u2713 built in 2.94s\u001B[39m\r\n\r\n\u003E @wall/backend@1.0.0 build\r\n\u003E tsc -p tsconfig.json\r\n\r\n",
+        "durationMs": 33654
+      },
+      {
+        "name": "tests-pass",
+        "kind": "process",
+        "verificationMethod": "test-results",
+        "passed": true,
+        "timedOut": false,
+        "skipped": false,
+        "skippedReason": null,
+        "exitCode": 0,
+        "outputSample": "$ npm -w backend run test\r\n\r\n\u003E @wall/backend@1.0.0 test\r\n\u003E tsx --test --test-reporter=tap src/lib/ai.test.ts\r\n\r\nTAP version 13\r\n# [IA] Groq falhou: 404 model unavailable\r\n# Subtest: falls back from Groq to the current Gemini model and parses the JSON result\r\nok 1 - falls back from Groq to the current Gemini model and parses the JSON result\r\n  ---\r\n  duration_ms: 44.8547\r\n  type: \u0027test\u0027\r\n  ...\r\n# Subtest: returns scheduled agenda blocks plus separately completable undated tasks\r\nok 2 - returns scheduled agenda blocks plus separately completable undated tasks\r\n  ---\r\n  duration_ms: 152.3923\r\n  type: \u0027test\u0027\r\n  ...\r\n# Subtest: does not turn scheduled item descriptions into separate tasks\r\nok 3 - does not turn scheduled item descriptions into separate tasks\r\n  ---\r\n  duration_ms: 5.2943\r\n  type: \u0027test\u0027\r\n  ...\r\n1..3\r\n# tests 3\r\n# suites 0\r\n# pass 3\r\n# fail 0\r\n# cancelled 0\r\n# skipped 0\r\n# todo 0\r\n# duration_ms 2347.5648\r\n",
+        "durationMs": 4564,
+        "testResults": {
+          "testFramework": "unknown",
+          "runnerDetectedFrom": "none",
+          "testsTotal": 0,
+          "testsPassed": 0,
+          "testsFailed": 0,
+          "testsSkipped": 0,
+          "parseFailed": true
+        }
+      },
+      {
+        "name": "frontend-serves-home",
+        "kind": "http-probe",
+        "verificationMethod": "http-status",
+        "passed": true,
+        "timedOut": false,
+        "skipped": false,
+        "skippedReason": null,
+        "exitCode": null,
+        "outputSample": "HTTP 200\n\u003C!doctype html\u003E\n\u003Chtml lang=\u0022pt-BR\u0022\u003E\n  \u003Chead\u003E\n    \u003Cscript type=\u0022module\u0022\u003Eimport { injectIntoGlobalHook } from \u0022/@react-refresh\u0022;\ninjectIntoGlobalHook(window);\nwindow.$RefreshReg$ = () =\u003E {};\nwindow.$RefreshSig$ = () =\u003E (type) =\u003E type;\u003C/script\u003E\n\n    \u003Cscript type=\u0022module\u0022 src=\u0022/@vite/client\u0022\u003E\u003C/script\u003E\n\n    \u003Cmeta charset=\u0022UTF-8\u0022 /\u003E\n    \u003Cmeta name=\u0022viewport\u0022 content=\u0022width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover\u0022 /\u003E\n    \u003Ctitle\u003EWall Dashboard\u003C/title\u003E\n    \u003Cmeta name=\u0022theme-color\u0022 content=\u0022#11161d\u0022 /\u003E\n    \u003Clink rel=\u0022manifest\u0022 href=\u0022/manifest.webmanifest\u0022 /\u003E\n    \u003Clink rel=\u0022icon\u0022 href=\u0022/icon-192.png\u0022 /\u003E\n    \u003Clink rel=\u0022apple-touch-icon\u0022 href=\u0022/apple-touch-icon.png\u0022 /\u003E\n    \u003Cmeta name=\u0022apple-mobile-web-app-capable\u0022 content=\u0022yes\u0022 /\u003E\n    \u003Cmeta name=\u0022mobile-web-app-capable\u0022 content=\u0022yes\u0022 /\u003E\n    \u003Cmeta name=\u0022apple-mobile-web-app-status-bar-style\u0022 content=\u0022black-translucent\u0022 /\u003E\n    \u003Cmeta name=\u0022apple-mobile-web-app-title\u0022 content=\u0022Wall\u0022 /\u003E\n    \u003Cmeta name=\u0022google-site-verification\u0022 content=\u0022IGtYge1OKnQuiD4RLepAFMnj2oO0Q49gyk0Ref48Q_A\u0022 /\u003E\n  \u003C/head\u003E\n  \u003Cbody\u003E\n    \u003Cdiv id=\u0022root\u0022\u003E\u003C/div\u003E\n    \u003Cscript type=\u0022module\u0022 src=\u0022/src/main.tsx\u0022\u003E\u003C/script\u003E\n  \u003C/body\u003E\n\u003C/html\u003E\n\n--- server output ---\n\r\n  \u001B[32m\u001B[1mVITE\u001B[22m v5.4.21\u001B[39m  \u001B[2mready in \u001B[0m\u001B[1m1124\u001B[22m\u001B[2m\u001B[0m ms\u001B[22m\r\n\r\n  \u001B[32m\u279C\u001B[39m  \u001B[1mLocal\u001B[22m:   \u001B[36mhttp://127.0.0.1:\u001B[1m5174\u001B[22m/\u001B[39m\r\n",
+        "durationMs": 1673
+      },
+      {
+        "name": "backend-healthz",
+        "kind": "http-probe",
+        "verificationMethod": "http-status",
+        "passed": true,
+        "timedOut": false,
+        "skipped": false,
+        "skippedReason": null,
+        "exitCode": null,
+        "outputSample": "HTTP 200\nok\n--- server output ---\n[push] VAPID_* ausente: notifica\u00E7\u00F5es desativadas\r\nWall Dashboard na porta 3101 (dev)\r\n",
+        "durationMs": 6922
+      }
+    ],
+    "executions": [
+      {
+        "source": "setup[0]",
+        "resolvedExecutable": "C:\\Users\\vitor\\AppData\\Roaming\\npm\\pnpm.CMD",
+        "args": [
+          "install",
+          "--frozen-lockfile"
+        ],
+        "cwd": "C:\\Users\\vitor\\OneDrive\\Reposit\u00F3rios\\DeepFoucus",
+        "env": {},
+        "prependPath": [],
+        "platform": "win32"
+      },
+      {
+        "source": "workspace-build",
+        "resolvedExecutable": "C:\\Users\\vitor\\AppData\\Roaming\\npm\\pnpm.CMD",
+        "args": [
+          "run",
+          "build"
+        ],
+        "cwd": "C:\\Users\\vitor\\OneDrive\\Reposit\u00F3rios\\DeepFoucus",
+        "env": {},
+        "prependPath": [],
+        "platform": "win32"
+      },
+      {
+        "source": "tests-pass",
+        "resolvedExecutable": "C:\\Users\\vitor\\AppData\\Roaming\\npm\\pnpm.CMD",
+        "args": [
+          "test"
+        ],
+        "cwd": "C:\\Users\\vitor\\OneDrive\\Reposit\u00F3rios\\DeepFoucus",
+        "env": {},
+        "prependPath": [],
+        "platform": "win32"
+      },
+      {
+        "source": "frontend-serves-home",
+        "resolvedExecutable": "C:\\Users\\vitor\\AppData\\Roaming\\npm\\pnpm.CMD",
+        "args": [
+          "--dir",
+          "frontend",
+          "exec",
+          "vite",
+          "--host",
+          "127.0.0.1",
+          "--port",
+          "5174"
+        ],
+        "cwd": "C:\\Users\\vitor\\OneDrive\\Reposit\u00F3rios\\DeepFoucus",
+        "env": {},
+        "prependPath": [],
+        "platform": "win32"
+      },
+      {
+        "source": "backend-healthz",
+        "resolvedExecutable": "C:\\Program Files\\nodejs\\node.EXE",
+        "args": [
+          "backend/dist/index.js"
+        ],
+        "cwd": "C:\\Users\\vitor\\OneDrive\\Reposit\u00F3rios\\DeepFoucus",
+        "env": {
+          "PORT": "3101"
+        },
+        "prependPath": [],
+        "platform": "win32"
+      }
+    ]
+  }
+}

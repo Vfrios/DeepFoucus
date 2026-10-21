@@ -1,12 +1,44 @@
-import { useEffect, useState } from 'react';
-import { CalEvent, useCalendar } from '../hooks/useCalendar';
+import { useEffect, useMemo, useState } from 'react';
+import { Task, Tipo, useTasks } from '../hooks/useTasks';
 import { useDevice } from '../device/useDevice';
 
-// allDay vem como "YYYY-MM-DD" (interpretar como data local, não UTC)
-const parse = (e: CalEvent) =>
-  e.allDay ? new Date(+e.start.slice(0, 4), +e.start.slice(5, 7) - 1, +e.start.slice(8, 10)) : new Date(e.start);
-const dayKey = (d: Date) => `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
-const hhmm = (d: Date) => d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+// ---------- utilitários de data ----------
+
+/**
+ * Chave YYYY-MM-DD no fuso LOCAL do navegador.
+ * Usamos componentes da data (não toISOString) para evitar o bug de item
+ * da meia-noite cair no dia anterior em UTC-3.
+ */
+const dayKey = (d: Date) =>
+  `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+
+const hhmm = (iso: string | null) =>
+  iso
+    ? new Date(iso).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
+    : '--:--';
+
+/** "14:00 – 15:00" ou "Sem horário" se inicio for null. */
+const faixa = (t: Task) => {
+  if (!t.inicio) return 'Sem horário';
+  const ini = hhmm(t.inicio);
+  const fim = t.fim ? hhmm(t.fim) : null;
+  return fim ? `${ini} – ${fim}` : ini;
+};
+
+/** Cores por tipo (mesmas do design system do app). */
+const CORES_TIPO: Record<Tipo, string> = {
+  evento: '#9db4ff', // azul
+  estudo: '#f0b95a', // laranja
+  tarefa: '#86d7c0', // verde-água
+};
+
+const LABEL_TIPO: Record<Tipo, string> = {
+  evento: 'Evento',
+  estudo: 'Estudo',
+  tarefa: 'Tarefa',
+};
+
+// ---------- componente ----------
 
 function Clock() {
   const [now, setNow] = useState(new Date());
@@ -16,61 +48,196 @@ function Clock() {
   }, []);
   return (
     <div className="clock">
-      <div className="clock-time">{hhmm(now)}</div>
-      <div className="clock-date">{now.toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' })}</div>
+      <div className="clock-time">{hhmm(now.toISOString())}</div>
+      <div className="clock-date">
+        {now.toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' })}
+      </div>
     </div>
+  );
+}
+
+/** Um bloco "Hoje" ou "Amanhã" com a lista de itens do dia. */
+function DayBlock({
+  titulo,
+  subtitulo,
+  itens,
+  destaque,
+}: {
+  titulo: string;
+  subtitulo: string;
+  itens: Task[];
+  destaque: boolean;
+}) {
+  return (
+    <section className={`cal-day${destaque ? ' today' : ''}`}>
+      <header className="cal-day-head">
+        <h2>{titulo}</h2>
+        <span className="cal-day-sub">{subtitulo}</span>
+      </header>
+
+      {itens.length === 0 ? (
+        <p className="cal-empty">
+          {destaque ? 'Nada marcado para hoje.' : 'Nada marcado para amanhã.'}
+        </p>
+      ) : (
+        <ul className="cal-list">
+          {itens.map((t) => (
+            <li key={t._id} className={`cal-item${t.feito ? ' done' : ''}`}>
+              <span
+                className="type-bar"
+                style={{ background: CORES_TIPO[t.tipo] }}
+                aria-hidden
+              />
+              <div className="cal-item-body">
+                <div className="cal-item-top">
+                  <span className="cal-item-time">{faixa(t)}</span>
+                  <span
+                    className="type-tag"
+                    style={{
+                      color: CORES_TIPO[t.tipo],
+                      borderColor: CORES_TIPO[t.tipo],
+                    }}
+                  >
+                    {LABEL_TIPO[t.tipo]}
+                  </span>
+                </div>
+                <strong className="cal-item-title">{t.titulo}</strong>
+                {t.descricao && <p className="cal-item-desc">{t.descricao}</p>}
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
   );
 }
 
 export default function PageCalendar() {
   const { view } = useDevice();
-  const { events, error, loading } = useCalendar(7);
+  const { tasks, error, generateFromIA } = useTasks();
 
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const days = Array.from({ length: 7 }, (_, i) => {
-    const d = new Date(today);
-    d.setDate(d.getDate() + i);
-    return d;
-  });
-  const byDay = new Map<string, CalEvent[]>();
-  for (const e of events) {
-    const k = dayKey(parse(e));
-    byDay.set(k, [...(byDay.get(k) || []), e]);
-  }
-  const label = (d: Date, i: number) =>
-    i === 0 ? 'Hoje' : i === 1 ? 'Amanhã' : d.toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'short' });
+  // ---- input da IA inline ----
+  const [prompt, setPrompt] = useState('');
+  const [gerando, setGerando] = useState(false);
+  const [feedback, setFeedback] = useState<{ tipo: 'ok' | 'err'; msg: string } | null>(null);
+
+  const enviar = async () => {
+    const texto = prompt.trim();
+    if (!texto || gerando) return;
+    setGerando(true);
+    setFeedback(null);
+    try {
+      const { inseridas } = await generateFromIA(texto);
+      setPrompt('');
+      setFeedback({
+        tipo: 'ok',
+        msg:
+          inseridas === 0
+            ? 'A IA não encontrou nada agendável nesse texto.'
+            : `${inseridas} item(ns) adicionado(s).`,
+      });
+    } catch (e: any) {
+      setFeedback({
+        tipo: 'err',
+        msg: 'Falha ao gerar: ' + (e?.message || 'erro desconhecido'),
+      });
+    } finally {
+      setGerando(false);
+    }
+  };
+
+  // ---- filtragem Hoje / Amanhã ----
+  const { hoje, amanha, hojeLabel, amanhaLabel } = useMemo(() => {
+    const agora = new Date();
+    const dHoje = new Date(agora.getFullYear(), agora.getMonth(), agora.getDate());
+    const dAmanha = new Date(dHoje);
+    dAmanha.setDate(dHoje.getDate() + 1);
+    const kHoje = dayKey(dHoje);
+    const kAmanha = dayKey(dAmanha);
+
+    const doDia = (k: string) =>
+      tasks
+        .filter((t) => t.inicio && dayKey(new Date(t.inicio)) === k)
+        .sort((a, b) => {
+          const ta = a.inicio ? new Date(a.inicio).getTime() : 0;
+          const tb = b.inicio ? new Date(b.inicio).getTime() : 0;
+          return ta - tb;
+        });
+
+    const labelDia = (d: Date) =>
+      d.toLocaleDateString('pt-BR', {
+        weekday: 'long',
+        day: 'numeric',
+        month: 'short',
+      });
+
+    return {
+      hoje: doDia(kHoje),
+      amanha: doDia(kAmanha),
+      hojeLabel: labelDia(dHoje),
+      amanhaLabel: labelDia(dAmanha),
+    };
+  }, [tasks]);
+
+  const vazio = hoje.length === 0 && amanha.length === 0;
 
   return (
-    <div className={`page cal ${view === 'web' ? 'cal-web' : ''}`}>
+    <div className={`page cal-focus${view === 'web' ? ' cal-focus-web' : ''}`}>
       {view === 'web' && <Clock />}
-      {error.includes('google_not_connected') && (
-        <p className="notice">Google Calendar ainda não foi autorizado. Peça ao administrador para configurar a integração.</p>
+
+      {/* ---- IA inline ---- */}
+      <form
+        className="ai-inline"
+        onSubmit={(e) => {
+          e.preventDefault();
+          void enviar();
+        }}
+      >
+        <input
+          value={prompt}
+          onChange={(e) => setPrompt(e.target.value)}
+          placeholder='Ex.: "Reunião amanhã às 14h com a equipe"'
+          disabled={gerando}
+          maxLength={500}
+          aria-label="Descreva o item para a IA"
+        />
+        <button className="btn" type="submit" disabled={gerando || !prompt.trim()}>
+          {gerando ? 'Gerando…' : '✨ Criar'}
+        </button>
+      </form>
+      {feedback && (
+        <p className={`ai-feedback ${feedback.tipo}`} role="status">
+          {feedback.msg}
+        </p>
       )}
-      {error && !error.includes('google_not_connected') && <p className="notice">Não foi possível atualizar o calendário.</p>}
-      {loading && !events.length && !error && <p className="muted">Carregando…</p>}
-      <div className="cal-days">
-        {days.map((d, i) => {
-          const list = byDay.get(dayKey(d)) || [];
-          return (
-            <section key={i} className={`day${i === 0 ? ' today' : ''}`}>
-              <h2>{label(d, i)}</h2>
-              {list.length === 0 && <p className="muted">{i === 0 ? 'Nada marcado para hoje.' : 'Sem eventos'}</p>}
-              <ul>
-                {list.map((e) => (
-                  <li key={e.id} style={{ borderLeftColor: e.color }}>
-                    <span className="ev-time">{e.allDay ? 'Dia todo' : hhmm(parse(e))}</span>
-                    <span className="ev-body">
-                      <strong>{e.title}</strong>
-                      {e.location && <em>{e.location}</em>}
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            </section>
-          );
-        })}
+      {error && <p className="notice">{error}</p>}
+
+      {/* ---- Blocos Hoje / Amanhã ---- */}
+      <div className="cal-focus-grid">
+        <DayBlock
+          titulo="Hoje"
+          subtitulo={hojeLabel}
+          itens={hoje}
+          destaque
+        />
+        <DayBlock
+          titulo="Amanhã"
+          subtitulo={amanhaLabel}
+          itens={amanha}
+          destaque={false}
+        />
       </div>
+
+      {/* ---- Card vazio ---- */}
+      {vazio && !gerando && (
+        <div className="cal-empty-card">
+          <strong>Seu dia está livre.</strong>
+          <p>
+            Use o campo acima para criar algo em linguagem natural, ou abra a aba{' '}
+            <em>Tarefas</em> para o CRUD completo.
+          </p>
+        </div>
+      )}
     </div>
   );
 }

@@ -31,7 +31,11 @@ export default function Pager({ pages, lockable, onState }: Props) {
           {pages.map((pg) => {
             const C = pg.component;
             return (
-              <section key={pg.id} className="pager-slide" aria-label={pg.title}>
+              <section
+                key={pg.id}
+                className={`pager-slide${pg.id === 'calendar' ? ' calendar-slide' : ''}`}
+                aria-label={pg.title}
+              >
                 <C />
               </section>
             );
