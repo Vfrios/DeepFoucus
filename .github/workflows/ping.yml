@@ -1,0 +1,14 @@
+name: Keep Render Alive
+
+on:
+  schedule:
+    # O GitHub usa UTC. Isso roda a cada 10 minutos.
+    - cron: '*/10 * * * *'
+  workflow_dispatch: # Permite rodar manualmente se você quiser testar
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Pingar o Healthcheck do Render
+        run: curl -s -o /dev/null -w "%{http_code}" https://deepfoucus.onrender.com/healthz

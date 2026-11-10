@@ -27,6 +27,7 @@ interface FinanceSummary {
 const r = Router();
 const collection = async (): Promise<Collection<Expense>> =>
   (await getDb()).collection<Expense>('finance');
+const exportOrigins = new Set(['iOS-Vitor', 'iOS-Sophia']);
 
 export function currentMonthRange(now = new Date()): { start: Date; end: Date } {
   const parts = new Intl.DateTimeFormat('en-CA', {
@@ -252,9 +253,17 @@ r.get('/', jwtAuth, async (_req, res, next) => {
   }
 });
 
-r.get('/exportar', jwtAuth, async (_req, res, next) => {
+r.get('/exportar', jwtAuth, async (req, res, next) => {
   try {
-    const expenses = await (await collection()).find().sort({ data: -1 }).toArray();
+    const origin = req.query.origem;
+    if (origin !== undefined && (typeof origin !== 'string' || !exportOrigins.has(origin))) {
+      res.status(400).json({ error: 'origem inválida' });
+      return;
+    }
+    const expenses = await (await collection())
+      .find(origin ? { origem: origin } : {})
+      .sort({ data: -1 })
+      .toArray();
     const workbook = createFinanceWorkbook(expenses);
     const buffer = await workbook.xlsx.writeBuffer();
     res
