@@ -2,8 +2,8 @@ name: Keep Render Alive
 
 on:
   schedule:
-    # O GitHub usa UTC. Isso roda a cada 10 minutos.
-    - cron: '*/10 * * * *'
+    # O GitHub usa UTC. Isso roda a cada 5 minutos.
+    - cron: '*/5 * * * *'
   workflow_dispatch: # Permite rodar manualmente se você quiser testar
 
 jobs:

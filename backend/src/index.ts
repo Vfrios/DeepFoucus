@@ -26,7 +26,10 @@ app.use(cors({ origin: process.env.FRONTEND_URL || true }));
 app.use(express.json({ limit: '100kb' }));
 app.use(deviceMiddleware);
 
-app.get('/healthz', (_req, res) => res.send('ok'));
+app.get('/healthz', (_req, res) => {
+  console.log('healthz', new Date().toISOString());
+  res.status(200).send('ok');
+});
 
 // Públicas
 app.use('/api/device', deviceRoute);
