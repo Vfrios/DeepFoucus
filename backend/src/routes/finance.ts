@@ -253,6 +253,25 @@ r.get('/', jwtAuth, async (_req, res, next) => {
   }
 });
 
+r.delete('/:id', jwtAuth, async (req, res, next) => {
+  if (!ObjectId.isValid(req.params.id)) {
+    res.status(400).json({ error: 'id inválido' });
+    return;
+  }
+
+  try {
+    const result = await (await collection()).deleteOne({ _id: new ObjectId(req.params.id) });
+    if (!result.deletedCount) {
+      res.status(404).json({ error: 'gasto não encontrado' });
+      return;
+    }
+    notifyAndroid('RELOAD_FINANCE');
+    res.status(204).end();
+  } catch (error) {
+    next(error);
+  }
+});
+
 r.get('/exportar', jwtAuth, async (req, res, next) => {
   try {
     const origin = req.query.origem;
@@ -260,8 +279,16 @@ r.get('/exportar', jwtAuth, async (req, res, next) => {
       res.status(400).json({ error: 'origem inválida' });
       return;
     }
+    const category = req.query.categoria;
+    if (category !== undefined && (typeof category !== 'string' || !category.trim() || category.length > 80)) {
+      res.status(400).json({ error: 'categoria inválida' });
+      return;
+    }
+    const filters: { origem?: string; categoria?: string } = {};
+    if (typeof origin === 'string') filters.origem = origin;
+    if (typeof category === 'string') filters.categoria = category;
     const expenses = await (await collection())
-      .find(origin ? { origem: origin } : {})
+      .find(filters)
       .sort({ data: -1 })
       .toArray();
     const workbook = createFinanceWorkbook(expenses);
