@@ -1,97 +1,130 @@
+# 🤖 PLANO DIRETOR: LOSAI (O SEU JARVIS PESSOAL)
 
-# 🤖 LOSAI: O PLANO DIRETOR DO SEU JARVIS PESSOAL
-
-**A Visão:** O LOSAI deixa de ser um "app de produtividade" e se torna o **seu Gêmeo Digital**. Ele vive no seu tablet na parede, no seu celular e no seu ouvido. Ele sabe do seu corpo (peso, sono, hidratação), do seu tempo (calendário, faculdade, treinos), e da sua mente (notas, estudos, humor). Ele não espera comandos; ele age para garantir que você atinja o seu potencial máximo.
+**A Visão:** O LOSAI não é um aplicativo. É um **Sistema Operacional Pessoal e Proativo** que vive na sua parede (Android) e no seu bolso (iOS). Ele cruza dados biológicos, de localização, financeiros e de produtividade para otimizar a sua rotina sem que você precise pedir. A comunicação flui de forma invisível, segura e sem custos de API de terceiros.
 
 ---
 
 ## 🏗️ 1. Infraestrutura e Estabilidade (A Base Inabalável)
-Para o Jarvis funcionar 24 horas por dia na parede sem falhas, a infraestrutura precisa ser à prova de falhas.
 
-*   **Hospedagem de Custos Zero:** Backend rodando no Render (plano Free) e Frontend via PWA.
-*   **O "Keep Alive" (Bot Anti-Hibernação):** Como o Render hiberna após 15 minutos de inatividade, implementamos um **GitHub Action (Cron Job)**. A cada 10 minutos, um robô invisível acessa a rota `/healthz` do seu servidor, garantindo que ele nunca durma e que o seu tablet carregue o app em 1 segundo.
-*   **Banco de Dados em Nuvem:** MongoDB Atlas (M0 Free) configurado com IP liberado para acesso global, guardando tarefas, notas e biometria.
-*   **Segurança de Sessão:** Login via Google (OAuth 2.0) com tokens JWT de 30 dias. A autenticação é feita no servidor, sem expor chaves no navegador.
-*   **Notificações Push:** Infraestrutura de Service Worker (PWA) configurada para funcionar nativamente no iOS (16.4+) e Android.
+* **Keep Alive (Bot Anti-Hibernação):** Uso de GitHub Actions (Cron Job) pingando a rota `/healthz` do servidor a cada 10 minutos. O sistema nunca dorme no Render (Plano Free).
+* **Banco de Dados Híbrido:** MongoDB Atlas (nuvem) para dados estruturados e integração local via Home Assistant (opcional) para automações físicas.
+* **Segurança:** Login único via Google (OAuth 2.0), com sessões JWT de 30 dias e rotas de Webhook protegidas por chaves privadas.
 
 ---
 
-## 🧬 2. A Consciência Biológica (O Onboarding e Sensores)
-Um Jarvis não pergunta "o que você quer fazer hoje?". Ele diz: "Vitor, seu corpo precisa de X, sua mente precisa de Y".
+## 📱 2. Comunicação Universal e Contexto (O Modelo de Dois Dispositivos)
 
-*   **O Mapeamento de Início:** No primeiro boot, o sistema coleta seus dados biométricos (peso, altura, idade, rotina de sono). Ele calcula seu IMC, sua Taxa Metabólica (TMB) e sua meta de hidratação exata.
-*   **Consciência Situacional:** O sistema cruza os dados do seu Google Calendar (e da PUC via ICS) com o seu relógio biológico.
-*   **Personalidade Configurável:** Você escolhe o tom do LOSAI. Ele pode ser o "Jarvis" (formal, britânico, focado em precisão) ou a "Sexta-Feira" (ágil, direto ao ponto). Ele te chama pelo nome e entende comandos de voz naturais (Wake Word: *"LOSAI"*).
+O sistema abandona o uso de WhatsApp/Evolution API (evitando custos de chip e banimentos) e adota a arquitetura **"Dois Dispositivos, Um Cérebro"**. O Android é o *Main Frame* (em casa), e o iOS é o *Terminal Remoto* (na rua).
 
----
+### 2.1. O "Chatbot" Nativo no iPhone (iOS Shortcuts)
 
-## 🎙️ 3. A Experiência de Interface (O Jarvis na Parede)
-O tablet na sua parede não é mais um quadro de tarefas; é o **seu Holograma funcional**.
+* **Como funciona:** Você usa o app **Atalhos** do iPhone como o seu painel de controle. Um toque no Widget abre um menu nativo (idêntico aos bancos): `[ Finanças ]`, `[ Agenda ]`, `[ Saúde ]`, `[ Lista de Compras ]`.
+* **A Execução:** O Atalho faz uma requisição invisível para o backend e exibe a resposta na tela (texto, alerta ou download de arquivo).
+* **Vantagem:** Custo zero, sem risco de banimento e integração com a Siri (*"Siri, abrir atalho Fatura Atual"*).
 
-*   **Estado Passivo (Ambient Mode):** A tela é um calendário semanal, limpo e escuro. No cabeçalho: o seu status atual (ex: `☀️ 08:30 | Bateria 82% | 💧 400ml/3000ml | 🏋️ Treino às 17h`).
-*   **O Despertar por Voz (Wake Word):** Você fala *"LOSAI, estou indo treinar"*. A tela inteira desfoca sutilmente, uma animação de ondas sonoras aparece no rodapé e a voz sintetizada responde: *"Excelente, Vitor. Abrindo o modo treino. Preparei a ficha de Peito e Ombro de hoje."*
-*   **Alertas Proativos (Não Intrusivos):** O Jarvis não manda pop-ups chatos. Ele usa a voz, em volume ambiente: *"Vitor, seu treino começa em 30 minutos. Já fez a refeição pré-treino?"*. Se você estiver em uma reunião (bloco de foco no calendário), ele **silencia** as notificações e manda apenas um Toast (cartão sutil) na tela, esperando você sair da reunião para falar.
+### 2.2. E-mail (O "Gatilho" Financeiro)
 
----
+* O backend monitora uma caixa de e-mail via IMAP. Você encaminha notas fiscais e o Jarvis extrai os dados (valor, estabelecimento) e lança na planilha automaticamente.
 
-## 🏋️ 4. Os Fluxos de Execução Autônoma (O que o sistema faz por você)
+### 2.3. Sincronização de Contexto (State Sync)
 
-O Jarvis não espera você organizar a sua vida; ele **reorganiza a sua vida** para proteger os seus objetivos.
-
-### 4.1. Gestão de Academia e Performance
-*   **Alocação Dinâmica:** O sistema sabe que você tem faculdade até 18h. Ele encontra o "buraco" na sua agenda e reserva o treino no melhor horário.
-*   **Treino com Voz (Hands-Free):** Você está no meio da série de supino. Você diz: *"LOSAI, mais 90 segundos de descanso"*. O tablet conta o tempo, toca um bipe e dita a próxima série.
-*   **O Resolvedor de Conflitos:** Você se atrasou estudando. O Jarvis age: *"Vitor, identifiquei que você não vai conseguir fazer o treino de 1h30 agora. Encurtei o treino para 45 minutos, removendo os isoladores, para você não perder o dia. O que acha?"*.
-
-### 4.2. Hidratação Preditiva
-*   **Alertas Conscientes:** O Jarvis não apita de 2 em 2 horas. Se você está correndo (academia), ele sabe que você vai precisar de mais água e aumenta a meta. Se você está focado, ele espera a tarefa acabar.
-*   **A Cobrança (Timeout de 10 min):** Ele avisa. Se você não confirmar o consumo no tablet em 10 minutos, ele anota no seu histórico: *"Esquecimento de hidratação no bloco das 15h"*. No final do dia, ele te apresenta esse dado.
-
-### 4.3. Journaling e Segundo Cérebro
-*   Você fala ao passar na frente do tablet: *"LOSAI, anota que preciso comprar pilhas e estudar cálculo para a prova de quinta"*.
-*   O Jarvis usa a IA, separa a nota de compras da tarefa de estudo, joga a compra no "Mural de Notas" e aloca o bloco de estudo na sua quinta-feira, sincronizado com o Google Calendar.
+* **Android (Parede):** Envia sinal de vida via Fully Kiosk.
+* **iOS (Geofencing):** Quando você sai de casa, o iOS avisa o backend. O status muda para `is_home: false`. O Jarvis silencia as notificações de voz no Android e começa a enviar Push Notifications para o seu iPhone.
 
 ---
 
-## 🧠 5. O Motor Proativo (O Cérebro de Bastidores)
-É aqui que a mágica acontece. O Jarvis roda um "Loop de Consciência" a cada minuto nos bastidores.
+## 💸 3. Finanças Inteligentes (Open Finance + Google Sheets + iOS + Splitwise)
 
-*   **Briefing Matinal (07:30):** A luz do tablet aumenta suavemente. Ele analisa o clima, seus eventos da PUC e seus hábitos: *"Bom dia, Vitor. Você dormiu 7h. Tem 2 aulas hoje. O clima está quente, então aumentei sua meta de água para 3.5L. Seu treino é às 17h. Vamos focar?"*
-*   **Debriefing Noturno (22:00):** *"Resumo do dia: Você cumpriu 90% das tarefas. Bebeu 2.8L de água. Não foi à academia. Seu humor hoje foi nível 4 (bom). Amanhã, sugiro estudar 1h a mais de manhã."*
-*   **Análise Preditiva:** Ele percebe que toda vez que você estuda à noite, você dorme mal. Ele move automaticamente seus blocos de estudo para a parte da manhã na próxima semana, sem você pedir.
+O controle financeiro une a captura automática, a categorização por IA e um sistema visual de **divisão de despesas por responsável** (estilo Splitwise), com geração de relatórios em Excel.
+
+### 3.1. A Estrutura de Dados (As Planilhas)
+
+O arquivo `LOSAI_Financas_2026` é dividido em 3 abas:
+
+* **Aba 1 - `[01] Interacoes_iOS`:** Captura rápida. Colunas: Data/Hora, Estabelecimento, Valor, **Responsável** (Vitor, Sophia, Mãe, Dividido) e Local (GPS).
+* **Aba 2 - `[02] Meu_Cartao`:** Consolidado via Open Finance (Pluggy), limpo pela IA.
+* **Aba 3 - `[03] Cartao_Dela`:** Consolidado do cartão da sua namorada.
+
+### 3.2. O Motor de IA e a Lógica de Divisão
+
+* A IA categoriza os gastos em 12 categorias fixas (Gasolina, Mercado, iFood, etc.).
+* A IA sugere o responsável com base no estabelecimento (ex: Zara = Sophia, Shell = Vitor), mas você pode corrigir no momento do gasto pelo iOS.
+
+### 3.3. A Geração de Relatórios (O Diferencial Splitwise)
+
+No Atalho do iOS **"Central Financeira"**, o backend gera os arquivos:
+
+* **Gastos Gerais do Mês (Excel):** Gera um `.xlsx` com as 3 abas consolidadas. **Diferencial:** A Aba 1 (`[01] Interacoes_iOS`) vem com uma **Tabela Dinâmica (Pivot Table)** configurada, mostrando o resumo de divisões:
+  * *Vitor: R$ 1.500,00*
+  * *Sophia: R$ 600,00*
+  * *Mãe: R$ 500,00*
+  * *Total Fatura: R$ 2.600,00*
+* **Fatura Atual (Alerta):** Retorna um texto: *"💳 Total: R$ 2.600 (Vitor: R$ 1.500, Sophia: R$ 600, Mãe: R$ 500)"*.
+* **Filtro por Responsável:** Um menu no Atalho permite baixar um `.csv` contendo apenas os gastos de uma pessoa específica (ex: só os gastos da Sophia).
+* **Meu Cartão / Cartão Dela:** Download das abas 2 e 3 separadamente.
+
+### 3.4. Open Finance (Pluggy) e Privacidade
+
+* **Reconciliação:** Um Cron Job noturno conecta na Pluggy (Open Finance) e cruza os dados da Aba 2 e 3 com o que foi capturado no iOS (Aba 1), garantindo que nada fique de fora.
+* **Modo Discreto:** No painel da parede, os valores exatos (R$ 2.600) são ocultados por padrão. O Jarvis mostra apenas os gráficos. Você usa o comando de voz *"Jarvis, mostrar valores"* para revelar.
 
 ---
 
-## 🌐 6. O Ecossistema de Integrações (A Armadura do Jarvis)
+## 📍 4. Geolocalização e Automação de Rotina (Geofencing)
 
-O Jarvis é o maestro do seu ambiente físico e digital.
+O celular atua como sensor. Através do app Atalhos, ele envia gatilhos silenciosos para o backend.
 
-*   **Google Calendar & PUC (Canvas):** Sincronização de mão dupla. Você cria por voz, ele atualiza na nuvem. A faculdade atualiza no ICS, ele mostra na parede.
-*   **Notificações Push no Celular (Fora de Casa):** Se você sair, o tablet entra em standby, mas o Jarvis vai com você. Seu iPhone apita: *"Você esqueceu de tomar a água das 15h. Beba agora."*
-*   **Casa Conectada (Home Assistant / IoT):** 
-    *   **Bateria do Tablet:** O Jarvis monitora a bateria da parede. Aos 80%, ele manda um comando para a tomada inteligente desligar. Aos 20%, manda ligar.
-    *   **Iluminação de Foco:** Quando você inicia uma tarefa de "Estudo Pesado", o Jarvis apaga as luzes do quarto (via lâmpadas inteligentes) e foca a tela.
-*   **Telegram:** Você pode mandar áudio pro Jarvis de qualquer lugar: *"O que eu tenho pra hoje?"*. Ele te responde com um resumo da agenda do dia.
+* **Cerca Virtual (Geofence):** Quando você sai da PUC, o iOS envia suas coordenadas. O backend cruza: `[Gatilho: Saiu da PUC] + [Condição: Quinta-feira, 21h] + [Ação: Avisar namorada]`.
+* **Cálculo de ETA:** O backend consulta a API do Google Maps, calcula o trânsito e dispara uma mensagem automática para quem você quiser.
+* **Múltiplos Pontos:** Se você passar por pontos específicos no trajeto, o sistema atualiza o status no Home Assistant (ex: acender a luz da sala quando você estiver a 2km de casa).
 
 ---
 
-## 🚀 7. Roadmap de Construção (O Caminho do Herói)
+## 🍲 5. Nutrição e Rotina Doméstica (Meal Prep)
 
-Para não enlouquecer tentando codar tudo de uma vez, esse é o passo a passo tático:
+O Android é o **Inventário e Chef**; o iOS é o **Scanner**.
 
-*   **Missão 1 (A Base Biológica):** Construir o Onboarding. O Jarvis precisa saber seu peso, sua altura e suas metas. Construir o cálculo de água e o gerador de rotina por IA.
-*   **Missão 2 (O Primeiro Módulo):** Implementar o Water Tracker, com o sistema de notificação timeout. Fazer o Heatmap (Mapa de Contribuições) refletir os dados.
-*   **Missão 3 (A Agenda Ativa):** Finalizar a integração do feed ICS da PUC e configurar o CRUD de eventos com `react-big-calendar`.
-*   **Missão 4 (A Mente):** Implementar o Journaling (Mural de Notas) com a extração de tarefas via IA.
-*   **Missão 5 (O Corpo):** Construir a interface de Treino (Gym). 
-*   **Missão 6 (A Voz):** Implementar o pipeline de Wake Word (ouvir "LOSAI") e WebSockets para transcrição de voz.
-*   **Missão 7 (A Inteligência Proativa):** Implementar o Briefing Matinal e as automações de backend (O Loop de Consciência).
+* **Lista de Compras Bidirecional:**
+  * **iOS → Android:** Você adiciona um item via Widget no iPhone. O backend avisa o Android via WebSocket, e o tablet atualiza a tela no mesmo segundo.
+  * **Android → iOS:** Você está no mercado, abre o Atalho "Ver Lista" e o iOS exibe a lista completa na tela. Você marca o que comprou e o Android risca o item na parede.
+* **Meal Prep Contextual:** Se você falar "Vou fazer frango ao creme", o Jarvis verifica o inventário. Se faltar algo, ele adiciona à lista e avisa no iPhone.
+* **Lembretes de Preparo:** Se o Android detectar que você está em um bloco de foco (Pomodoro), ele espera terminar para avisar: *"Foco encerrado, hora de preparar o almoço."*
 
 ---
 
-## 🎯 8. O "Fator X" de Personalização (O que diferencia um App de um Jarvis)
+## 🎙️ 6. Interface e Contexto (Android vs. iOS)
 
-O que vai te viciar no LOSAI e fazer você não viver mais sem ele:
-1.  **Modo "Doente" (Sick Mode):** Você diz: *"LOSAI, estou com febre"*. Ele cancela todos os treinos da semana, zera as metas pesadas de estudo, ajusta a água para hidratação extra e muda o foco da tela para um modo de descanso.
-2.  **Filtro Anti-Ansiedade:** Se você acumulou 40 tarefas, o Jarvis esconde 35 delas e mostra apenas as 5 mais importantes do dia.
-3.  **Aprendizado de Rotina:** Se você sempre pede para adiar a tarefa de "Lavar a louça", na terceira vez ele te pergunta: *"Você quer deletar essa tarefa de vez ou prefere que eu a aloque aos domingos de manhã?"*.
+* **No Android (Parede):** O **Holograma Funcional**. Tela sempre ligada, calendário semanal, ficha de treino, status da água e notificações por voz.
+* **No iOS (Pessoal):** O **Controle Remoto**. Não tem tela cheia; atua via Widgets e Atalhos. Quando você sai de casa, o Android silencia as notificações e o iOS recebe os alertas no seu bolso.
+
+---
+
+## 🏋️ 7. Consciência Biológica (Saúde, Academia e Sono)
+
+* **Onboarding:** Feito na tela do Android (ou iOS). Você insere peso, altura e metas. A IA gera a rotina semanal e sincroniza com o Google Calendar.
+* **Água e Hidratação Preditiva:** No Android, a cada 60 min, o Jarvis avisa por voz. No iOS (rua), você recebe Push. Se não confirmar em 10 min, o sistema marca "falha de hidratação".
+* **Academia:** No Android, a tela vira a ficha de treino com cronômetro por voz. No iOS (academia externa), você usa um Atalho "Iniciar Treino" e o iOS controla a música e o timer. Ao chegar em casa, o Android registra o treino no Heatmap.
+* **Sick Mode:** Você fala no iOS "Estou doente". O Android escurece, pausa os treinos e exibe uma mensagem de recuperação.
+
+---
+
+## 🧠 8. O Motor Proativo (Briefing, Debriefing e Journaling)
+
+O cérebro roda no backend, mas a comunicação se adapta ao dispositivo.
+
+* **Briefing Matinal (07:30):** Se você está em casa, o Android acende a tela e fala por voz. Se você já saiu, o iPhone recebe um Push com o resumo do dia (aulas, trânsito, água).
+* **Debriefing Noturno (22:00):** O Jarvis exibe o resumo do dia (tarefas cumpridas, água). No iOS, se você estiver fora, chega como notificação final.
+* **Journaling:** No Android (casa), você digita. No iOS (rua), você usa o botão "Compartilhar" do iPhone para enviar a nota direto para o banco do Jarvis.
+* **Sincronização Real:** O backend usa a flag `is_home` (via Geofencing) para decidir se os alertas de voz saem no tablet ou no celular, garantindo que a casa vazia não fique "gritando" notificações.
+
+---
+
+## 🧑‍💻 9. Roadmap de Implementação (O Caminho do Herói)
+
+* **Missão 1 (A Fundação):** Onboarding, cálculo biológico e IA de rotina.
+* **Missão 2 (O Foco e Água):** Water Tracker com sistema de timeout e pomodoro integrado.
+* **Missão 3 (O Mestre da Agenda):** CRUD de eventos do `react-big-calendar` e integração com o feed da PUC.
+* **Missão 4 (O Cofre Financeiro e Splitwise):** Configurar o Google Sheets, a categorização por IA, os Atalhos do iOS (captura e download) e a Tabela Dinâmica de divisões por responsável.
+* **Missão 5 (Comunicação Remota):** Criação do menu de Atalhos no iOS (agenda, finanças, saúde) e integração com Geofencing.
+* **Missão 6 (A Voz):** Pipeline de transcrição de áudio local na parede (Android).
+* **Missão 7 (A Consciência):** Automações via Home Assistant e o motor proativo (Briefing/Debriefing).

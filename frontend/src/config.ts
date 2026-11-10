@@ -3,6 +3,8 @@ import PageCalendar from './components/PageCalendar';
 import PageTasks from './components/PageTasks';
 import PageStats from './components/PageStats';
 import PageNotes from './components/PageNotes';
+import PageShopping from './components/PageShopping';
+import PageFinance from './components/PageFinance';
 import PageMonthCalendar from './components/PageMonthCalendar';
 import PageWeekCalendar from './components/PageWeekCalendar';
 import EmptyPage from './components/EmptyPage';
@@ -25,6 +27,6 @@ export const pages: PageDef[] = [
   { id: 'notes', title: 'Notas', component: PageNotes, mobile: false, row: 1, column: 4 },
   { id: 'month-calendar', title: 'Calendário Mensal', component: PageMonthCalendar, mobile: false, row: 2, column: 1 },
   { id: 'week-calendar', title: 'Calendário Semanal', component: PageWeekCalendar, mobile: false, row: 2, column: 2 },
-  { id: 'empty-2-3', title: '', component: EmptyPage, mobile: false, row: 2, column: 3, navigable: false },
-  { id: 'empty-2-4', title: '', component: EmptyPage, mobile: false, row: 2, column: 4, navigable: false },
+  { id: 'shopping', title: 'Lista de Compras', component: PageShopping, mobile: false, row: 2, column: 3 },
+  { id: 'finance', title: 'Finanças', component: PageFinance, mobile: false, row: 2, column: 4 },
 ];

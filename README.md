@@ -21,7 +21,7 @@ Rotas extras além do esboço original: `backend/src/routes/googleAuth.ts` (OAut
 
 ```bash
 npm install
-cp .env.example .env     # preencha os valores (seções abaixo)
+cp .env     # preencha os valores (seções abaixo)
 npm run dev              # API :3001; Vite :5173 inicia após a checagem de saúde da API (proxy /api)
 ```
 
@@ -110,8 +110,49 @@ Use o **Fully Kiosk Browser**: Start URL `https://SEU-APP.onrender.com/?view=web
 - Precisa instalar a PWA na Tela de Início e **abrir pelo ícone** (no Safari comum não funciona).
 - No app instalado: Ajustes → **Ativar notificações** → permitir → **Enviar teste**.
 
+## 8. Atalhos do iPhone (LOSAI)
+
+No app **Atalhos**, crie o atalho **“LOSAI - Comando”**:
+
+1. Adicione a ação **“Obter Conteúdo do URL”** e use `https://deepfoucus.onrender.com/api/ai/command`.
+2. Em **Método**, selecione `POST`; em **Corpo da Solicitação**, selecione `JSON`.
+3. Envie `comando` (o texto ou ditado do usuário) e `contexto` (opcional).
+4. Em **Cabeçalhos**, adicione `x-api-token` com o valor de `API_TOKEN` configurado no Render. Mantenha esse token privado.
+5. Execute o atalho e use o campo `resposta` da resposta JSON para falar ou exibir o resultado.
+
+Exemplo de corpo:
+
+```json
+{
+  "comando": "Adicione creme de leite à lista de compras",
+  "contexto": ""
+}
+```
+
+O endpoint identifica comandos de compra, criação de tarefa, consulta da agenda e lembrete de água. As rotas da lista de compras usadas pelo app continuam protegidas pela sessão do usuário.
+
+## 9. Dashboard financeiro
+
+A tela **Finanças** no modo parede mostra os gastos do mês atual, totais por responsável e categoria, e atualiza em tempo real. Os valores ficam ocultos até tocar em **Mostrar Valores**. **Exportar Excel** baixa todos os lançamentos com uma tabela de despesas e totais por responsável.
+
+Para registrar um gasto com Atalhos, use **Obter Conteúdo do URL** com `POST` para `https://deepfoucus.onrender.com/api/finance/add`, corpo JSON e cabeçalho `x-api-token` com o `API_TOKEN` privado do Render:
+
+```json
+{
+  "data": "2026-11-10T13:30:00-03:00",
+  "valor": "50.00",
+  "estabelecimento": "Posto Shell",
+  "local": "Av. Raja Gabaglia",
+  "responsavel": "Vitor",
+  "categoria": "Gasolina",
+  "origem": "iOS"
+}
+```
+
+Quando `categoria` estiver vazia ou for `Outros`, o backend tenta inferi-la com a IA configurada. A listagem `GET /api/finance` e a exportação `GET /api/finance/exportar` exigem a sessão JWT do app.
+
 ## Notas
 
-- Autenticação: toda a API protegida exige `Authorization: Bearer <JWT>`. O `API_TOKEN` é usado somente para iniciar a autorização inicial do proprietário em `/api/auth/google?token=...`.
+- Autenticação: as rotas protegidas do app exigem `Authorization: Bearer <JWT>`. O `API_TOKEN` inicia a autorização do proprietário em `/api/auth/google?token=...` e autentica o webhook de Atalhos via `x-api-token`.
 - Fotos/tabelas: edite `frontend/src/content.ts`. Novas páginas: `frontend/src/config.ts`.
 - Atualizações do app: o SW usa rede primeiro para a navegação; se algo ficar preso, aumente `CACHE` em `src/sw.ts`.

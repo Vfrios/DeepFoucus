@@ -1,9 +1,11 @@
 import './lib/env'; // PRECISA ser o primeiro import
 import express from 'express';
 import cors from 'cors';
+import { createServer } from 'http';
 import path from 'path';
 import { deviceMiddleware } from './middleware/device';
 import { jwtAuth } from './middleware/jwtAuth';
+import { attachWebSocketServer } from './lib/realtime';
 import deviceRoute from './routes/device';
 import googleAuthRoute from './routes/googleAuth';
 import calendarRoute from './routes/calendar';
@@ -11,6 +13,9 @@ import tasksRoute from './routes/tasks';
 import statsRoute from './routes/stats';
 import pushRoute, { initVapid, startReminderJob } from './routes/push';
 import notesRoute from './routes/notes';
+import shoppingRoute from './routes/shopping';
+import aiRoute from './routes/ai';
+import financeRoute from './routes/finance';
 
 const app = express();
 const PROD = process.env.NODE_ENV === 'production';
@@ -33,6 +38,9 @@ app.use('/api/tasks', jwtAuth, tasksRoute);
 app.use('/api/stats', jwtAuth, statsRoute);
 app.use('/api/push', jwtAuth, pushRoute);
 app.use('/api/notes', jwtAuth, notesRoute);
+app.use('/api/shopping', jwtAuth, shoppingRoute);
+app.use('/api/ai', aiRoute);
+app.use('/api/finance', financeRoute);
 app.use('/api', (_req, res) => res.status(404).json({ error: 'not_found' }));
 
 // Em produção o Express também serve o build do Vite
@@ -55,4 +63,6 @@ app.use((err: any, _req: express.Request, res: express.Response, _next: express.
 
 initVapid();
 startReminderJob();
-app.listen(PORT, () => console.log(`Wall Dashboard na porta ${PORT} (${PROD ? 'produção' : 'dev'})`));
+const server = createServer(app);
+attachWebSocketServer(server);
+server.listen(PORT, () => console.log(`Wall Dashboard na porta ${PORT} (${PROD ? 'produção' : 'dev'})`));
