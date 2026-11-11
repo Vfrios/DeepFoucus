@@ -76,6 +76,17 @@ export function startReminderJob() {
 
 r.get('/key', (_req, res) => res.json({ publicKey: process.env.VAPID_PUBLIC_KEY || '' }));
 
+r.post('/status', async (req, res) => {
+  const endpoint = req.body?.endpoint;
+  if (typeof endpoint !== 'string' || endpoint.length === 0 || endpoint.length > 2048) {
+    res.status(400).json({ error: 'endpoint inválido' });
+    return;
+  }
+  const db = await getDb();
+  const subscription = await db.collection('subscriptions').findOne({ endpoint }, { projection: { _id: 1 } });
+  res.json({ subscribed: subscription !== null });
+});
+
 r.post('/subscribe', async (req, res) => {
   const sub = req.body?.subscription;
   if (!sub?.endpoint || !sub?.keys) {

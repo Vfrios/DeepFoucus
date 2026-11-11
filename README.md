@@ -64,6 +64,7 @@ npx web-push generate-vapid-keys
 Coloque em `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY` e ajuste `VAPID_SUBJECT=mailto:voce@email.com`.
 
 Push é disparado em: tarefa criada, tarefa concluída e evento começando em até 15 min (job de 60 s no backend).
+Ative as notificações em cada dispositivo/navegador; a assinatura de cada um é salva no servidor, e o app restaura o estado ao ser reaberto. A permissão concedida pelo navegador não é compartilhada entre dispositivos.
 
 ## 5. Deploy no Render (um único serviço)
 

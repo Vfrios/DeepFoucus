@@ -6,6 +6,21 @@ export const isIOS = () =>
 export const isStandalone = () =>
   matchMedia('(display-mode: standalone)').matches || matchMedia('(display-mode: fullscreen)').matches || (navigator as any).standalone === true;
 
+export async function isPushEnabled(): Promise<boolean> {
+  if (!('serviceWorker' in navigator) || !('PushManager' in window) || !('Notification' in window)) return false;
+  if (!import.meta.env.PROD || Notification.permission !== 'granted') return false;
+
+  const registration = await navigator.serviceWorker.getRegistration();
+  const subscription = await registration?.pushManager.getSubscription();
+  if (!subscription) return false;
+
+  const { subscribed } = await api<{ subscribed: boolean }>('/push/status', {
+    method: 'POST',
+    body: JSON.stringify({ endpoint: subscription.endpoint }),
+  });
+  return subscribed;
+}
+
 function b64ToUint8(b64: string) {
   const pad = '='.repeat((4 - (b64.length % 4)) % 4);
   const raw = atob((b64 + pad).replace(/-/g, '+').replace(/_/g, '/'));
