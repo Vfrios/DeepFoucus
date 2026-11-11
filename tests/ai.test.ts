@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { after, it } from 'node:test';
-import { callAI, gerarTarefasIA } from './ai';
+import { callAI, gerarTarefasIA } from '../backend/src/lib/ai';
 
 const originalFetch = globalThis.fetch;
 const originalKeys = {

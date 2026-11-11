@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { roleForEmail } from './roles';
+import { roleForEmail } from '../backend/src/lib/roles';
 
 test('maps only configured Google accounts to their roles', () => {
   const previous = {

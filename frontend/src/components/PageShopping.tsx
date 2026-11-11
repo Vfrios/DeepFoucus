@@ -6,6 +6,7 @@ import { useAuth } from '../AuthContext';
 interface ShoppingItem {
   _id: string;
   item: string;
+  emoji?: string;
   comprado: boolean;
   criadoEm: string;
 }
@@ -106,6 +107,7 @@ export default function PageShopping() {
                 onChange={() => void toggleItem(item)}
                 aria-label={`Marcar ${item.item} como ${item.comprado ? 'não comprado' : 'comprado'}`}
               />
+              <span className="shopping-emoji" aria-hidden="true">{item.emoji || '📦'}</span>
               <span className="task-text">{item.item}</span>
               <button
                 className="icon-btn"

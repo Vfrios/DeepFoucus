@@ -2,10 +2,12 @@ import { ObjectId } from 'mongodb';
 import { callAI } from './ai';
 import { getDb } from './mongo';
 import { notifyAndroid } from './realtime';
+import { getItemEmoji } from './icons';
 
 export interface ShoppingItem {
   _id?: ObjectId;
   item: string;
+  emoji?: string;
   comprado: boolean;
   criadoEm: Date;
 }
@@ -39,6 +41,7 @@ export async function addShoppingItem(input: string): Promise<ShoppingItem> {
   const item = await normalizeShoppingItem(input);
   const document: ShoppingItem = {
     item,
+    emoji: getItemEmoji(item),
     comprado: false,
     criadoEm: new Date(),
   };

@@ -1,7 +1,13 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import ExcelJS from 'exceljs';
-import { createFinanceWorkbook, currentMonthRange, parseAmount, parseIsoDate, summarize } from './finance';
+import {
+  createFinanceWorkbook,
+  currentMonthRange,
+  parseAmount,
+  parseIsoDate,
+  summarize,
+} from '../backend/src/routes/finance';
 
 test('parses an ISO 8601 timestamp with its explicit timezone', () => {
   assert.equal(parseIsoDate('2026-11-10T13:30:00-03:00')?.toISOString(), '2026-11-10T16:30:00.000Z');

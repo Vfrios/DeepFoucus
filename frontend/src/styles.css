@@ -139,9 +139,15 @@ h1, h2, h3 { margin: 0; font-weight: 600; }
 .icon-btn { width: 40px; height: 40px; background: transparent; border: 0; color: var(--mute); font-size: 1rem; }
 .handle { width: 40px; height: 44px; display: grid; place-items: center; color: var(--mute); font-size: 1.3rem; touch-action: none; }
 
-.shopping-page { max-width: 760px; margin: 0 auto; }
-.shopping-list li { padding: 8px 10px 8px 14px; }
-.shopping-check { width: 30px; height: 30px; flex: none; accent-color: var(--accent); }
+.shopping-page { max-width: 900px; margin: 0 auto; }
+.shopping-list { gap: 14px; }
+.shopping-list li { gap: 16px; min-height: 82px; padding: 14px 18px; }
+.shopping-check { appearance: none; width: 30px; height: 30px; flex: none; border: 2px solid var(--mute); border-radius: 50%; background-color: transparent; background-image: linear-gradient(45deg, transparent 44%, #0c1a16 44%, #0c1a16 56%, transparent 56%), linear-gradient(-45deg, transparent 42%, #0c1a16 42%, #0c1a16 54%, transparent 54%); background-position: 8px 13px, 13px 10px; background-repeat: no-repeat; background-size: 7px 10px, 12px 7px; }
+.shopping-check:checked { border-color: var(--accent); background-color: var(--accent); }
+.shopping-check:focus-visible { outline: 3px solid rgba(134, 215, 192, .4); outline-offset: 3px; }
+.shopping-emoji { display: grid; width: 54px; height: 54px; flex: none; place-items: center; border: 1px solid rgba(255, 255, 255, .07); border-radius: 50%; background: rgba(255, 255, 255, .05); font-size: 1.8rem; }
+.shopping-list li .task-text { font-size: 1.25rem; }
+.shopping-list li.done .shopping-emoji { opacity: .6; }
 .shopping-add { margin: 12px 0 16px; }
 .shopping-error { margin: 10px 0; color: var(--danger); }
 .guest-shopping-shell { height: 100dvh; overflow-y: auto; padding: max(24px, env(safe-area-inset-top)) max(20px, env(safe-area-inset-right)) max(24px, env(safe-area-inset-bottom)) max(20px, env(safe-area-inset-left)); }
@@ -150,11 +156,17 @@ h1, h2, h3 { margin: 0; font-weight: 600; }
 .guest-shopping-page .shopping-add { display: grid; grid-template-columns: 1fr; gap: 12px; margin: 12px 0 24px; }
 .guest-shopping-page .shopping-add input { min-height: 72px; padding: 18px; font-size: 1.4rem; }
 .guest-shopping-page .guest-add-button { min-height: 88px; border-radius: 18px; font-size: 1.7rem; }
-.guest-shopping-page .shopping-list { gap: 12px; }
-.guest-shopping-page .shopping-list li { min-height: 76px; padding: 12px 14px; }
-.guest-shopping-page .shopping-list .task-text { font-size: 1.45rem; }
+.guest-shopping-page .shopping-list { gap: 16px; }
+.guest-shopping-page .shopping-list li { min-height: 96px; padding: 14px 18px; }
+.guest-shopping-page .shopping-list .task-text { font-size: 1.55rem; }
+.guest-shopping-page .shopping-emoji { width: 70px; height: 70px; font-size: 2.5rem; }
 .guest-shopping-page .shopping-check { width: 38px; height: 38px; }
 .guest-shopping-page .shopping-list .icon-btn { width: 48px; height: 48px; font-size: 1.25rem; }
+@media (max-width: 600px) {
+  .guest-shopping-page .shopping-list li { gap: 12px; padding: 14px 10px; }
+  .guest-shopping-page .shopping-emoji { width: 76px; height: 76px; font-size: 2.7rem; }
+  .guest-shopping-page .shopping-list .task-text { font-size: 1.35rem; }
+}
 
 .finance-page { max-width: 1280px; margin: 0 auto; padding-bottom: 20px; }
 .finance-header { display: flex; justify-content: space-between; align-items: center; gap: 16px; flex-wrap: wrap; margin-bottom: 22px; }
