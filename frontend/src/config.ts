@@ -1,48 +1,30 @@
 import type { ComponentType } from 'react';
-import PageCalendar from './components/PageCalendar';
-import PageTasks from './components/PageTasks';
-import PageStats from './components/PageStats';
-import PageNotes from './components/PageNotes';
-import PageShopping from './components/PageShopping';
-import PageFinance from './components/PageFinance';
-import PageMonthCalendar from './components/PageMonthCalendar';
-import PageWeekCalendar from './components/PageWeekCalendar';
-import EmptyPage from './components/EmptyPage';
 import type { UserRole } from './AuthContext';
+import PageCalendar from './components/PageCalendar';
+import PageFinance from './components/PageFinance';
+import PageHealth from './components/PageHealth';
+import PageShopping from './components/PageShopping';
+import PageTasks from './components/PageTasks';
+
+export type DockIconName = 'calendar' | 'tasks' | 'finance' | 'shopping' | 'health';
 
 export interface PageDef {
   id: string;
   title: string;
   component: ComponentType;
-  mobile: boolean;
-  row: 1 | 2;
-  column: 1 | 2 | 3 | 4;
-  navigable?: boolean;
+  icon: DockIconName;
 }
 
-// Para adicionar uma página: crie o componente e inclua aqui.
 export const pages: PageDef[] = [
-  { id: 'calendar', title: 'Calendário Diário', component: PageCalendar, mobile: true, row: 1, column: 1 },
-  { id: 'tasks', title: 'Tarefas', component: PageTasks, mobile: true, row: 1, column: 2 },
-  { id: 'stats', title: 'Progresso', component: PageStats, mobile: false, row: 1, column: 3 },
-  { id: 'notes', title: 'Notas', component: PageNotes, mobile: false, row: 1, column: 4 },
-  { id: 'month-calendar', title: 'Calendário Mensal', component: PageMonthCalendar, mobile: false, row: 2, column: 1 },
-  { id: 'week-calendar', title: 'Calendário Semanal', component: PageWeekCalendar, mobile: false, row: 2, column: 2 },
-  { id: 'shopping', title: 'Lista de Compras', component: PageShopping, mobile: false, row: 2, column: 3 },
-  { id: 'finance', title: 'Finanças', component: PageFinance, mobile: false, row: 2, column: 4 },
+  { id: 'calendar', title: 'Calendário', component: PageCalendar, icon: 'calendar' },
+  { id: 'tasks', title: 'Tarefas', component: PageTasks, icon: 'tasks' },
+  { id: 'finance', title: 'Finanças', component: PageFinance, icon: 'finance' },
+  { id: 'shopping', title: 'Compras', component: PageShopping, icon: 'shopping' },
+  { id: 'health', title: 'Água e Saúde', component: PageHealth, icon: 'health' },
 ];
 
 export function pagesForRole(role: UserRole): PageDef[] {
   if (role === 'owner') return pages;
-
-  const visible = pages.filter((page) =>
-    role === 'finance'
-      ? page.id === 'finance' || page.id === 'shopping'
-      : page.id === 'shopping'
-  );
-  return visible.map((page, index) => ({
-    ...page,
-    row: 1,
-    column: (index + 1) as PageDef['column'],
-  }));
+  if (role === 'finance') return pages.filter((page) => page.id === 'finance' || page.id === 'shopping');
+  return pages.filter((page) => page.id === 'shopping');
 }

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { addDays, addWeeks, format, startOfDay, startOfWeek } from 'date-fns';
+import { addDays, addWeeks, format, startOfWeek } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { Calendar } from 'react-big-calendar';
 import type { SlotInfo, View } from 'react-big-calendar';
@@ -18,21 +18,22 @@ import {
 } from './calendarUtils';
 
 const initialView: View = 'week';
-const availableViews: View[] = ['week', 'day'];
 const timeMin = new Date(1970, 0, 1, 0, 0, 0);
 const timeMax = new Date(1970, 0, 1, 23, 59, 59);
 
-export default function PageWeekCalendar() {
+interface Props {
+  onBack: () => void;
+}
+
+export default function PageWeekCalendar({ onBack }: Props) {
   const calendarWrapRef = useRef<HTMLDivElement>(null);
   const { tasks, error, create, update, previewFromIA } = useTasks();
   const [date, setDate] = useState(() => new Date());
-  const [view, setView] = useState<View>(initialView);
   const { calendars, selectedIds } = useGoogleCalendars();
   const weekStart = startOfWeek(date, { locale: ptBR });
-  const eventRangeStart = view === 'day' ? startOfDay(date) : weekStart;
   const { events: googleEvents, error: calendarError } = useCalendar(
-    eventRangeStart,
-    view === 'day' ? 1 : 7
+    weekStart,
+    7
   );
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<Task | null>(null);
@@ -55,14 +56,14 @@ export default function PageWeekCalendar() {
 
     const animationFrame = window.requestAnimationFrame(scrollToCurrentTime);
     const timer = window.setInterval(() => {
-      if (calendarWrapRef.current?.closest('.pager.is-locked')) scrollToCurrentTime();
+      if (calendarWrapRef.current?.closest('.shell.is-locked')) scrollToCurrentTime();
     }, 60_000);
 
     return () => {
       window.cancelAnimationFrame(animationFrame);
       window.clearInterval(timer);
     };
-  }, [date, view]);
+  }, [date]);
 
   const visibleTasks = useMemo(
     () => getCalendarTasks(tasks, googleEvents, calendars)
@@ -71,11 +72,9 @@ export default function PageWeekCalendar() {
   );
   const events = useMemo(() => getCalendarEvents(visibleTasks), [visibleTasks]);
   const weekEnd = addDays(weekStart, 6);
-  const rangeLabel = view === 'day'
-    ? format(date, "EEEE, d 'de' MMMM 'de' yyyy", { locale: ptBR })
-    : weekStart.getMonth() === weekEnd.getMonth()
-      ? `${format(weekStart, 'd', { locale: ptBR })}–${format(weekEnd, "d 'de' MMMM 'de' yyyy", { locale: ptBR })}`
-      : `${format(weekStart, 'd MMM', { locale: ptBR })} – ${format(weekEnd, "d MMM yyyy", { locale: ptBR })}`;
+  const rangeLabel = weekStart.getMonth() === weekEnd.getMonth()
+    ? `${format(weekStart, 'd', { locale: ptBR })}–${format(weekEnd, "d 'de' MMMM 'de' yyyy", { locale: ptBR })}`
+    : `${format(weekStart, 'd MMM', { locale: ptBR })} – ${format(weekEnd, "d MMM yyyy", { locale: ptBR })}`;
 
   const openCreate = ({ start, end }: SlotInfo) => {
     setEditing(null);
@@ -106,38 +105,32 @@ export default function PageWeekCalendar() {
   };
 
   return (
-    <main className="week-page">
+    <main className="week-page calendar-subview" data-no-shell-swipe>
       <header className="calendar-view-header">
         <div>
           <p className="calendar-eyebrow">VISÃO SEMANAL</p>
           <h2>{rangeLabel}</h2>
         </div>
         <div className="calendar-nav">
+          <button className="btn ghost calendar-back" onClick={onBack}>
+            <svg aria-hidden="true" viewBox="0 0 24 24" fill="none">
+              <path d="m15 18-6-6 6-6M9 12h12" />
+            </svg>
+            Voltar para Atual
+          </button>
           <button
             className="btn ghost"
-            onClick={() => setDate((current) => view === 'day' ? addDays(current, -1) : addWeeks(current, -1))}
+            onClick={() => setDate((current) => addWeeks(current, -1))}
           >
             Anterior
           </button>
           <button className="btn ghost" onClick={() => setDate(new Date())}>Hoje</button>
           <button
             className="btn ghost"
-            onClick={() => setDate((current) => view === 'day' ? addDays(current, 1) : addWeeks(current, 1))}
+            onClick={() => setDate((current) => addWeeks(current, 1))}
           >
             Próximo
           </button>
-          <div className="calendar-view-toggle" aria-label="Visualização do calendário">
-            {availableViews.map((availableView) => (
-              <button
-                key={availableView}
-                className={`btn ghost${view === availableView ? ' active' : ''}`}
-                onClick={() => setView(availableView)}
-                aria-pressed={view === availableView}
-              >
-                {availableView === 'week' ? 'Semana' : 'Dia'}
-              </button>
-            ))}
-          </div>
         </div>
       </header>
       {error && <p className="notice">{error}</p>}
@@ -156,8 +149,8 @@ export default function PageWeekCalendar() {
           localizer={calendarLocalizer}
           culture="pt-BR"
           date={date}
-          view={view}
-          views={availableViews}
+          view={initialView}
+          views={[initialView]}
           events={events}
           startAccessor="start"
           endAccessor="end"
@@ -166,7 +159,6 @@ export default function PageWeekCalendar() {
           toolbar={false}
           selectable
           onNavigate={setDate}
-          onView={setView}
           onSelectSlot={openCreate}
           onSelectEvent={(event) => {
             if (!event.resource.externalCalendarEvent) editTask(event);

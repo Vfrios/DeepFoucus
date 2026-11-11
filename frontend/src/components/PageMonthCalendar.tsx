@@ -27,7 +27,11 @@ function MonthEvent({ event }: EventProps<CalendarEvent>) {
   );
 }
 
-export default function PageMonthCalendar() {
+interface Props {
+  onBack: () => void;
+}
+
+export default function PageMonthCalendar({ onBack }: Props) {
   const { tasks, error, update, previewFromIA } = useTasks();
   const [date, setDate] = useState(() => new Date());
   const { calendars, selectedIds } = useGoogleCalendars();
@@ -65,13 +69,19 @@ export default function PageMonthCalendar() {
   };
 
   return (
-    <main className="month-page">
+    <main className="month-page calendar-subview" data-no-shell-swipe>
       <header className="calendar-view-header">
         <div>
           <p className="calendar-eyebrow">VISÃO MENSAL</p>
           <h2>{format(date, 'MMMM yyyy', { locale: ptBR })}</h2>
         </div>
         <div className="calendar-nav">
+          <button className="btn ghost calendar-back" onClick={onBack}>
+            <svg aria-hidden="true" viewBox="0 0 24 24" fill="none">
+              <path d="m15 18-6-6 6-6M9 12h12" />
+            </svg>
+            Voltar para Atual
+          </button>
           <button className="btn ghost" onClick={() => setDate((current) => addMonths(current, -1))}>Anterior</button>
           <button className="btn ghost" onClick={() => setDate(new Date())}>Hoje</button>
           <button className="btn ghost" onClick={() => setDate((current) => addMonths(current, 1))}>Próximo</button>

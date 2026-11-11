@@ -4,6 +4,11 @@ import { useCalendar } from '../hooks/useCalendar';
 import { useGoogleCalendars } from '../hooks/useGoogleCalendars';
 import { useDevice } from '../device/useDevice';
 import { getCalendarTasks, getEventColor } from './calendarUtils';
+import PageMonthCalendar from './PageMonthCalendar';
+import PageWeekCalendar from './PageWeekCalendar';
+import { DAILY_WATER_GOAL_ML, readWaterIntake, WATER_INTAKE_EVENT } from '../lib/water';
+
+type CalendarMode = 'current' | 'week' | 'month';
 
 // ---------- utilitários de data ----------
 
@@ -65,6 +70,26 @@ function DayBlock({
   itens: Task[];
   destaque: boolean;
 }) {
+  const allDayItems = itens.filter((task) => task.allDay);
+  const positionedItems = itens.flatMap((task) => {
+    if (!task.inicio || task.allDay) return [];
+    const start = new Date(task.inicio);
+    if (Number.isNaN(start.getTime())) return [];
+    const startMinutes = start.getHours() * 60 + start.getMinutes();
+    const parsedEnd = task.fim ? new Date(task.fim) : null;
+    const endMinutes = parsedEnd && !Number.isNaN(parsedEnd.getTime()) &&
+      dayKey(parsedEnd) === dayKey(start)
+      ? parsedEnd.getHours() * 60 + parsedEnd.getMinutes()
+      : parsedEnd && !Number.isNaN(parsedEnd.getTime()) && parsedEnd > start
+        ? 24 * 60
+        : startMinutes + 30;
+    return [{
+      task,
+      top: Math.min(startMinutes / 2, 686),
+      height: Math.max(34, Math.min((endMinutes - startMinutes) / 2, 720 - startMinutes / 2)),
+    }];
+  });
+
   return (
     <section className={`cal-day${destaque ? ' today' : ''}`}>
       <header className="cal-day-head">
@@ -72,47 +97,105 @@ function DayBlock({
         <span className="cal-day-sub">{subtitulo}</span>
       </header>
 
-      {itens.length === 0 ? (
+      {itens.length === 0 && (
         <p className="cal-empty">
           {destaque ? 'Nada marcado para hoje.' : 'Nada marcado para amanhã.'}
         </p>
-      ) : (
-        <ul className="cal-list">
-          {itens.map((t) => (
-            <li key={t._id} className={`cal-item${t.feito ? ' done' : ''}`}>
-              <span
-                className="type-bar"
-                style={{ background: getEventColor(t) }}
-                aria-hidden
-              />
-              <div className="cal-item-body">
-                <div className="cal-item-top">
-                  <span className="cal-item-time">{faixa(t)}</span>
-                  <span
-                    className="type-tag"
-                    style={{
-                      color: getEventColor(t),
-                      borderColor: getEventColor(t),
-                    }}
-                  >
-                    {LABEL_TIPO[t.tipo]}
-                  </span>
-                </div>
-                <strong className="cal-item-title">{t.titulo}</strong>
-                {t.descricao && <p className="cal-item-desc">{t.descricao}</p>}
-              </div>
-            </li>
-          ))}
-        </ul>
       )}
+      <div className={`cal-allday-slot${allDayItems.length ? ' has-events' : ''}`} aria-label="Eventos de dia inteiro">
+        <span className="cal-allday-label">Dia inteiro</span>
+        <div className="cal-allday-events">
+          {allDayItems.map((task) => (
+            <article
+              key={task._id}
+              className={`cal-allday-event${task.feito ? ' done' : ''}`}
+              title={task.titulo}
+              style={{ borderLeftColor: getEventColor(task) }}
+            >
+              <strong>{task.titulo}</strong>
+              <span>{LABEL_TIPO[task.tipo]}</span>
+            </article>
+          ))}
+        </div>
+      </div>
+      <div className="cal-timeline" role="list" aria-label={`Agenda ${titulo.toLowerCase()}`}>
+        <div className="cal-timeline-canvas">
+          {Array.from({ length: 24 }, (_, hour) => (
+            <span className="cal-hour-label" key={hour} style={{ top: `${hour * 30}px` }}>
+              {String(hour).padStart(2, '0')}:00
+            </span>
+          ))}
+          {positionedItems.map(({ task, top, height }) => (
+            <article
+              key={task._id}
+              className={`cal-timeline-event${task.feito ? ' done' : ''}`}
+              role="listitem"
+              aria-label={`${faixa(task)} — ${task.titulo}`}
+              style={{ top: `${top}px`, height: `${height}px`, borderLeftColor: getEventColor(task) }}
+            >
+              <span className="cal-timeline-event-time">{faixa(task)}</span>
+              <strong>{task.titulo}</strong>
+              <span className="cal-timeline-event-type">{LABEL_TIPO[task.tipo]}</span>
+            </article>
+          ))}
+        </div>
+      </div>
     </section>
   );
 }
 
 export default function PageCalendar() {
+  const [mode, setMode] = useState<CalendarMode>('current');
+
+  return (
+    <div className={`calendar-subviews calendar-subviews-${mode}`}>
+      <nav className="calendar-mode-switch" role="tablist" aria-label="Visualização do calendário">
+        {([
+          ['current', 'Atual'],
+          ['week', 'Semanal'],
+          ['month', 'Mensal'],
+        ] as const).map(([id, label]) => (
+          <button
+            key={id}
+            type="button"
+            role="tab"
+            aria-selected={mode === id}
+            onClick={() => setMode(id)}
+          >
+            {label}
+          </button>
+        ))}
+      </nav>
+      <div className="calendar-mode-content" key={mode}>
+        {mode === 'week' ? (
+          <PageWeekCalendar onBack={() => setMode('current')} />
+        ) : mode === 'month' ? (
+          <PageMonthCalendar onBack={() => setMode('current')} />
+        ) : (
+          <CurrentCalendarView />
+        )}
+      </div>
+    </div>
+  );
+}
+
+function CurrentCalendarView() {
   const { view } = useDevice();
   const { tasks, error, generateFromIA } = useTasks();
   const { calendars, selectedIds } = useGoogleCalendars();
+  const [waterIntake, setWaterIntake] = useState(readWaterIntake);
+
+  useEffect(() => {
+    const refresh = () => setWaterIntake(readWaterIntake());
+    window.addEventListener(WATER_INTAKE_EVENT, refresh);
+    window.addEventListener('storage', refresh);
+    const timer = window.setInterval(refresh, 60_000);
+    return () => {
+      window.removeEventListener(WATER_INTAKE_EVENT, refresh);
+      window.removeEventListener('storage', refresh);
+      window.clearInterval(timer);
+    };
+  }, []);
   const [rangeStart] = useState(() => {
     const start = new Date();
     start.setHours(0, 0, 0, 0);
@@ -192,7 +275,18 @@ export default function PageCalendar() {
 
   return (
     <div className={`page cal-focus${view === 'web' ? ' cal-focus-web' : ''}`}>
-      {view === 'web' && <Clock />}
+      <header className="cal-current-toolbar">
+        <div className="cal-current-status">
+          {view === 'web' && <Clock />}
+          <div className="cal-water-status" aria-label={`${waterIntake} de ${DAILY_WATER_GOAL_ML} ml de água hoje`}>
+            <svg aria-hidden="true" viewBox="0 0 24 24" fill="none">
+              <path d="M7 3h10l-1 17H8L7 3Z" />
+              <path d="M8 13h8" />
+            </svg>
+            <span>{(waterIntake / 1000).toLocaleString('pt-BR', { minimumFractionDigits: 2 })} / {(DAILY_WATER_GOAL_ML / 1000).toLocaleString('pt-BR')} L</span>
+          </div>
+        </div>
+      </header>
 
       {/* ---- IA inline ---- */}
       <form
@@ -210,8 +304,13 @@ export default function PageCalendar() {
           maxLength={500}
           aria-label="Descreva o item para a IA"
         />
-        <button className="btn" type="submit" disabled={gerando || !prompt.trim()}>
-          {gerando ? 'Gerando…' : '✨ Criar'}
+        <button className="btn calendar-create-button" type="submit" disabled={gerando || !prompt.trim()}>
+          {!gerando && (
+            <svg aria-hidden="true" viewBox="0 0 24 24" fill="none">
+              <path d="M12 5v14M5 12h14" />
+            </svg>
+          )}
+          {gerando ? 'Gerando…' : 'Criar'}
         </button>
       </form>
       {feedback && (
