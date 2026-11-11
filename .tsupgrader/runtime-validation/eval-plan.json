@@ -24,6 +24,10 @@
       "kind": "process",
       "command": "pnpm",
       "args": ["test"],
+      "cwd": "backend",
+      "env": {
+        "NODE_PATH": "node_modules"
+      },
       "verificationMethod": "test-results",
       "expected": "0",
       "timeoutSeconds": 180

@@ -17,6 +17,7 @@ import notesRoute from './routes/notes';
 import shoppingRoute from './routes/shopping';
 import aiRoute from './routes/ai';
 import financeRoute from './routes/finance';
+import healthRoute from './routes/health';
 
 const app = express();
 const PROD = process.env.NODE_ENV === 'production';
@@ -41,6 +42,7 @@ app.use('/api/calendar', jwtAuth, requireRole(['owner']), calendarRoute);
 app.use('/api/tasks', jwtAuth, requireRole(['owner']), tasksRoute);
 app.use('/api/stats', jwtAuth, statsRoute);
 app.use('/api/push', jwtAuth, pushRoute);
+app.use('/api/health', jwtAuth, requireRole(['owner']), healthRoute);
 app.use('/api/notes', jwtAuth, requireRole(['owner']), notesRoute);
 app.use('/api/shopping', jwtAuth, requireRole(['owner', 'finance', 'guest']), shoppingRoute);
 app.use('/api/ai', aiRoute);

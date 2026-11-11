@@ -40,6 +40,33 @@ export async function sendPushToAll(payload: { title: string; body?: string; url
   return { sent, removed };
 }
 
+export async function sendPushToUser(email: string, payload: { title: string; body?: string; url?: string }) {
+  if (!vapidOk) return { sent: 0, removed: 0 };
+  const db = await getDb();
+  const subs = await db.collection<any>('subscriptions').find({ email }).toArray();
+  let sent = 0;
+  let removed = 0;
+  await Promise.all(
+    subs.map(async (s) => {
+      try {
+        await webpush.sendNotification(s.subscription, JSON.stringify(payload));
+        sent++;
+      } catch (error: unknown) {
+        const statusCode = typeof error === 'object' && error !== null && 'statusCode' in error
+          ? Number((error as { statusCode: unknown }).statusCode)
+          : 0;
+        if (statusCode === 404 || statusCode === 410) {
+          await db.collection('subscriptions').deleteOne({ endpoint: s.endpoint });
+          removed++;
+        } else {
+          console.error('[push] failed to notify user:', error instanceof Error ? error.message : String(error));
+        }
+      }
+    })
+  );
+  return { sent, removed };
+}
+
 /** Fire-and-forget usado pelas rotas de tarefas. */
 export function notify(title: string, body?: string) {
   sendPushToAll({ title, body }).catch(() => undefined);
@@ -72,6 +99,45 @@ export function startReminderJob() {
       /* Google/Mongo indisponível: tenta de novo no próximo ciclo */
     }
   }, 60_000);
+
+  setInterval(async () => {
+    if (!vapidOk) return;
+    try {
+      const now = new Date();
+      const parts = new Intl.DateTimeFormat('en-GB', {
+        timeZone: 'America/Sao_Paulo',
+        hour: '2-digit',
+        hourCycle: 'h23',
+      }).formatToParts(now);
+      const hour = Number(parts.find((part) => part.type === 'hour')?.value);
+      if (hour < 8 || hour >= 22) return;
+
+      const key = new Intl.DateTimeFormat('sv-SE', { timeZone: 'America/Sao_Paulo' }).format(now);
+      const start = new Date(`${key}T00:00:00.000-03:00`);
+      const tomorrow = new Date(start.getTime() + 86400000);
+      const db = await getDb();
+      const profiles = await db.collection<any>('profile').find({
+        email: { $type: 'string' },
+        peso: { $gt: 0 },
+      }).toArray();
+
+      await Promise.all(profiles.map(async (profile) => {
+        const goal = Math.round(profile.peso * 35);
+        const totals = await db.collection<any>('water_logs').aggregate([
+          { $match: { email: profile.email, data: { $gte: start, $lt: tomorrow } } },
+          { $group: { _id: null, total: { $sum: '$ml' } } },
+        ]).toArray();
+        const consumed = Math.max(0, totals[0]?.total || 0);
+        if (consumed >= goal) return;
+        await sendPushToUser(profile.email, {
+          title: 'Hora de se hidratar!',
+          body: `Hora de se hidratar! Você bebeu ${consumed} ml de ${goal} ml hoje.`,
+        });
+      }));
+    } catch (error) {
+      console.error('[push] water reminder job failed:', error instanceof Error ? error.message : String(error));
+    }
+  }, 60 * 60_000);
 }
 
 r.get('/key', (_req, res) => res.json({ publicKey: process.env.VAPID_PUBLIC_KEY || '' }));
@@ -84,6 +150,9 @@ r.post('/status', async (req, res) => {
   }
   const db = await getDb();
   const subscription = await db.collection('subscriptions').findOne({ endpoint }, { projection: { _id: 1 } });
+  if (subscription) {
+    await db.collection('subscriptions').updateOne({ endpoint }, { $set: { email: req.user!.email } });
+  }
   res.json({ subscribed: subscription !== null });
 });
 
@@ -96,7 +165,11 @@ r.post('/subscribe', async (req, res) => {
   const db = await getDb();
   await db
     .collection<any>('subscriptions')
-    .updateOne({ endpoint: sub.endpoint }, { $set: { endpoint: sub.endpoint, subscription: sub, criadoEm: new Date() } }, { upsert: true });
+    .updateOne(
+      { endpoint: sub.endpoint },
+      { $set: { endpoint: sub.endpoint, subscription: sub, email: req.user!.email, criadoEm: new Date() } },
+      { upsert: true }
+    );
   res.status(201).json({ ok: true });
 });
 

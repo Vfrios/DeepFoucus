@@ -40,7 +40,8 @@ mesma conta. Configure
 3. *Network Access* → libere `0.0.0.0/0` (o Render free não tem IP fixo).
 4. *Connect → Drivers* → copie a string para `MONGODB_URI`.
 
-Coleções criadas automaticamente: `tasks`, `auth`, `subscriptions`.
+Coleções e índices são criados automaticamente quando usados. Além de `tasks`, `auth` e
+`subscriptions`, a área Saúde usa `profile`, `workouts`, `workout_logs`, `water_logs` e `diets`.
 
 ## 3. Google Cloud (Calendar)
 
@@ -63,7 +64,8 @@ npx web-push generate-vapid-keys
 
 Coloque em `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY` e ajuste `VAPID_SUBJECT=mailto:voce@email.com`.
 
-Push é disparado em: tarefa criada, tarefa concluída e evento começando em até 15 min (job de 60 s no backend).
+Push é disparado em: tarefa criada, tarefa concluída, evento começando em até 15 min (job de 60 s)
+e lembretes de hidratação (verificação horária entre 08h e 22h, com meta de 35 ml por kg).
 Ative as notificações em cada dispositivo/navegador; a assinatura de cada um é salva no servidor, e o app restaura o estado ao ser reaberto. A permissão concedida pelo navegador não é compartilhada entre dispositivos.
 
 ## 5. Deploy no Render (um único serviço)
@@ -149,6 +151,18 @@ Para registrar um gasto com Atalhos, use **Obter Conteúdo do URL** com `POST` p
 ```
 
 Quando `categoria` estiver vazia ou for `Outros`, o backend tenta inferi-la com a IA configurada. A listagem, exclusão e exportação financeira exigem JWT com perfil `owner` ou `finance`. O `POST /api/finance/add` aceita esses mesmos perfis ou o `API_TOKEN` usado pela integração existente com Atalhos.
+
+## 10. Saúde
+
+A página **Saúde** reúne perfil, treino e hidratação, nutrição e dashboard. O perfil e os registros
+são privados por conta autenticada. Salvar e gerar rotina solicita à IA uma dieta e um treino; os
+treinos são agendados no próximo dia correspondente do Google Calendar quando a conta Google está
+conectada. A meta diária de água é calculada como `peso × 35 ml`, e os lembretes push verificam o
+consumo registrado no servidor.
+
+Configure pelo menos uma chave de IA (`GROQ_API_KEY`, `GEMINI_API_KEY` ou `OPENROUTER_API_KEY`),
+as chaves VAPID e a autorização Google Calendar para usar todas as integrações. Os endpoints em
+`/api/health/*` exigem uma sessão JWT com perfil `owner`.
 
 ## Notas
 

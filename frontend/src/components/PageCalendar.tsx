@@ -6,7 +6,8 @@ import { useDevice } from '../device/useDevice';
 import { getCalendarTasks, getEventColor } from './calendarUtils';
 import PageMonthCalendar from './PageMonthCalendar';
 import PageWeekCalendar from './PageWeekCalendar';
-import { DAILY_WATER_GOAL_ML, readWaterIntake, WATER_INTAKE_EVENT } from '../lib/water';
+import { api } from '../lib/api';
+import { WATER_INTAKE_EVENT } from '../lib/water';
 
 type CalendarMode = 'current' | 'week' | 'month';
 
@@ -183,16 +184,25 @@ function CurrentCalendarView() {
   const { view } = useDevice();
   const { tasks, error, generateFromIA } = useTasks();
   const { calendars, selectedIds } = useGoogleCalendars();
-  const [waterIntake, setWaterIntake] = useState(readWaterIntake);
+  const [water, setWater] = useState({ intake: 0, goal: 0 });
 
   useEffect(() => {
-    const refresh = () => setWaterIntake(readWaterIntake());
-    window.addEventListener(WATER_INTAKE_EVENT, refresh);
-    window.addEventListener('storage', refresh);
+    let active = true;
+    const refresh = async () => {
+      try {
+        const data = await api<{ waterToday: number; waterGoalMl: number }>('/health/water');
+        if (active) setWater({ intake: data.waterToday, goal: data.waterGoalMl });
+      } catch (cause) {
+        console.error('Não foi possível carregar o resumo de hidratação.', cause);
+      }
+    };
+    const refreshOnWaterUpdate = () => { void refresh(); };
+    void refresh();
+    window.addEventListener(WATER_INTAKE_EVENT, refreshOnWaterUpdate);
     const timer = window.setInterval(refresh, 60_000);
     return () => {
-      window.removeEventListener(WATER_INTAKE_EVENT, refresh);
-      window.removeEventListener('storage', refresh);
+      active = false;
+      window.removeEventListener(WATER_INTAKE_EVENT, refreshOnWaterUpdate);
       window.clearInterval(timer);
     };
   }, []);
@@ -278,12 +288,12 @@ function CurrentCalendarView() {
       <header className="cal-current-toolbar">
         <div className="cal-current-status">
           {view === 'web' && <Clock />}
-          <div className="cal-water-status" aria-label={`${waterIntake} de ${DAILY_WATER_GOAL_ML} ml de água hoje`}>
+          <div className="cal-water-status" aria-label={`${water.intake} de ${water.goal} ml de água hoje`}>
             <svg aria-hidden="true" viewBox="0 0 24 24" fill="none">
               <path d="M7 3h10l-1 17H8L7 3Z" />
               <path d="M8 13h8" />
             </svg>
-            <span>{(waterIntake / 1000).toLocaleString('pt-BR', { minimumFractionDigits: 2 })} / {(DAILY_WATER_GOAL_ML / 1000).toLocaleString('pt-BR')} L</span>
+            <span>{(water.intake / 1000).toLocaleString('pt-BR', { minimumFractionDigits: 2 })} / {(water.goal / 1000).toLocaleString('pt-BR')} L</span>
           </div>
         </div>
       </header>

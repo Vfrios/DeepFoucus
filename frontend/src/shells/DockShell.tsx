@@ -55,8 +55,8 @@ function DockIcon({ name }: { name: DockIconName }) {
       )}
       {name === 'health' && (
         <>
-          <path d="M7 3.5h10l-1 17H8l-1-17Z" />
-          <path d="M8 13h8M10 8h4" />
+          <path d="M12 3.5a8.5 8.5 0 1 0 0 17 8.5 8.5 0 0 0 0-17Z" />
+          <path d="M12 8v7M8.5 11.5h7" />
         </>
       )}
     </svg>

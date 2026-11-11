@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { after, it } from 'node:test';
-import { callAI, gerarTarefasIA } from '../backend/src/lib/ai';
+import { callAI, gerarDietaSaude, gerarTarefasIA, gerarTreinoSaude, importarDadosSaude } from '../backend/src/lib/ai';
 
 const originalFetch = globalThis.fetch;
 const originalKeys = {
@@ -186,4 +186,108 @@ it('does not turn scheduled item descriptions into separate tasks', async () => 
   assert.equal(result.length, 1);
   assert.equal(result[0].titulo, 'Estudar herança');
   assert.equal(result[0].descricao, 'Exercício: escrever o método usando super.');
+});
+
+it('sends selected food preferences and restrictions to the diet model', async () => {
+  process.env.GROQ_API_KEY = 'test-groq-key';
+  delete process.env.GEMINI_API_KEY;
+  delete process.env.OPENROUTER_API_KEY;
+  let prompt = '';
+  globalThis.fetch = async (_input, init) => {
+    const body = JSON.parse(String(init?.body)) as { messages: Array<{ role: string; content: string }> };
+    prompt = body.messages.find((message) => message.role === 'user')?.content || '';
+    return new Response(JSON.stringify({
+      choices: [{ message: { content: '{"refeicoes":[]}' } }],
+    }), { status: 200, headers: { 'content-type': 'application/json' } });
+  };
+
+  await gerarDietaSaude({
+    peso: 70,
+    altura: 170,
+    objetivo: 'manutenção do peso',
+    preferencias: ['Frango', 'Arroz'],
+    restricoes: ['Jiló'],
+  });
+
+  assert.match(prompt, /"preferencias":\["Frango","Arroz"\]/);
+  assert.match(prompt, /"restricoes":\["Jiló"\]/);
+  assert.match(prompt, /170 cm/);
+});
+
+it('extracts and sanitizes health data from imported workout and diet text', async () => {
+  process.env.GROQ_API_KEY = 'test-groq-key';
+  delete process.env.GEMINI_API_KEY;
+  delete process.env.OPENROUTER_API_KEY;
+  const sourceText = 'Treino ABC. Gosto de frango e arroz; evito peixe e tenho restrição a lactose.';
+  let prompt = '';
+  globalThis.fetch = async (_input, init) => {
+    const body = JSON.parse(String(init?.body)) as { messages: Array<{ role: string; content: string }> };
+    prompt = body.messages.find((message) => message.role === 'user')?.content || '';
+    return new Response(JSON.stringify({
+      choices: [{
+        message: {
+          content: JSON.stringify({
+            alimentosPreferidos: ['Frango', 'Arroz', 'Frango'],
+            alimentosQueNaoGosta: ['Peixe'],
+            treinoBase: 'ABC',
+            restricoes: ['Lactose'],
+            extra: 'ignorado',
+          }),
+        },
+      }],
+    }), { status: 200, headers: { 'content-type': 'application/json' } });
+  };
+
+  const result = await importarDadosSaude(sourceText);
+
+  assert.match(prompt, /"textoAntigo":"Treino ABC/);
+  assert.deepEqual(result, {
+    alimentosPreferidos: ['Frango', 'Arroz'],
+    alimentosQueNaoGosta: ['Peixe'],
+    treinoBase: 'ABC',
+    restricoes: ['Lactose'],
+  });
+});
+
+it('sends the selected workout split, level and available hours to the training model', async () => {
+  process.env.GROQ_API_KEY = 'test-groq-key';
+  delete process.env.GEMINI_API_KEY;
+  delete process.env.OPENROUTER_API_KEY;
+  let systemPrompt = '';
+  let userPrompt = '';
+  globalThis.fetch = async (_input, init) => {
+    const body = JSON.parse(String(init?.body)) as {
+      messages: Array<{ role: string; content: string }>;
+    };
+    systemPrompt = body.messages.find((message) => message.role === 'system')?.content || '';
+    userPrompt = body.messages.find((message) => message.role === 'user')?.content || '';
+    return new Response(JSON.stringify({
+      choices: [{ message: { content: '{"treinos":[]}' } }],
+    }), { status: 200, headers: { 'content-type': 'application/json' } });
+  };
+
+  await gerarTreinoSaude({
+    peso: 70,
+    altura: 170,
+    idade: 30,
+    sexo: 'Outro',
+    nivel: 'intermediário',
+    diasDisponiveis: ['segunda-feira', 'quarta-feira', 'sexta-feira'],
+    disponibilidadePorDia: {
+      'segunda-feira': ['18:00'],
+      'quarta-feira': ['19:00'],
+      'sexta-feira': ['18:00'],
+    },
+    duracaoTreino: 75,
+    treinoBase: 'abc-3-dias',
+  });
+
+  assert.match(systemPrompt, /dias da semana distintos/i);
+  assert.match(systemPrompt, /horário disponível para aquele dia/i);
+  assert.match(systemPrompt, /duração pedida/i);
+  assert.match(userPrompt, /ABC de três sessões/);
+  assert.match(userPrompt, /"nivel":"intermediário"/);
+  assert.match(userPrompt, /"diasDisponiveis":\["segunda-feira","quarta-feira","sexta-feira"\]/);
+  assert.match(userPrompt, /"disponibilidadePorDia":\{"segunda-feira":\["18:00"\],"quarta-feira":\["19:00"\],"sexta-feira":\["18:00"\]\}/);
+  assert.match(userPrompt, /"duracaoMinutos":75/);
 });

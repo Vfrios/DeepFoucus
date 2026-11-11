@@ -52,6 +52,13 @@ export function getDb(): Promise<Db> {
       // Finanças: filtro por período e ordenação cronológica
       await d.collection('finance').createIndex({ data: -1 });
 
+      // Saúde: dados e históricos isolados por usuário
+      await d.collection('profile').createIndex({ email: 1 }, { unique: true, sparse: true });
+      await d.collection('workouts').createIndex({ email: 1, diaSemana: 1 });
+      await d.collection('workout_logs').createIndex({ email: 1, data: -1 });
+      await d.collection('water_logs').createIndex({ email: 1, data: -1 });
+      await d.collection('diets').createIndex({ email: 1, geradoEm: -1 });
+
       db = d;
       return d;
     })().catch((e) => {

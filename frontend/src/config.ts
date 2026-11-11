@@ -20,7 +20,7 @@ export const pages: PageDef[] = [
   { id: 'tasks', title: 'Tarefas', component: PageTasks, icon: 'tasks' },
   { id: 'finance', title: 'Finanças', component: PageFinance, icon: 'finance' },
   { id: 'shopping', title: 'Compras', component: PageShopping, icon: 'shopping' },
-  { id: 'health', title: 'Água e Saúde', component: PageHealth, icon: 'health' },
+  { id: 'health', title: 'Saúde', component: PageHealth, icon: 'health' },
 ];
 
 export function pagesForRole(role: UserRole): PageDef[] {
