@@ -1,10 +1,12 @@
 import { NextFunction, Request, Response } from 'express';
 import jwt from 'jsonwebtoken';
+import { isRole, Role } from '../lib/roles';
 
 export interface AuthenticatedUser {
   email: string;
   name: string | null;
   picture: string | null;
+  role: Role;
 }
 
 declare global {
@@ -34,7 +36,8 @@ export function jwtAuth(req: Request, res: Response, next: NextFunction): void {
     if (
       typeof payload === 'string' ||
       typeof payload.email !== 'string' ||
-      !payload.email
+      !payload.email ||
+      !isRole(payload.role)
     ) {
       res.status(401).json({ error: 'unauthorized' });
       return;
@@ -44,6 +47,7 @@ export function jwtAuth(req: Request, res: Response, next: NextFunction): void {
       email: payload.email,
       name: typeof payload.name === 'string' ? payload.name : null,
       picture: typeof payload.picture === 'string' ? payload.picture : null,
+      role: payload.role,
     };
     next();
   } catch {

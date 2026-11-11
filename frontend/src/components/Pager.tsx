@@ -26,6 +26,16 @@ export default function Pager({ pages, lockable, onState }: Props) {
     return () => window.removeEventListener('wd:goto', onGoto);
   }, [p.scrollTo]);
 
+  useEffect(() => {
+    const page = pages[p.index];
+    if (!page) return;
+
+    const url = new URL(location.href);
+    if (url.searchParams.get('page') === page.id) return;
+    url.searchParams.set('page', page.id);
+    history.replaceState(null, '', url.toString());
+  }, [p.index, pages]);
+
   return (
     <div
       className={`pager${p.locked ? ' is-locked' : ''}`}

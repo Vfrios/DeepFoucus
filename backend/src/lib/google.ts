@@ -62,7 +62,7 @@ export interface GoogleProfile {
   picture: string | null;
 }
 
-export async function saveCode(code: string, expectedEmail?: string): Promise<GoogleProfile> {
+async function exchangeCode(code: string) {
   const auth = oauthClient();
   const { tokens } = await auth.getToken(code);
   auth.setCredentials(tokens);
@@ -77,7 +77,26 @@ export async function saveCode(code: string, expectedEmail?: string): Promise<Go
   if (!profile.email || data.verified_email !== true) {
     throw new Error('Google não retornou um e-mail verificado.');
   }
-  if (expectedEmail && profile.email.toLowerCase() !== expectedEmail.toLowerCase()) {
+  return { tokens, profile };
+}
+
+export async function getProfileFromCode(code: string): Promise<GoogleProfile> {
+  return (await exchangeCode(code)).profile;
+}
+
+export async function saveCode(
+  code: string,
+  expectedEmail?: string,
+  allowedEmails?: string[]
+): Promise<GoogleProfile> {
+  const { tokens, profile } = await exchangeCode(code);
+  if (expectedEmail && profile.email?.toLowerCase() !== expectedEmail.toLowerCase()) {
+    throw new Error('google_account_not_allowed');
+  }
+  if (
+    allowedEmails &&
+    !allowedEmails.some((email) => profile.email?.toLowerCase() === email.trim().toLowerCase())
+  ) {
     throw new Error('google_account_not_allowed');
   }
 

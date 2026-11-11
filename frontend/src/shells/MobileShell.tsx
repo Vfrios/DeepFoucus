@@ -1,11 +1,16 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import Pager from '../components/Pager';
 import Sidebar from '../components/Sidebar';
-import { pages } from '../config';
-
-const mobilePages = pages.filter((p) => p.mobile);
+import { pagesForRole } from '../config';
+import { useAuth } from '../AuthContext';
 
 export default function MobileShell() {
+  const { role } = useAuth();
+  const mobilePages = useMemo(() => {
+    if (!role) return [];
+    const authorizedPages = pagesForRole(role);
+    return role === 'owner' ? authorizedPages.filter((page) => page.mobile) : authorizedPages;
+  }, [role]);
   const [st, setSt] = useState({ index: 0, locked: false });
   const [menuOpen, setMenuOpen] = useState(false);
 

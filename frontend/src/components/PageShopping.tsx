@@ -1,6 +1,7 @@
 import { FormEvent, useCallback, useEffect, useState } from 'react';
 import { api } from '../lib/api';
 import { subscribeRealtime } from '../lib/realtime';
+import { useAuth } from '../AuthContext';
 
 interface ShoppingItem {
   _id: string;
@@ -10,6 +11,8 @@ interface ShoppingItem {
 }
 
 export default function PageShopping() {
+  const { role } = useAuth();
+  const isGuest = role === 'guest';
   const [items, setItems] = useState<ShoppingItem[]>([]);
   const [input, setInput] = useState('');
   const [error, setError] = useState('');
@@ -74,7 +77,7 @@ export default function PageShopping() {
   };
 
   return (
-    <main className="shopping-page">
+    <main className={`shopping-page${isGuest ? ' guest-shopping-page' : ''}`}>
       <h2 className="page-title">Lista de Compras</h2>
       <form className="add shopping-add" onSubmit={addItem}>
         <input
@@ -84,8 +87,8 @@ export default function PageShopping() {
           placeholder="Adicionar item..."
           maxLength={200}
         />
-        <button className="btn" type="submit" disabled={saving || !input.trim()}>
-          {saving ? 'Adicionando…' : 'Adicionar'}
+        <button className={`btn${isGuest ? ' guest-add-button' : ''}`} type="submit" disabled={saving || !input.trim()}>
+          {saving ? 'Adicionando…' : isGuest ? 'Adicionar Item' : 'Adicionar'}
         </button>
       </form>
 

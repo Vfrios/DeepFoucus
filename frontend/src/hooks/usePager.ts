@@ -39,9 +39,15 @@ export function usePager(pages: PageDef[], lockable: boolean) {
   const navigablePages = pages.filter((page) => page.navigable !== false);
   const availableRows = [...new Set(navigablePages.map((page) => page.row - 1))].sort((a, b) => a - b);
   const startLocked = lockable && !!saved?.locked;
-  const startIndex = startLocked
-    ? Math.min(Math.max(saved!.index, 0), pages.length - 1)
-    : 0;
+  const requestedPageId = new URLSearchParams(location.search).get('page');
+  const requestedPageIndex = pages.findIndex(
+    (page) => page.id === requestedPageId && page.navigable !== false
+  );
+  const startIndex = requestedPageId !== null
+    ? Math.max(requestedPageIndex, 0)
+    : startLocked
+      ? Math.min(Math.max(saved!.index, 0), pages.length - 1)
+      : 0;
   const [locked, setLockedState] = useState(startLocked);
   const [index, setIndex] = useState(startIndex);
   const lockedRef = useRef(startLocked);

@@ -1,4 +1,4 @@
-import { Router } from 'express';
+import { NextFunction, Request, Response, Router } from 'express';
 import ExcelJS from 'exceljs';
 import { Collection, ObjectId } from 'mongodb';
 import { callAI } from '../lib/ai';
@@ -6,6 +6,7 @@ import { getDb } from '../lib/mongo';
 import { notifyAndroid } from '../lib/realtime';
 import { apiTokenAuth } from '../middleware/apiToken';
 import { jwtAuth } from '../middleware/jwtAuth';
+import { requireRole } from '../middleware/requireRole';
 
 interface Expense {
   _id?: ObjectId;
@@ -28,6 +29,15 @@ const r = Router();
 const collection = async (): Promise<Collection<Expense>> =>
   (await getDb()).collection<Expense>('finance');
 const exportOrigins = new Set(['iOS-Vitor', 'iOS-Sophia']);
+const financeRole = requireRole(['owner', 'finance']);
+
+function financeWriteAuth(req: Request, res: Response, next: NextFunction): void {
+  if (req.header('x-api-token')) {
+    apiTokenAuth(req, res, next);
+    return;
+  }
+  jwtAuth(req, res, () => financeRole(req, res, next));
+}
 
 export function currentMonthRange(now = new Date()): { start: Date; end: Date } {
   const parts = new Intl.DateTimeFormat('en-CA', {
@@ -176,7 +186,7 @@ export function createFinanceWorkbook(expenses: Expense[]): ExcelJS.Workbook {
   return workbook;
 }
 
-r.post('/add', apiTokenAuth, async (req, res, next) => {
+r.post('/add', financeWriteAuth, async (req, res, next) => {
   const body = req.body;
   const amount = parseAmount(body?.valor);
   const date = parseIsoDate(body?.data);
@@ -237,7 +247,7 @@ r.post('/add', apiTokenAuth, async (req, res, next) => {
   }
 });
 
-r.get('/', jwtAuth, async (_req, res, next) => {
+r.get('/', jwtAuth, financeRole, async (_req, res, next) => {
   try {
     const { start, end } = currentMonthRange();
     const expenses = await (await collection())
@@ -253,7 +263,7 @@ r.get('/', jwtAuth, async (_req, res, next) => {
   }
 });
 
-r.delete('/:id', jwtAuth, async (req, res, next) => {
+r.delete('/:id', jwtAuth, financeRole, async (req, res, next) => {
   if (!ObjectId.isValid(req.params.id)) {
     res.status(400).json({ error: 'id inválido' });
     return;
@@ -272,7 +282,7 @@ r.delete('/:id', jwtAuth, async (req, res, next) => {
   }
 });
 
-r.get('/exportar', jwtAuth, async (req, res, next) => {
+r.get('/exportar', jwtAuth, financeRole, async (req, res, next) => {
   try {
     const origin = req.query.origem;
     if (origin !== undefined && (typeof origin !== 'string' || !exportOrigins.has(origin))) {

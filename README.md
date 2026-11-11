@@ -9,11 +9,9 @@ Mesmo backend, mesmo MongoDB, mesmo Google Calendar.
 
 ## Estrutura
 
-```
 frontend/  React + Vite + TS (Embla, CSS puro, sw.ts)
 backend/   Express + TS (API + serve frontend/dist em produção)
 render.yaml
-```
 
 Rotas extras além do esboço original: `backend/src/routes/googleAuth.ts` (OAuth), `frontend/src/content.ts` (fotos/tabelas), `frontend/src/lib/push.ts`, `components/PushButton.tsx`.
 
@@ -71,12 +69,12 @@ Push é disparado em: tarefa criada, tarefa concluída e evento começando em at
 
 1. Suba o projeto para um repositório Git.
 2. Render → *New → Blueprint* → selecione o repo (lê `render.yaml`).
-3. Configure `MONGODB_URI`, `JWT_SECRET` e pelo menos uma chave entre `GROQ_API_KEY`, `GEMINI_API_KEY` e `OPENROUTER_API_KEY`. As variáveis do Google (`GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_REDIRECT_URI`, `FRONTEND_URL`) e VAPID (`VAPID_*`) só são necessárias se for usar essas integrações. `API_TOKEN` e `JWT_SECRET` são gerados automaticamente pelo Blueprint (veja em *Environment*); `MONGODB_DB` usa `wall_dashboard` por padrão.
+3. Configure `MONGODB_URI`, `JWT_SECRET`, `EMAIL_VITOR`, `EMAIL_SOPHIA`, `EMAIL_MAE` e pelo menos uma chave entre `GROQ_API_KEY`, `GEMINI_API_KEY` e `OPENROUTER_API_KEY`. As três variáveis de e-mail autorizam, respectivamente, os perfis `owner`, `finance` e `guest`. As variáveis do Google (`GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_REDIRECT_URI`, `FRONTEND_URL`) e VAPID (`VAPID_*`) só são necessárias se for usar essas integrações. `API_TOKEN` e `JWT_SECRET` são gerados automaticamente pelo Blueprint (veja em *Environment*); `MONGODB_DB` usa `wall_dashboard` por padrão.
 4. Após o 1º deploy você terá `https://SEU-APP.onrender.com`. Defina:
    - `GOOGLE_REDIRECT_URI=https://SEU-APP.onrender.com/api/auth/google/callback`
    - `FRONTEND_URL=https://SEU-APP.onrender.com`
 5. No Google Cloud, adicione essa mesma URL em *Authorized redirect URIs*.
-6. Autorize a conta proprietária em `https://SEU-APP.onrender.com/api/auth/google?token=SEU_API_TOKEN`, substituindo pelo `API_TOKEN` visível em *Environment*. Repita essa autorização quando os escopos solicitados pelo app mudarem. A tela pública de login só emite uma sessão para essa mesma conta Google.
+6. Autorize a conta proprietária em `https://SEU-APP.onrender.com/api/auth/google?token=SEU_API_TOKEN`, substituindo pelo `API_TOKEN` visível em *Environment*. Repita essa autorização quando os escopos solicitados pelo app mudarem. A tela pública de login emite sessões somente para os endereços configurados em `EMAIL_VITOR`, `EMAIL_SOPHIA` e `EMAIL_MAE`; esse login não substitui as credenciais Google do calendário.
 7. Depois do deploy, confirme que as políticas públicas estão acessíveis em `/privacy.html` e `/terms.html`; informe esses endereços na configuração de publicação do Google.
 
 Build: `npm install --include=dev && npm run build` · Start: `node backend/dist/index.js`. O Express serve `/api/*` e o `frontend/dist`.
@@ -86,7 +84,7 @@ Build: `npm install --include=dev && npm run build` · Start: `node backend/dist
 ## 6. Dispositivos e modos
 
 | Como abrir | Resultado |
-|---|---|
+| --- | --- |
 | Celular | MobileShell |
 | Desktop | WebShell |
 | Tablet | WebShell + banner único "Usar modo parede (kiosk)?" |
@@ -149,7 +147,7 @@ Para registrar um gasto com Atalhos, use **Obter Conteúdo do URL** com `POST` p
 }
 ```
 
-Quando `categoria` estiver vazia ou for `Outros`, o backend tenta inferi-la com a IA configurada. A listagem `GET /api/finance` e a exportação `GET /api/finance/exportar` exigem a sessão JWT do app.
+Quando `categoria` estiver vazia ou for `Outros`, o backend tenta inferi-la com a IA configurada. A listagem, exclusão e exportação financeira exigem JWT com perfil `owner` ou `finance`. O `POST /api/finance/add` aceita esses mesmos perfis ou o `API_TOKEN` usado pela integração existente com Atalhos.
 
 ## Notas
 

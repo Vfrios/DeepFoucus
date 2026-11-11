@@ -1,9 +1,10 @@
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
 import { useDevice } from './device/useDevice';
 import MobileShell from './shells/MobileShell';
 import WebShell from './shells/WebShell';
 import { KioskPrompt } from './components/DeviceOverride';
-import { clearToken, getToken } from './lib/api';
+import PageShopping from './components/PageShopping';
+import { useAuth } from './AuthContext';
 
 interface Props {
   loginResult: 'success' | 'error' | null;
@@ -44,22 +45,28 @@ function LoginScreen({ loginResult }: Props) {
 
 export default function App({ loginResult }: Props) {
   const { view } = useDevice();
-  const [authed, setAuthed] = useState(() => Boolean(getToken()));
+  const { role } = useAuth();
 
   useEffect(() => {
-    const onUnauthorized = () => {
-      clearToken();
-      setAuthed(false);
-    };
-    window.addEventListener('wd:unauthorized', onUnauthorized);
-    return () => window.removeEventListener('wd:unauthorized', onUnauthorized);
-  }, []);
+    if (role !== 'guest') return;
+    const url = new URL(location.href);
+    if (url.searchParams.get('page') === 'shopping') return;
+    url.searchParams.set('page', 'shopping');
+    history.replaceState(null, '', url.toString());
+  }, [role]);
 
-  if (!authed) return <LoginScreen loginResult={loginResult} />;
+  if (!role) return <LoginScreen loginResult={loginResult} />;
+  if (role === 'guest') {
+    return (
+      <main className="guest-shopping-shell">
+        <PageShopping />
+      </main>
+    );
+  }
   return (
     <>
       {view === 'web' ? <WebShell /> : <MobileShell />}
-      <KioskPrompt />
+      {role === 'owner' && <KioskPrompt />}
     </>
   );
 }

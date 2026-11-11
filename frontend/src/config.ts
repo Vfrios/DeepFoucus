@@ -8,6 +8,7 @@ import PageFinance from './components/PageFinance';
 import PageMonthCalendar from './components/PageMonthCalendar';
 import PageWeekCalendar from './components/PageWeekCalendar';
 import EmptyPage from './components/EmptyPage';
+import type { UserRole } from './AuthContext';
 
 export interface PageDef {
   id: string;
@@ -30,3 +31,18 @@ export const pages: PageDef[] = [
   { id: 'shopping', title: 'Lista de Compras', component: PageShopping, mobile: false, row: 2, column: 3 },
   { id: 'finance', title: 'Finanças', component: PageFinance, mobile: false, row: 2, column: 4 },
 ];
+
+export function pagesForRole(role: UserRole): PageDef[] {
+  if (role === 'owner') return pages;
+
+  const visible = pages.filter((page) =>
+    role === 'finance'
+      ? page.id === 'finance' || page.id === 'shopping'
+      : page.id === 'shopping'
+  );
+  return visible.map((page, index) => ({
+    ...page,
+    row: 1,
+    column: (index + 1) as PageDef['column'],
+  }));
+}

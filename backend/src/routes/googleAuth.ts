@@ -1,8 +1,9 @@
 import { Router } from 'express';
 import jwt from 'jsonwebtoken';
-import { authUrl, checkState, saveCode, isConnected, getProfile } from '../lib/google';
+import { authUrl, checkState, saveCode, isConnected, getProfile, getProfileFromCode } from '../lib/google';
 import { safeEqual } from '../middleware/auth';
 import { jwtAuth } from '../middleware/jwtAuth';
+import { roleForEmail } from '../lib/roles';
 
 const r = Router();
 
@@ -16,7 +17,7 @@ r.get('/google', (req, res) => {
   res.redirect(authUrl());
 });
 
-// Login público restrito à conta Google autorizada no bootstrap do app.
+// Login público; o callback autoriza apenas os e-mails configurados para os perfis.
 r.get('/login', async (_req, res) => {
   try {
     const profile = await getProfile();
@@ -30,26 +31,28 @@ r.get('/login', async (_req, res) => {
   }
 });
 
-// O callback valida o fluxo, verifica a conta autorizada e emite o JWT da sessão.
+// O login verifica a identidade sem substituir as credenciais Google do aplicativo.
 r.get('/google/callback', async (req, res) => {
   try {
     const flow = checkState(String(req.query.state || ''));
     if (!flow) throw new Error('state inválido ou expirado');
 
-    const authorizedProfile = flow === 'login' ? await getProfile() : null;
-    if (flow === 'login' && !authorizedProfile?.email) {
+    if (flow === 'login' && !(await getProfile()).email) {
       throw new Error('A conta Google do aplicativo ainda não foi configurada.');
     }
 
-    const profile = await saveCode(
-      String(req.query.code || ''),
-      authorizedProfile?.email || undefined
-    );
+    const code = String(req.query.code || '');
+    const profile = flow === 'login'
+      ? await getProfileFromCode(code)
+      : await saveCode(code, undefined, process.env.EMAIL_VITOR ? [process.env.EMAIL_VITOR] : []);
+    const role = roleForEmail(profile.email);
+    if (!role) throw new Error('google_account_not_allowed');
+
     const secret = process.env.JWT_SECRET;
     if (!secret) throw new Error('JWT_SECRET não configurado.');
 
     const token = jwt.sign(
-      { email: profile.email, name: profile.name, picture: profile.picture },
+      { email: profile.email, name: profile.name, picture: profile.picture, role },
       secret,
       { algorithm: 'HS256', expiresIn: '30d', subject: profile.email || undefined }
     );

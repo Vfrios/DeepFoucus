@@ -1,12 +1,11 @@
 import { Router } from 'express';
 import { listCalendars, listEvents, CalEvent } from '../lib/google';
-import { jwtAuth } from '../middleware/jwtAuth';
 
 const r = Router();
 const cache = new Map<string, { at: number; data: CalEvent[] }>(); // cache curto: protege a cota do Google
 
 // GET /api/calendar/lists
-r.get('/lists', jwtAuth, async (_req, res) => {
+r.get('/lists', async (_req, res) => {
   try {
     res.json(await listCalendars());
   } catch (e: any) {

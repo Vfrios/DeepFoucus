@@ -1,14 +1,17 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import Pager from '../components/Pager';
 import Sidebar from '../components/Sidebar';
-import { pages } from '../config';
+import { pagesForRole } from '../config';
 import { api } from '../lib/api';
+import { useAuth } from '../AuthContext';
 
 interface Summary {
   streakDias: number;
 }
 
 export default function WebShell() {
+  const { role } = useAuth();
+  const pages = useMemo(() => role ? pagesForRole(role) : [], [role]);
   const [st, setSt] = useState({ index: 0, locked: false });
   const [menuOpen, setMenuOpen] = useState(false);
   const [streak, setStreak] = useState(0);

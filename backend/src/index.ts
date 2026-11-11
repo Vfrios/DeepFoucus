@@ -5,6 +5,7 @@ import { createServer } from 'http';
 import path from 'path';
 import { deviceMiddleware } from './middleware/device';
 import { jwtAuth } from './middleware/jwtAuth';
+import { requireRole } from './middleware/requireRole';
 import { attachWebSocketServer } from './lib/realtime';
 import deviceRoute from './routes/device';
 import googleAuthRoute from './routes/googleAuth';
@@ -36,12 +37,12 @@ app.use('/api/device', deviceRoute);
 app.use('/api/auth', googleAuthRoute);
 
 // Protegidas por Bearer
-app.use('/api/calendar', jwtAuth, calendarRoute);
-app.use('/api/tasks', jwtAuth, tasksRoute);
+app.use('/api/calendar', jwtAuth, requireRole(['owner']), calendarRoute);
+app.use('/api/tasks', jwtAuth, requireRole(['owner']), tasksRoute);
 app.use('/api/stats', jwtAuth, statsRoute);
 app.use('/api/push', jwtAuth, pushRoute);
-app.use('/api/notes', jwtAuth, notesRoute);
-app.use('/api/shopping', jwtAuth, shoppingRoute);
+app.use('/api/notes', jwtAuth, requireRole(['owner']), notesRoute);
+app.use('/api/shopping', jwtAuth, requireRole(['owner', 'finance', 'guest']), shoppingRoute);
 app.use('/api/ai', aiRoute);
 app.use('/api/finance', financeRoute);
 app.use('/api', (_req, res) => res.status(404).json({ error: 'not_found' }));

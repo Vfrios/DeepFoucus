@@ -144,6 +144,17 @@ h1, h2, h3 { margin: 0; font-weight: 600; }
 .shopping-check { width: 30px; height: 30px; flex: none; accent-color: var(--accent); }
 .shopping-add { margin: 12px 0 16px; }
 .shopping-error { margin: 10px 0; color: var(--danger); }
+.guest-shopping-shell { height: 100dvh; overflow-y: auto; padding: max(24px, env(safe-area-inset-top)) max(20px, env(safe-area-inset-right)) max(24px, env(safe-area-inset-bottom)) max(20px, env(safe-area-inset-left)); }
+.guest-shopping-page { max-width: 960px; min-height: 100%; margin: 0 auto; display: flex; flex-direction: column; }
+.guest-shopping-page .page-title { font-size: clamp(2rem, 6vw, 3.25rem); margin: 12px 0 20px; }
+.guest-shopping-page .shopping-add { display: grid; grid-template-columns: 1fr; gap: 12px; margin: 12px 0 24px; }
+.guest-shopping-page .shopping-add input { min-height: 72px; padding: 18px; font-size: 1.4rem; }
+.guest-shopping-page .guest-add-button { min-height: 88px; border-radius: 18px; font-size: 1.7rem; }
+.guest-shopping-page .shopping-list { gap: 12px; }
+.guest-shopping-page .shopping-list li { min-height: 76px; padding: 12px 14px; }
+.guest-shopping-page .shopping-list .task-text { font-size: 1.45rem; }
+.guest-shopping-page .shopping-check { width: 38px; height: 38px; }
+.guest-shopping-page .shopping-list .icon-btn { width: 48px; height: 48px; font-size: 1.25rem; }
 
 .finance-page { max-width: 1280px; margin: 0 auto; padding-bottom: 20px; }
 .finance-header { display: flex; justify-content: space-between; align-items: center; gap: 16px; flex-wrap: wrap; margin-bottom: 22px; }
