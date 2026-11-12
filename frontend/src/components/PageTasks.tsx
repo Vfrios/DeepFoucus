@@ -108,7 +108,7 @@ function DateInput({
 const horaValida24h = (value: string) => /^(?:[01]\d|2[0-3]):[0-5]\d$/.test(value);
 
 const hhmm = (iso: string | null) =>
-  iso ? new Date(iso).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : '';
+  iso ? new Date(iso).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }) : '';
 
 const faixa = (t: Task) => {
   if (!t.inicio) return 'Sem horário';

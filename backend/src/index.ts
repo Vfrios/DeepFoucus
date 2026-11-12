@@ -17,7 +17,7 @@ import notesRoute from './routes/notes';
 import shoppingRoute from './routes/shopping';
 import aiRoute from './routes/ai';
 import financeRoute from './routes/finance';
-import healthRoute from './routes/health';
+import healthRoute, { startWorkoutSessionJob } from './routes/health';
 
 const app = express();
 const PROD = process.env.NODE_ENV === 'production';
@@ -42,7 +42,7 @@ app.use('/api/calendar', jwtAuth, requireRole(['owner']), calendarRoute);
 app.use('/api/tasks', jwtAuth, requireRole(['owner']), tasksRoute);
 app.use('/api/stats', jwtAuth, statsRoute);
 app.use('/api/push', jwtAuth, pushRoute);
-app.use('/api/health', jwtAuth, requireRole(['owner']), healthRoute);
+app.use('/api/health', healthRoute);
 app.use('/api/notes', jwtAuth, requireRole(['owner']), notesRoute);
 app.use('/api/shopping', jwtAuth, requireRole(['owner', 'finance', 'guest']), shoppingRoute);
 app.use('/api/ai', aiRoute);
@@ -69,6 +69,13 @@ app.use((err: any, _req: express.Request, res: express.Response, _next: express.
 
 initVapid();
 startReminderJob();
+const runWorkoutSessionJob = () => {
+  startWorkoutSessionJob().catch((error) => {
+    console.error('[health] workout session job failed:', error instanceof Error ? error.message : String(error));
+  });
+};
+runWorkoutSessionJob();
+setInterval(runWorkoutSessionJob, 5 * 60 * 1000);
 const server = createServer(app);
 attachWebSocketServer(server);
 server.listen(PORT, () => console.log(`Wall Dashboard na porta ${PORT} (${PROD ? 'produção' : 'dev'})`));

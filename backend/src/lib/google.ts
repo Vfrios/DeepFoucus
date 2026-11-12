@@ -235,6 +235,7 @@ export interface CalendarTask {
   fim?: string | null;
   feito?: boolean;
   calendarId?: string;
+  colorId?: string;
 }
 
 const calendarDateTime = (value: string) => new Date(value).toISOString();
@@ -257,6 +258,7 @@ export async function createCalendarEvent(task: CalendarTask): Promise<string | 
         description: task.descricao || 'Criado pelo Wall Dashboard',
         start: { dateTime: calendarDateTime(task.inicio), timeZone: 'America/Sao_Paulo' },
         end: { dateTime: calendarDateTime(end.toISOString()), timeZone: 'America/Sao_Paulo' },
+        ...(task.colorId ? { colorId: task.colorId } : {}),
       },
     });
 

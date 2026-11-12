@@ -56,6 +56,9 @@ export function getDb(): Promise<Db> {
       await d.collection('profile').createIndex({ email: 1 }, { unique: true, sparse: true });
       await d.collection('workouts').createIndex({ email: 1, diaSemana: 1 });
       await d.collection('workout_logs').createIndex({ email: 1, data: -1 });
+      await d.collection('workout_logs').createIndex({ email: 1, exercicio: 1, data: -1 });
+      await d.collection('workout_sessions').createIndex({ email: 1, sessionKey: 1 }, { unique: true });
+      await d.collection('workout_sessions').createIndex({ email: 1, status: 1, scheduledFor: -1 });
       await d.collection('water_logs').createIndex({ email: 1, data: -1 });
       await d.collection('diets').createIndex({ email: 1, geradoEm: -1 });
 

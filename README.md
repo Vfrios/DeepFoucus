@@ -111,26 +111,113 @@ Use o **Fully Kiosk Browser**: Start URL `https://SEU-APP.onrender.com/?view=web
 - Precisa instalar a PWA na Tela de Início e **abrir pelo ícone** (no Safari comum não funciona).
 - No app instalado: Ajustes → **Ativar notificações** → permitir → **Enviar teste**.
 
-## 8. Atalhos do iPhone (LOSAI)
+## 8. Configurando o iPhone (Atalhos)
 
-No app **Atalhos**, crie o atalho **“LOSAI - Comando”**:
+O iPhone atua como controle remoto rápido do LOSAI usando o app **Atalhos (Shortcuts)** da Apple.
+Todas as chamadas usam respostas JSON leves e autenticação direta via cabeçalho HTTP:
+- **Cabeçalho:** `x-api-token`
+- **Valor:** Seu `API_TOKEN` privado configurado no Render / `.env`.
 
-1. Adicione a ação **“Obter Conteúdo do URL”** e use `https://deepfoucus.onrender.com/api/ai/command`.
-2. Em **Método**, selecione `POST`; em **Corpo da Solicitação**, selecione `JSON`.
-3. Envie `comando` (o texto ou ditado do usuário) e `contexto` (opcional).
-4. Em **Cabeçalhos**, adicione `x-api-token` com o valor de `API_TOKEN` configurado no Render. Mantenha esse token privado.
-5. Execute o atalho e use o campo `resposta` da resposta JSON para falar ou exibir o resultado.
+---
 
-Exemplo de corpo:
-
+### 1. Registrar Água Rápido
+Crie o atalho **“LOSAI - Beber Água”**:
+1. Adicione a ação **Obter Conteúdo do URL**.
+2. **URL:** `https://deepfoucus.onrender.com/api/health/water/quick-add` (ou `http://localhost:3001/api/health/water/quick-add` em dev)
+3. **Método:** `POST`
+4. **Cabeçalhos:**
+   - `x-api-token` : `SEU_API_TOKEN`
+5. **Corpo da Solicitação:** `JSON`
+   - `ml` (Número) : `250` (ou use um menu para escolher 250, 500, etc.)
+6. Exemplo de JSON enviado:
 ```json
 {
-  "comando": "Adicione creme de leite à lista de compras",
-  "contexto": ""
+  "ml": 250
+}
+```
+7. Resposta retornada:
+```json
+{
+  "sucesso": true,
+  "mensagem": "Água registrada: 250ml",
+  "totalHoje": 1200,
+  "meta": 2500
+}
+```
+8. Adicione a ação **Mostrar Notificação** ou **Falar Texto** usando `mensagem` ou `totalHoje`.
+
+---
+
+### 2. Check-in de Refeição
+Crie o atalho **“LOSAI - Registrar Refeição”**:
+1. Adicione a ação **Obter Conteúdo do URL**.
+2. **URL:** `https://deepfoucus.onrender.com/api/health/meals/log`
+3. **Método:** `POST`
+4. **Cabeçalhos:**
+   - `x-api-token` : `SEU_API_TOKEN`
+5. **Corpo da Solicitação:** `JSON`
+   - `tipoRefeicao` (Texto) : `Almoço` (pode usar ação anterior **Escolher do Menu**: Café da manhã, Lanche, Almoço, Pré-treino, Janta)
+6. Exemplo de JSON enviado:
+```json
+{
+  "tipoRefeicao": "Almoço"
+}
+```
+7. Resposta retornada:
+```json
+{
+  "sucesso": true,
+  "mensagem": "Almoço registrado!",
+  "caloriasConsumidas": 700
 }
 ```
 
-O endpoint identifica comandos de compra, criação de tarefa, consulta da agenda e lembrete de água. As rotas da lista de compras usadas pelo app continuam protegidas pela sessão do usuário.
+---
+
+### 3. Comandos Livres de IA (Universal)
+Crie o atalho **“LOSAI - Comando”**:
+1. Adicione a ação **Obter Conteúdo do URL**.
+2. **URL:** `https://deepfoucus.onrender.com/api/ai/command`
+3. **Método:** `POST`
+4. **Cabeçalhos:**
+   - `x-api-token` : `SEU_API_TOKEN`
+5. **Corpo da Solicitação:** `JSON`
+   - `comando` (Texto ou Ditado) : `Adicione leite na lista`
+   - `contexto` (Texto) : `atalho_ios`
+6. Exemplo de JSON enviado:
+```json
+{
+  "comando": "Adicione leite na lista",
+  "contexto": "atalho_ios"
+}
+```
+7. Resposta retornada:
+```json
+{
+  "resposta": "Adicionei Leite à lista de compras."
+}
+```
+8. Use a ação **Falar Texto** ou **Exibir Resultado** com a chave `resposta`.
+
+---
+
+### 4. Briefing Matinal ("Bom Dia")
+Crie o atalho **“LOSAI - Bom Dia”** (pode ser ativado automaticamente ao desligar o alarme matinal):
+1. Adicione a ação **Obter Conteúdo do URL**.
+2. **URL:** `https://deepfoucus.onrender.com/api/ai/briefing`
+3. **Método:** `GET`
+4. **Cabeçalhos:**
+   - `x-api-token` : `SEU_API_TOKEN`
+5. Não requer corpo.
+6. Resposta retornada:
+```json
+{
+  "texto": "Bom dia, Vitor! Você tem 2 compromissos e treino de A - Peito hoje. Sua meta de água é 2.5L. Tenha um ótimo dia!"
+}
+```
+7. Adicione a ação **Falar Texto** com a chave `texto` da resposta para que a Siri leia o resumo do seu dia assim que acordar.
+
+---
 
 ## 9. Dashboard financeiro
 
@@ -163,6 +250,47 @@ consumo registrado no servidor.
 Configure pelo menos uma chave de IA (`GROQ_API_KEY`, `GEMINI_API_KEY` ou `OPENROUTER_API_KEY`),
 as chaves VAPID e a autorização Google Calendar para usar todas as integrações. Os endpoints em
 `/api/health/*` exigem uma sessão JWT com perfil `owner`.
+
+### Atalho do iPhone: registrar refeição
+
+A rota `POST /api/health/meals/log` aceita JWT ou o cabeçalho `x-api-token`. Ela procura a refeição
+no plano de dieta atual, soma calorias e macros ao total do dia e registra o horário. Registrar a
+mesma refeição duas vezes no mesmo dia não duplica o total.
+
+No app **Atalhos**, crie o atalho **“LOSAI - Registrar Refeição”**:
+
+1. Adicione a ação **Obter Conteúdo do URL**.
+2. URL: `https://deepfoucus.onrender.com/api/health/meals/log`
+3. Método: `POST`
+4. Cabeçalho: `x-api-token` = `SEU_TOKEN` (o `API_TOKEN` privado do Render).
+5. Corpo da requisição: **JSON**, com o campo `tipoRefeicao` (texto):
+
+```json
+{ "tipoRefeicao": "Almoço" }
+```
+
+O valor deve ser o nome da refeição como aparece no plano (ex.: `Café da manhã`, `Lanche`, `Almoço`,
+`Pré-treino`, `Janta`); maiúsculas e acentos são ignorados. Se o nome não existir no plano, a
+resposta é `404`. Para escolher a refeição ao executar, adicione antes **Escolher do Menu** e passe o
+resultado como `tipoRefeicao`. A resposta traz `consumed` e `goal` (calorias e macros do dia).
+
+`GET /api/health/meals/today` retorna o consumido de hoje contra a meta diária.
+
+Da mesma forma, `POST /api/health/generate-diet` e `/generate-workout` aceitam `x-api-token` e
+`skip_preview=true` para gerar e salvar direto, sem o modal de revisão.
+
+## Debug e Testes
+
+Na aba **Academia & Água**, o modo de gerenciamento mostra a grade semanal e permite editar as
+fichas. O modo foco é ativado automaticamente até 15 minutos antes do próximo horário de treino.
+Para testar a interface manualmente, abra o console do navegador (F12) e digite:
+
+```javascript
+window.forceFocusMode(true);  // Ativa o modo foco
+window.forceFocusMode(false); // Volta para o gerenciamento
+```
+
+O valor forçado permanece até a próxima chamada ao comando ou até finalizar o treino.
 
 ## Notas
 

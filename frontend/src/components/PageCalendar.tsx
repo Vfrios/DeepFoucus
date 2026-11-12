@@ -23,7 +23,7 @@ const dayKey = (d: Date) =>
 
 const hhmm = (iso: string | null) =>
   iso
-    ? new Date(iso).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
+    ? new Date(iso).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', hourCycle: 'h23' })
     : '--:--';
 
 /** "14:00 – 15:00" ou "Sem horário" se inicio for null. */

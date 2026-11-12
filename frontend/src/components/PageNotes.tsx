@@ -227,6 +227,7 @@ function SummaryModal({
                         month: 'short',
                         hour: '2-digit',
                         minute: '2-digit',
+                        hourCycle: 'h23',
                       })}
                     </span>
                     {t.descricao && <p className="summary-desc">{t.descricao}</p>}

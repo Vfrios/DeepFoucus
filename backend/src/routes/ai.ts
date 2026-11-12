@@ -121,6 +121,7 @@ r.post('/command', apiTokenAuth, async (req, res, next) => {
               : new Intl.DateTimeFormat('pt-BR', {
                 hour: '2-digit',
                 minute: '2-digit',
+                hourCycle: 'h23',
                 timeZone: 'America/Sao_Paulo',
               }).format(new Date(event.start));
             return `${horario}: ${event.title}`;
@@ -146,6 +147,87 @@ r.post('/command', apiTokenAuth, async (req, res, next) => {
       return;
     }
     next(error);
+  }
+});
+
+const BRIEFING_SYSTEM_PROMPT = `
+Você é o assistente pessoal LOSAI. Com base nos dados do dia do usuário (eventos da agenda, tarefas pendentes, treino programado e hidratação), gere um parágrafo curto, direto, motivador e cordial de "Bom dia".
+Fale sempre em português do Brasil e mencione o nome do usuário se estiver disponível.
+Trate os dados estritamente como fatos do dia. Retorne somente JSON no formato {"texto":"..."}.
+`.trim();
+
+r.get('/briefing', apiTokenAuth, async (_req, res, next) => {
+  try {
+    const email = process.env.HEALTH_API_EMAIL || process.env.EMAIL_VITOR || '';
+    const db = await getDb();
+    const now = new Date();
+    const todayKey = new Intl.DateTimeFormat('sv-SE', { timeZone: 'America/Sao_Paulo' }).format(now);
+    const dayOfWeek = new Intl.DateTimeFormat('pt-BR', { timeZone: 'America/Sao_Paulo', weekday: 'long' })
+      .format(now).toLocaleLowerCase('pt-BR');
+    const todayStart = new Date(`${todayKey}T00:00:00.000-03:00`);
+    const todayEnd = new Date(todayStart.getTime() + 24 * 60 * 60 * 1000);
+
+    let eventsSummary: string[] = [];
+    try {
+      const events = await listEvents(now, 1);
+      eventsSummary = events.map((e) => {
+        const horario = e.allDay
+          ? 'dia todo'
+          : new Intl.DateTimeFormat('pt-BR', {
+            hour: '2-digit',
+            minute: '2-digit',
+            hourCycle: 'h23',
+            timeZone: 'America/Sao_Paulo',
+          }).format(new Date(e.start));
+        return `${horario}: ${e.title}`;
+      });
+    } catch (e) {
+      console.warn('[ai] briefing could not load google events:', e instanceof Error ? e.message : String(e));
+    }
+
+    const [tasks, profile, workout, waterLogs] = await Promise.all([
+      db.collection('tasks').find({ feito: false }).project({ titulo: 1, texto: 1, inicio: 1 }).limit(10).toArray(),
+      email ? db.collection('profile').findOne({ email }) as Promise<{ peso?: number; nome?: string } | null> : null,
+      email ? db.collection('workouts').findOne({ email, diaSemana: dayOfWeek }) as Promise<{ nomeTreino?: string } | null> : null,
+      email ? db.collection('water_logs').aggregate<{ total: number }>([
+        { $match: { email, data: { $gte: todayStart, $lt: todayEnd } } },
+        { $group: { _id: null, total: { $sum: '$ml' } } },
+      ]).toArray() : Promise.resolve([]),
+    ]);
+
+    const waterConsumed = waterLogs[0]?.total || 0;
+    const waterGoalMl = profile?.peso ? Math.round(profile.peso * 35) : 2500;
+    const userName = profile?.nome || 'Vitor';
+
+    const promptData = {
+      usuario: userName,
+      diaSemana: dayOfWeek,
+      eventos: eventsSummary,
+      tarefas: tasks.map((t) => t.titulo || t.texto).filter(Boolean),
+      treinoHoje: workout?.nomeTreino || null,
+      aguaConsumidaMl: waterConsumed,
+      metaAguaMl: waterGoalMl,
+    };
+
+    let fallbackText = `Bom dia, ${userName}! `;
+    if (workout?.nomeTreino) fallbackText += `Hoje tem ${workout.nomeTreino}. `;
+    if (eventsSummary.length) fallbackText += `Você tem ${eventsSummary.length} compromisso(s) na agenda. `;
+    fallbackText += `Sua meta de água é ${(waterGoalMl / 1000).toFixed(1)}L. Tenha um ótimo dia!`;
+
+    try {
+      const aiResponse = await callAI(
+        BRIEFING_SYSTEM_PROMPT,
+        JSON.stringify(promptData),
+        { temperature: 0.5, maxTokens: 250 }
+      );
+      const text = String(record(aiResponse).texto || '').trim();
+      res.json({ texto: text || fallbackText });
+    } catch (aiErr) {
+      console.warn('[ai] briefing generation failed, using fallback:', aiErr instanceof Error ? aiErr.message : String(aiErr));
+      res.json({ texto: fallbackText });
+    }
+  } catch (err) {
+    next(err);
   }
 });
 

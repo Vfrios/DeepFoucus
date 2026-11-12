@@ -32,6 +32,7 @@ const currency = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: '
 const dateTime = new Intl.DateTimeFormat('pt-BR', {
   dateStyle: 'short',
   timeStyle: 'short',
+  hourCycle: 'h23',
   timeZone: 'America/Sao_Paulo',
 });
 

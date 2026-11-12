@@ -343,7 +343,7 @@ export async function gerarDietaSaude(input: DietaSaudeInput): Promise<unknown> 
       solicitacao: `Crie um plano alimentar de cinco refeições (Café da manhã, Lanche, Almoço, Pré-treino e Janta) focado em ${input.objetivo} para uma pessoa de ${input.peso} kg e ${input.altura} cm.`,
       preferencias: input.preferencias,
       restricoes: input.restricoes,
-      formato: '{"refeicoes":[{"nome":"...","alimentos":["..."],"calorias":0,"macros":{"proteina":0,"carboidratos":0,"gordura":0}}]}',
+      formato: '{"refeicoes":[{"nome":"...","horario":"HH:MM","alimentos":["..."],"calorias":0,"macros":{"proteina":0,"carboidratos":0,"gordura":0}}]}',
     }),
     { temperature: 0.3, maxTokens: 1800 }
   );
