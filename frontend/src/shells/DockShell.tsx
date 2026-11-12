@@ -83,7 +83,10 @@ export default function DockShell({ mode, streak }: Props) {
     };
   });
   const [activeIndex, setActiveIndex] = useState(initialState.activeIndex);
-  const [locked, setLocked] = useState(initialState.locked);
+  const [lockedState, setLocked] = useState(initialState.locked);
+  // Cadeado (modo Parede) existe apenas no WebShell; no celular nunca trava.
+  const isWeb = mode === 'web';
+  const locked = isWeb && lockedState;
   const [menuOpen, setMenuOpen] = useState(false);
   const pointerStart = useRef<PointerStart | null>(null);
   const unlockTimer = useRef<number | null>(null);
@@ -132,6 +135,13 @@ export default function DockShell({ mode, streak }: Props) {
   };
 
   useEffect(() => cancelUnlock, []);
+  // MobileShell: libera a rolagem do documento (html/body/#root) enquanto montado.
+  useEffect(() => {
+    if (mode !== 'mobile') return;
+    const root = document.documentElement;
+    root.classList.add('is-mobile-shell');
+    return () => root.classList.remove('is-mobile-shell');
+  }, [mode]);
   useEffect(() => {
     if (mode === 'web') {
       localStorage.setItem('wd:pager', JSON.stringify({ locked, index: activeIndex }));
@@ -208,10 +218,10 @@ export default function DockShell({ mode, streak }: Props) {
         </nav>
       )}
 
-      {!locked && mode === 'web' && activePage?.id === 'calendar' && (
+      {isWeb && !locked && activePage?.id === 'calendar' && (
         <LockButton locked={locked} onLock={() => setLocked(true)} onUnlock={() => setLocked(false)} />
       )}
-      {locked && (
+      {isWeb && locked && (
         <LockButton locked onLock={() => setLocked(true)} onUnlock={() => setLocked(false)} />
       )}
 

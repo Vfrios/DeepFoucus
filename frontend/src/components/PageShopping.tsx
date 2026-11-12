@@ -144,7 +144,7 @@ export default function PageShopping() {
               />
               <span className="shopping-emoji" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><path d="m4 8 8-4 8 4-8 4-8-4Zm0 0v9l8 4 8-4V8M12 12v9" /></svg></span>
               {editingId === item._id ? <input className="shopping-edit-input" autoFocus value={editingText} maxLength={200} aria-label={`Editar ${item.item}`} onChange={(event) => setEditingText(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') void saveItemName(item); if (event.key === 'Escape') setEditingId(''); }} /> : <span className="task-text">{item.item}</span>}
-              <button className="icon-btn" type="button" aria-label={editingId === item._id ? `Salvar ${item.item}` : `Editar ${item.item}`} title={editingId === item._id ? 'Salvar' : 'Editar'} onClick={() => editingId === item._id ? void saveItemName(item) : (setEditingId(item._id), setEditingText(item.item))}><svg viewBox="0 0 24 24" aria-hidden="true" fill="none">{editingId === item._id ? <path d="m5 12 4 4L19 6" /> : <path d="m4 20 4.5-1 10-10a2.1 2.1 0 0 0-3-3l-10 10L4 20ZM14 7l3 3" />}</svg></button>
+              <button className="icon-btn" type="button" aria-label={editingId === item._id ? `Salvar ${item.item}` : `Editar ${item.item}`} title={editingId === item._id ? 'Salvar' : 'Editar'} onClick={() => editingId === item._id ? void saveItemName(item) : (setEditingId(item._id), setEditingText(item.item))}><svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">{editingId === item._id ? <path d="m5 12 4 4L19 6" /> : <path d="m4 20 4.5-1 10-10a2.1 2.1 0 0 0-3-3l-10 10L4 20ZM14 7l3 3" />}</svg></button>
               <button
                 className="icon-btn"
                 type="button"
@@ -152,7 +152,7 @@ export default function PageShopping() {
                 aria-label={`Excluir ${item.item}`}
                 title="Excluir item"
               >
-                <svg viewBox="0 0 24 24" aria-hidden="true" fill="none"><path d="M6 6l12 12M18 6 6 18" /></svg>
+                <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M6 6l12 12M18 6 6 18" /></svg>
               </button>
             </li>
           ))}

@@ -25,13 +25,14 @@ function decide(): { view: View; ask: boolean; device: Device } {
   const device = detectDevice();
   const q = new URLSearchParams(location.search).get('view');
   if (q === 'auto') localStorage.removeItem(VIEW_KEY);
-  else if (q === 'mobile' || q === 'web') {
+  // Celular nunca recebe o WebShell (modo Parede/cadeado), mesmo com override salvo.
+  if (device === 'mobile') return { view: 'mobile', ask: false, device };
+  if (q === 'mobile' || q === 'web') {
     localStorage.setItem(VIEW_KEY, q);
     return { view: q, ask: false, device };
   }
   const saved = localStorage.getItem(VIEW_KEY);
   if (saved === 'mobile' || saved === 'web') return { view: saved, ask: false, device };
-  if (device === 'mobile') return { view: 'mobile', ask: false, device };
   if (device === 'tablet') return { view: 'web', ask: true, device };
   return { view: 'web', ask: false, device };
 }
@@ -49,8 +50,11 @@ export function DeviceProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const setView = useCallback((v: View) => {
-    localStorage.setItem(VIEW_KEY, v);
-    setState((s) => ({ ...s, view: v, ask: false }));
+    setState((s) => {
+      const next: View = s.device === 'mobile' ? 'mobile' : v;
+      localStorage.setItem(VIEW_KEY, next);
+      return { ...s, view: next, ask: false };
+    });
   }, []);
 
   const clearOverride = useCallback(() => {
