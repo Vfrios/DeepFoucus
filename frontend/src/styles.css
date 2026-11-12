@@ -813,7 +813,7 @@ html.is-mobile-shell body {
   min-width: 0;
 }
 
-.shopping-list li .icon-btn+.icon-btn {
+.shopping-list li .icon-btn + .icon-btn {
   margin-left: -4px;
 }
 
@@ -7989,7 +7989,6 @@ th {
 
 /* MobileShell: fluxo continuo como app nativo; desktop/tablet mantem fit-to-screen. */
 @media (max-width: 768px) {
-
   html,
   body,
   #root {
@@ -8028,7 +8027,7 @@ th {
     overflow-x: hidden;
   }
 
-  .dock-page:not(.dock-page-calendar)>.page,
+  .dock-page:not(.dock-page-calendar) > .page,
   .shell-mobile .health-page,
   .shell-mobile .tasks-command-page {
     height: auto !important;
@@ -8066,7 +8065,7 @@ th {
     overflow: visible;
   }
 
-  .dock-page-calendar>.calendar-subviews {
+  .dock-page-calendar > .calendar-subviews {
     height: auto;
     min-height: 100dvh;
     overflow: visible;
@@ -8121,110 +8120,27 @@ th {
   }
 }
 
-.kanban-priority-badge {
-  display: inline-flex;
-  align-items: center;
-  width: fit-content;
-  margin-top: 8px;
-  padding: 3px 8px;
-  border: 1px solid;
-  border-radius: 999px;
-  font-size: 0.68rem;
-  font-weight: 700;
-  letter-spacing: .04em;
-  text-transform: uppercase;
-}
-
+.kanban-priority-badge { display: inline-flex; align-items: center; width: fit-content; margin-top: 8px; padding: 3px 8px; border: 1px solid; border-radius: 999px; font-size: 0.68rem; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; }
 /* CRUD additions: keep new controls within the existing glass/dark visual system. */
-.daily-plan-saved-list {
-  margin-top: 1.25rem;
-  display: grid;
-  gap: .65rem;
-}
-
-.daily-plan-saved-list h3 {
-  margin: 0 0 .25rem;
-}
-
-.daily-plan-saved-item {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
-  align-items: center;
-  gap: .65rem;
-  padding: .65rem .75rem;
-  border: 1px solid var(--line);
-  border-radius: 12px;
-  background: rgba(255, 255, 255, .035);
-}
-
-.daily-plan-saved-item>input[type="text"],
-.daily-plan-saved-item>input:not([type]) {
-  min-width: 0;
-  width: 100%;
-  border: 0;
-  background: transparent;
-  color: var(--paper);
-}
-
-.daily-plan-saved-item.is-done>input:not([type="checkbox"]) {
-  text-decoration: line-through;
-  opacity: .55;
-}
-
-.finance-row-actions {
-  display: inline-flex;
-  align-items: center;
-  justify-content: flex-end;
-  gap: .35rem;
-}
-
-.finance-expense-modal {
-  width: min(92vw, 520px);
-}
-
-.shopping-emoji svg {
-  width: 22px;
-  height: 22px;
-  stroke: currentColor;
-  stroke-width: 1.7;
-}
-
-.shopping-edit-input {
-  min-width: 0;
-  width: 100%;
-}
-
-.review-name-input {
-  min-width: 0;
-  width: min(100%, 260px);
-  font: inherit;
-  font-weight: 700;
-}
-
-.review-row-info li input {
-  width: 100%;
-  min-width: 0;
-  background: rgba(255, 255, 255, .04);
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  color: var(--paper);
-  padding: .4rem .55rem;
-}
-
+.daily-plan-saved-list { margin-top: 1.25rem; display: grid; gap: .65rem; }
+.daily-plan-saved-list h3 { margin: 0 0 .25rem; }
+.daily-plan-saved-item { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: .65rem; padding: .65rem .75rem; border: 1px solid var(--line); border-radius: 12px; background: rgba(255,255,255,.035); }
+.daily-plan-saved-item > input[type="text"], .daily-plan-saved-item > input:not([type]) { min-width: 0; width: 100%; border: 0; background: transparent; color: var(--paper); }
+.daily-plan-saved-item.is-done > input:not([type="checkbox"]) { text-decoration: line-through; opacity: .55; }
+.finance-row-actions { display: inline-flex; align-items: center; justify-content: flex-end; gap: .35rem; }
+.finance-expense-modal { width: min(92vw, 520px); }
+.shopping-emoji svg { width: 22px; height: 22px; stroke: currentColor; stroke-width: 1.7; }
+.shopping-edit-input { min-width: 0; width: 100%; }
+.review-name-input { min-width: 0; width: min(100%, 260px); font: inherit; font-weight: 700; }
+.review-row-info li input { width: 100%; min-width: 0; background: rgba(255,255,255,.04); border: 1px solid var(--line); border-radius: 8px; color: var(--paper); padding: .4rem .55rem; }
 @media (max-width: 720px) {
-  .finance-actions {
-    flex-wrap: wrap;
-  }
-
-  .calendar-nav {
-    flex-wrap: wrap;
-  }
+  .finance-actions { flex-wrap: wrap; }
+  .calendar-nav { flex-wrap: wrap; }
 }
 
 
 /* Mobile: força a rolagem global (última regra do arquivo, vence qualquer overflow/height herdado). */
 @media (max-width: 768px) {
-
   html,
   body,
   #root {
