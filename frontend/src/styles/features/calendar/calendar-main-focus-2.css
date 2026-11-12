@@ -1,0 +1,58 @@
+
+@media (max-width: 759px) {
+  .calendar-current-toolbar {
+    min-height: 72px;
+  }
+
+  .cal-current-status .clock-time {
+    font-size: clamp(2.4rem, 8vw, 3.4rem);
+  }
+
+  .cal-focus-web .clock-time {
+    font-size: clamp(2.4rem, 8vw, 3.4rem);
+  }
+
+  .cal-focus .cal-focus-grid {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+  }
+
+  .cal-focus .cal-day {
+    padding: 10px 12px;
+  }
+
+  .cal-focus .cal-day-head {
+    margin-bottom: 6px;
+  }
+
+  .cal-allday-slot {
+    min-height: 48px;
+    max-height: 58px;
+    gap: 5px;
+    margin-bottom: 6px;
+    padding: 4px;
+  }
+
+  .cal-allday-label {
+    min-width: 52px;
+    font-size: .62rem;
+  }
+
+  .cal-allday-event {
+    min-width: 110px;
+    padding: 3px 6px;
+  }
+
+  .cal-allday-event strong {
+    font-size: .7rem;
+  }
+}
+
+/* =========================================================
+   FASE 3 — Página 2: Agenda/Notion
+   ========================================================= */
+
+.tasks-page {
+  max-width: 980px;
+}

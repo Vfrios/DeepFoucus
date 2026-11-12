@@ -1,0 +1,137 @@
+
+.health-chart-legend {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+}
+
+.health-legend-toggle {
+  display: inline-flex;
+  min-height: 42px;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--ink);
+  color: var(--mute);
+  font: inherit;
+  font-size: .82rem;
+}
+
+.health-legend-toggle[aria-pressed="true"] {
+  border-color: var(--series-color);
+  color: var(--paper);
+}
+
+.health-legend-toggle strong {
+  color: var(--series-color);
+  font-size: .78rem;
+}
+
+.health-legend-dot {
+  width: 10px;
+  height: 10px;
+  flex: none;
+  border-radius: 50%;
+  background: var(--series-color);
+  opacity: .35;
+}
+
+.health-legend-toggle[aria-pressed="true"] .health-legend-dot {
+  opacity: 1;
+}
+
+@media (max-width: 950px) {
+  .health-top {
+    grid-template-columns: 1fr;
+    justify-items: center;
+    gap: 6px;
+  }
+
+  .health-title,
+  .health-profile-summary {
+    display: none;
+  }
+
+  .health-tabs {
+    justify-self: center;
+  }
+
+  .health-profile-fields {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .health-content-grid {
+    grid-template-columns: minmax(0, .8fr) minmax(0, 1.2fr);
+  }
+
+  .health-meal-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 680px) {
+  .health-top {
+    gap: 4px;
+  }
+
+  .health-tabs {
+    width: 100%;
+    justify-content: center;
+    gap: 1px;
+  }
+
+  .health-tab {
+    min-width: 0;
+    flex: 1;
+    flex-direction: column;
+    gap: 3px;
+    padding: 5px 3px;
+    font-size: .7rem;
+  }
+
+  .health-tab svg {
+    width: 17px;
+    height: 17px;
+  }
+
+  .health-content-grid {
+    height: auto;
+    grid-template-columns: 1fr;
+  }
+
+  .workout-panel {
+    height: min(56vh, 500px);
+  }
+
+  .health-profile-fields {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .health-profile-bottom {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .health-profile-bottom .btn {
+    width: 100%;
+  }
+
+  .health-meal-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .health-exercise-row {
+    grid-template-columns: minmax(80px, 1fr) 72px 72px 38px;
+    gap: 5px;
+  }
+}
+
+/* Premium health dashboard refinements */
+.health-page {
+  height: 100%;
+  overflow: hidden;
+  gap: 12px;
+}

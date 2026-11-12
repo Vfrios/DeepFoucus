@@ -1,0 +1,36 @@
+
+.daily-plan-saved-list h3 {
+  margin: 0 0 .25rem;
+}
+
+.daily-plan-saved-item {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: .65rem;
+  padding: .65rem .75rem;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, .035);
+}
+
+.daily-plan-saved-item>input[type="text"],
+.daily-plan-saved-item>input:not([type]) {
+  min-width: 0;
+  width: 100%;
+  border: 0;
+  background: transparent;
+  color: var(--paper);
+}
+
+.daily-plan-saved-item.is-done>input:not([type="checkbox"]) {
+  text-decoration: line-through;
+  opacity: .55;
+}
+
+.finance-row-actions {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: .35rem;
+}

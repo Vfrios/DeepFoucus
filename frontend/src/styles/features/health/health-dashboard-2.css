@@ -1,0 +1,374 @@
+
+.health-metric-card {
+  position: relative;
+  display: grid;
+  min-height: 76px;
+  align-content: center;
+  gap: 5px;
+  overflow: hidden;
+  padding: 12px 15px;
+  border: 1px solid color-mix(in srgb, var(--series-color) 25%, var(--line));
+  border-radius: 13px;
+  background: linear-gradient(130deg, color-mix(in srgb, var(--series-color) 8%, var(--panel)), var(--panel));
+}
+
+.health-metric-card>span {
+  color: var(--mute);
+  font-size: .78rem;
+}
+
+.health-metric-card>strong {
+  color: var(--series-color);
+  font-size: 1.35rem;
+  line-height: 1.15;
+  font-variant-numeric: tabular-nums;
+}
+
+.health-metric-card.is-loading {
+  min-height: 76px;
+  border-color: var(--line);
+  background: linear-gradient(100deg, var(--panel) 25%, #2a3542 45%, var(--panel) 65%);
+  background-size: 220% 100%;
+  animation: health-shimmer 1.3s linear infinite;
+}
+
+@keyframes health-shimmer {
+  to {
+    background-position: -220% 0;
+  }
+}
+
+.health-chart-wrap {
+  flex: 1;
+  min-height: 0;
+}
+
+.health-chart {
+  max-height: 36vh;
+}
+
+.health-chart g {
+  transition: opacity .25s ease;
+}
+
+.health-chart-legend {
+  gap: 10px;
+}
+
+.health-legend-toggle {
+  min-height: 46px;
+  gap: 9px;
+  padding: 8px 14px;
+  transition: border-color .18s ease, background .18s ease, transform .18s ease, opacity .18s ease;
+}
+
+.health-legend-toggle:hover {
+  transform: translateY(-2px);
+}
+
+.health-legend-toggle.is-focused {
+  border-color: var(--series-color);
+  background: color-mix(in srgb, var(--series-color) 10%, var(--ink));
+}
+
+.health-legend-toggle strong {
+  color: var(--series-color);
+}
+
+.health-tab-body {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.health-tab-body>[role="tabpanel"] {
+  min-height: 0;
+}
+
+.health-profile-panel {
+  min-height: 100%;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+}
+
+.health-import-panel {
+  display: grid;
+  gap: 10px;
+  padding: 14px;
+  border: 1px solid rgba(255, 255, 255, .09);
+  border-radius: 13px;
+  background: linear-gradient(145deg, rgba(255, 255, 255, .045), rgba(255, 255, 255, .015));
+}
+
+.health-import-panel .health-section-heading h3,
+.health-import-result h4 {
+  margin: 0;
+  font-size: .96rem;
+}
+
+.health-import-panel textarea {
+  min-height: 104px;
+  resize: vertical;
+}
+
+.health-import-button {
+  justify-self: start;
+  min-height: 44px;
+}
+
+.health-import-result {
+  display: grid;
+  gap: 10px;
+  animation: health-import-fade-in .28s ease both;
+}
+
+.health-import-group {
+  display: grid;
+  gap: 6px;
+}
+
+.health-import-label {
+  color: var(--mute);
+  font-size: .8rem;
+}
+
+.health-import-chips {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.health-import-chip {
+  display: inline-flex;
+  min-height: 30px;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px 4px 11px;
+  border: 1px solid rgba(134, 215, 192, .28);
+  border-radius: 999px;
+  background: rgba(134, 215, 192, .09);
+  color: var(--accent);
+  font-size: .8rem;
+}
+
+.health-import-chip button {
+  display: grid;
+  width: 20px;
+  height: 20px;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: inherit;
+}
+
+.health-import-chip button svg {
+  width: 13px;
+  height: 13px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+}
+
+.health-import-chip button:hover {
+  background: rgba(255, 255, 255, .1);
+}
+
+.health-import-add {
+  display: flex;
+  gap: 7px;
+}
+
+.health-import-add input {
+  min-width: 0;
+  flex: 1;
+  min-height: 38px;
+  padding: 7px 9px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--ink);
+  color: var(--paper);
+  font: inherit;
+}
+
+.health-import-add input:focus {
+  border-color: var(--accent);
+  outline: none;
+}
+
+.health-import-workout {
+  margin: 0;
+  color: var(--mute);
+  font-size: .84rem;
+}
+
+.health-import-workout strong {
+  color: var(--paper);
+}
+
+.health-import-skeleton {
+  display: grid;
+  gap: 7px;
+  padding: 4px 0;
+}
+
+.health-import-skeleton span {
+  height: 14px;
+  border-radius: 99px;
+  background: linear-gradient(100deg, var(--panel) 25%, #2a3542 45%, var(--panel) 65%);
+  background-size: 220% 100%;
+  animation: health-shimmer 1.3s linear infinite;
+}
+
+.health-import-skeleton span:nth-child(1) {
+  width: 86%;
+}
+
+.health-import-skeleton span:nth-child(2) {
+  width: 68%;
+}
+
+.health-import-skeleton span:nth-child(3) {
+  width: 76%;
+}
+
+.health-objectives {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.health-objective {
+  min-height: 42px;
+  padding: 8px 16px;
+  border: 1px solid var(--line);
+  border-radius: 11px;
+  background: var(--ink);
+  color: var(--mute);
+  font: inherit;
+}
+
+.health-objective[aria-pressed="true"] {
+  border-color: var(--accent);
+  background: rgba(134, 215, 192, .13);
+  color: var(--accent);
+  box-shadow: 0 0 14px rgba(134, 215, 192, .1);
+}
+
+.health-objective:focus-visible,
+.health-import-chip button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+@keyframes health-import-fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(5px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (max-width: 950px) {
+  .health-top {
+    min-height: 56px;
+  }
+
+  .health-profile-fields {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .health-meal-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 680px) {
+  .health-page {
+    gap: 7px;
+  }
+
+  .health-tabs {
+    gap: 2px;
+    padding: 4px;
+  }
+
+  .health-tab {
+    min-height: 44px;
+    flex-direction: row;
+    gap: 5px;
+    padding: 5px 7px;
+    font-size: .68rem;
+  }
+
+  .health-tab svg {
+    width: 19px;
+    height: 19px;
+  }
+
+  .health-profile-fields {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .health-meal-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .health-water-ring-wrap {
+    width: min(200px, 28vh);
+  }
+
+  .health-exercise-row {
+    grid-template-columns: minmax(74px, 1fr) 76px 76px 42px;
+    gap: 5px;
+  }
+}
+
+@media (max-height: 700px) {
+  .health-page {
+    gap: 7px;
+  }
+
+  .health-top {
+    min-height: 52px;
+  }
+
+  .health-tab {
+    min-height: 40px;
+  }
+
+  .health-panel {
+    gap: 9px;
+    padding: 12px 14px;
+  }
+
+  .health-profile-fields {
+    gap: 7px;
+  }
+
+  .health-chip {
+    min-height: 32px;
+    padding-block: 4px;
+  }
+
+  .health-choice-group legend {
+    margin-bottom: 4px;
+  }
+
+  .health-water-ring-wrap {
+    width: min(205px, 30vh);
+  }
+
+  .health-metric-card,
+  .health-metric-card.is-loading {
+    min-height: 62px;
+  }
+}

@@ -19,8 +19,6 @@ import aiRoute from './routes/ai';
 import financeRoute from './routes/finance';
 import healthRoute, { startWorkoutSessionJob, rotateWaterMetrics } from './routes/health';
 import dailyPlansRoute from './routes/dailyPlans';
-import { generateWeeklyReport } from './routes/ai';
-import { getDb } from './lib/mongo';
 import cron from 'node-cron';
 import { runScheduledAgent } from './agents/scheduler';
 import { agentLog } from './agents/log';
@@ -91,24 +89,6 @@ setInterval(runWorkoutSessionJob, 5 * 60 * 1000);
 const runMetricRotation = () => rotateWaterMetrics();
 runMetricRotation();
 setInterval(runMetricRotation, 24 * 60 * 60 * 1000);
-let lastWeeklyReportKey = '';
-const runWeeklyReportJob = async () => {
-  const now = new Date();
-  const key = new Intl.DateTimeFormat('sv-SE', { timeZone: 'America/Sao_Paulo' }).format(now);
-  const weekday = new Intl.DateTimeFormat('en-US', { timeZone: 'America/Sao_Paulo', weekday: 'short' }).format(now);
-  const hour = Number(new Intl.DateTimeFormat('en-GB', { timeZone: 'America/Sao_Paulo', hour: '2-digit', hourCycle: 'h23' }).format(now));
-  if (weekday !== 'Sun' || hour < 21 || lastWeeklyReportKey === key) return;
-  lastWeeklyReportKey = key;
-  try {
-    const db = await getDb();
-    const emails = await db.collection('profile').distinct('email', { email: { $type: 'string' } });
-    for (const email of emails) {
-      const texto = await generateWeeklyReport(email);
-      await db.collection('weekly_reports').insertOne({ email, texto, geradoEm: now, semana: key });
-    }
-  } catch (error) { console.warn('[ai] weekly report job failed:', error instanceof Error ? error.message : String(error)); }
-};
-setInterval(() => { void runWeeklyReportJob(); }, 60 * 1000);
 const server = createServer(app);
 attachWebSocketServer(server);
 server.listen(PORT, () => console.log(`Wall Dashboard na porta ${PORT} (${PROD ? 'produção' : 'dev'})`));

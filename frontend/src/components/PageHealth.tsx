@@ -338,7 +338,6 @@ export default function PageHealth() {
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
   const [mealLogs, setMealLogs] = useState<MealsToday | null>(null);
-  const [weeklyReport, setWeeklyReport] = useState('');
   const [expandedMeals, setExpandedMeals] = useState<string[]>([]);
   const [loggingMeal, setLoggingMeal] = useState<string | null>(null);
   const [previewData, setPreviewData] = useState<Review | null>(null);
@@ -382,14 +381,6 @@ export default function PageHealth() {
     return () => {
       delete (window as Partial<Window>).forceFocusMode;
     };
-  }, []);
-
-  useEffect(() => {
-    let active = true;
-    api<{ texto: string }>('/health/weekly-report')
-      .then((data) => { if (active) setWeeklyReport(data.texto || ''); })
-      .catch(() => { /* o dashboard continua disponível sem o texto da IA */ });
-    return () => { active = false; };
   }, []);
 
   const applyOverview = (data: Overview) => {
@@ -870,6 +861,19 @@ export default function PageHealth() {
     { key: 'agua', label: 'Água', color: '#53d6e8', points: overview?.waterHistory || [], unit: 'ml' },
     { key: 'treino', label: 'Carga média', color: '#f0a45b', points: overview?.workoutHistory || [], unit: 'kg' },
   ];
+  const weekStart = new Date();
+  weekStart.setHours(0, 0, 0, 0);
+  weekStart.setDate(weekStart.getDate() - ((weekStart.getDay() + 6) % 7));
+  const weeklyWorkoutCount = new Set(
+    (overview?.workoutHistory || [])
+      .filter((point) => new Date(point.data) >= weekStart)
+      .map((point) => point.data.slice(0, 10))
+  ).size;
+  const weeklyWorkoutGoal = overview?.workouts.length || 0;
+  const weeklyWaterMl = (overview?.waterHistory || [])
+    .filter((point) => new Date(point.data) >= weekStart)
+    .reduce((total, point) => total + point.valor, 0);
+  const weeklyWaterGoalMl = (overview?.waterGoalMl || 0) * 7;
   const requiredWorkoutDays = overview?.workouts.length
     ? 1
     : WORKOUT_SPLITS.find((split) => split.value === profile.treinoBase)?.sessions || 1;
@@ -905,7 +909,7 @@ export default function PageHealth() {
       {(error || message) && <p className={`health-message${error ? ' is-error' : ''}`} role={error ? 'alert' : 'status'}>{error || message}</p>}
       {workoutStartOpen && <div className="health-food-modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget && !busy) setWorkoutStartOpen(false); }}><section className="health-food-modal" role="dialog" aria-modal="true" aria-labelledby="workout-weight-title"><div className="health-food-modal-heading"><h2 id="workout-weight-title">Qual seu peso hoje?</h2><button type="button" aria-label="Fechar" onClick={() => setWorkoutStartOpen(false)}><svg aria-hidden="true" viewBox="0 0 24 24" fill="none"><path d="m6 6 12 12M18 6 6 18" /></svg></button></div><label>Peso (kg)<input type="number" min="20" max="400" step="0.1" value={workoutWeight} onChange={(event) => setWorkoutWeight(event.target.value)} autoFocus /></label><div className="health-actions"><button className="btn ghost" type="button" disabled={busy} onClick={() => setWorkoutStartOpen(false)}>Cancelar</button><button className="btn" type="button" disabled={busy} onClick={startWorkoutWithWeight}>{busy ? 'Iniciando...' : 'Salvar e iniciar'}</button></div></section></div>}
 
-      <div className="health-tab-body">
+      <div className={`health-tab-body${tab === 'Dashboard' ? ' is-dashboard' : tab === 'Perfil' ? ' is-profile' : ''}`}>
         {tab === 'Perfil' && (
           <section className="health-profile-panel" role="tabpanel" aria-label="Perfil">
             <div className="health-profile-grid">
@@ -1300,8 +1304,6 @@ export default function PageHealth() {
 
         {tab === 'Dashboard' && (
           <section className="health-panel health-dashboard-panel" role="tabpanel" aria-label="Dashboard">
-            <div className="health-section-heading"><div><h2>Progresso</h2><p>Tendência das métricas registradas.</p></div></div>
-            {weeklyReport && <article className="daily-plan-raw-box"><h3>Relatório semanal</h3><p>{weeklyReport}</p></article>}
             <div className="health-metric-cards">
               {series.map((item) => {
                 const last = item.points[item.points.length - 1];
@@ -1309,12 +1311,16 @@ export default function PageHealth() {
                   ? `${((overview?.waterToday || 0) / 1000).toLocaleString('pt-BR', { maximumFractionDigits: 1 })} L`
                   : item.key === 'peso'
                     ? `${(last?.valor || profile.peso).toLocaleString('pt-BR', { maximumFractionDigits: 1 })} kg`
-                    : `${overview?.workouts.length || 0}x/semana`;
+                    : `${weeklyWorkoutCount}/${weeklyWorkoutGoal}`;
                 const label = item.key === 'peso' ? 'Peso atual' : item.key === 'agua' ? 'Água hoje' : 'Treinos';
                 return <article className={`health-metric-card${loading ? ' is-loading' : ''}`} key={item.key} style={{ '--series-color': item.color } as CSSProperties}>
                   <span>{label}</span><strong>{loading ? '' : value}</strong>
                 </article>;
               })}
+              <article className={`health-metric-card${loading ? ' is-loading' : ''}`} style={{ '--series-color': '#86d7c0' } as CSSProperties}>
+                <span>Meta semanal</span>
+                <strong>{loading ? '' : `${(weeklyWaterMl / 1000).toLocaleString('pt-BR', { maximumFractionDigits: 1 })}/${(weeklyWaterGoalMl / 1000).toLocaleString('pt-BR', { maximumFractionDigits: 1 })} L`}</strong>
+              </article>
             </div>
             <MultiLineChart series={series} focus={focusMetric} />
             <div className="health-chart-legend">

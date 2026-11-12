@@ -1,0 +1,89 @@
+/* Perfil: compacta o grid no desktop; scroll permanece apenas como fallback. */
+@media (min-width: 901px) {
+  .health-tab-body.is-profile {
+    overflow-y: auto !important;
+    scrollbar-gutter: auto;
+  }
+
+  .health-tab-body.is-profile > .health-profile-panel {
+    height: 100% !important;
+    min-height: 0;
+    gap: 8px;
+    overflow: hidden;
+  }
+
+  .health-tab-body.is-profile .health-profile-grid {
+    min-height: 0;
+    height: 100%;
+    grid-template-columns: minmax(250px, .9fr) minmax(380px, 1.35fr) minmax(280px, 1fr);
+    gap: 10px;
+  }
+
+  .health-tab-body.is-profile .health-profile-card {
+    max-height: none;
+    gap: 10px;
+    padding: 14px;
+    overflow-x: hidden;
+    overflow-y: auto;
+  }
+
+  .health-tab-body.is-profile .health-basic-card {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    align-content: start;
+  }
+
+  .health-tab-body.is-profile .health-basic-card > h2 {
+    grid-column: 1 / -1;
+  }
+
+  .health-tab-body.is-profile .health-basic-fields {
+    display: contents;
+  }
+
+  .health-tab-body.is-profile .health-level-field {
+    margin-top: 0;
+  }
+
+  .health-tab-body.is-profile .health-routine-card {
+    gap: 8px;
+  }
+
+  .health-tab-body.is-profile .health-profile-card .health-objective {
+    min-height: 34px;
+  }
+
+  .health-tab-body.is-profile .health-schedule-day {
+    min-height: 32px;
+  }
+
+  .health-tab-body.is-profile .health-schedule-editor {
+    gap: 5px;
+    padding-top: 6px;
+  }
+
+  .health-tab-body.is-profile .health-time-grid .health-chip {
+    min-height: 28px;
+  }
+
+  .health-tab-body.is-profile .health-custom-time {
+    padding-top: 5px;
+  }
+
+  .health-tab-body.is-profile .health-food-card {
+    gap: 8px;
+  }
+
+  .health-tab-body.is-profile .health-food-group {
+    gap: 6px;
+    padding-top: 7px;
+  }
+
+  .health-tab-body.is-profile .health-profile-bottom {
+    padding: 4px 0 0;
+  }
+
+  .health-tab-body.is-profile .health-profile-bottom .btn {
+    min-height: 44px;
+  }
+}

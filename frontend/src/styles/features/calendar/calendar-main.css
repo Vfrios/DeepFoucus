@@ -1,0 +1,211 @@
+
+.cal-days {
+  display: grid;
+  gap: 18px;
+}
+
+.day h2 {
+  font-size: 1rem;
+  color: var(--mute);
+  font-weight: 500;
+  text-transform: capitalize;
+  margin-bottom: 8px;
+}
+
+.day.today h2 {
+  color: var(--accent);
+  font-size: 1.3rem;
+}
+
+.day ul,
+.task-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+
+.day li {
+  display: flex;
+  gap: 14px;
+  background: var(--panel);
+  border-left: 5px solid var(--accent);
+  border-radius: 10px;
+  padding: 12px 14px;
+}
+
+.ev-time {
+  min-width: 64px;
+  color: var(--warm);
+  font-variant-numeric: tabular-nums;
+}
+
+.ev-body {
+  display: grid;
+}
+
+.ev-body em {
+  color: var(--mute);
+  font-style: normal;
+  font-size: .9rem;
+}
+
+.clock {
+  margin: 4px 0 18px;
+}
+
+.clock-time {
+  font-size: clamp(3rem, 9vw, 7rem);
+  font-weight: 300;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+
+.clock-date {
+  color: var(--mute);
+  font-size: 1.2rem;
+  text-transform: capitalize;
+}
+
+/* WebShell: calendário em colunas; hoje em destaque à esquerda */
+.shell-web .cal-web .cal-days {
+  grid-template-columns: 1.4fr repeat(2, 1fr);
+  align-items: start;
+}
+
+.shell-web .cal-web .day.today {
+  grid-row: span 3;
+}
+
+.shell-web .cal-web .day:not(.today) {
+  grid-column: 2 / span 2;
+}
+
+@media (max-width: 1000px) {
+  .shell-web .cal-web .cal-days {
+    grid-template-columns: 1fr;
+  }
+
+  .shell-web .cal-web .day:not(.today) {
+    grid-column: auto;
+  }
+
+  .shell-web .cal-web .day.today {
+    grid-row: auto;
+  }
+}
+
+.add {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
+.task-list li {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: var(--panel);
+  border-radius: 12px;
+  padding: 8px 8px 8px 12px;
+  min-height: 56px;
+}
+
+.task-list li.dragging {
+  outline: 2px solid var(--accent);
+}
+
+.task-text {
+  flex: 1;
+  font-size: 1.1rem;
+  word-break: break-word;
+}
+
+.task-list li.done .task-text {
+  text-decoration: line-through;
+  color: var(--mute);
+}
+
+.check {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  border: 2px solid var(--mute);
+  background: transparent;
+  color: #0c1a16;
+  font-weight: 700;
+  flex: none;
+}
+
+.task-list li.done .check {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+.icon-btn {
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  background: rgba(255, 255, 255, .05);
+  border: 1px solid rgba(255, 255, 255, .08);
+  border-radius: 10px;
+  color: var(--mute);
+  font-size: 1rem;
+  opacity: 1;
+  cursor: pointer;
+  transition: color .15s ease, background-color .15s ease, border-color .15s ease;
+}
+
+/* SVGs usam fill="none": sem stroke explícito ficam invisíveis. */
+.icon-btn svg {
+  width: 20px;
+  height: 20px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  pointer-events: none;
+}
+
+.icon-btn:hover,
+.icon-btn:focus-visible {
+  color: var(--paper);
+  background: rgba(255, 255, 255, .1);
+  border-color: rgba(255, 255, 255, .16);
+}
+
+.icon-btn:disabled {
+  opacity: .45;
+  cursor: default;
+}
+
+.shopping-list li .task-text,
+.shopping-list li .shopping-edit-input {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.shopping-list li .icon-btn+.icon-btn {
+  margin-left: -4px;
+}
+
+.handle {
+  width: 40px;
+  height: 44px;
+  display: grid;
+  place-items: center;
+  color: var(--mute);
+  font-size: 1.3rem;
+  touch-action: none;
+}
+
+.shopping-page {
+  max-width: 900px;
+  margin: 0 auto;
+  padding-bottom: 36px;
+}

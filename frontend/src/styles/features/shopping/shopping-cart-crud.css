@@ -1,0 +1,12 @@
+
+.shopping-edit-input {
+  min-width: 0;
+  width: 100%;
+}
+
+.review-name-input {
+  min-width: 0;
+  width: min(100%, 260px);
+  font: inherit;
+  font-weight: 700;
+}

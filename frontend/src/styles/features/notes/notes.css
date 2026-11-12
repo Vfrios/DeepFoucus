@@ -1,0 +1,190 @@
+
+.notes-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 14px;
+}
+
+.notes-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+/* ---- Grid de cartões ---- */
+.notes-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+  gap: 14px;
+}
+
+.note-card {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-top: 4px solid var(--accent);
+  border-radius: 12px;
+  padding: 12px 14px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-height: 110px;
+  transition: transform 0.15s ease, border-color 0.15s ease;
+}
+
+.note-card:hover {
+  border-color: var(--mute);
+}
+
+.note-card-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.note-title {
+  font-size: 1rem;
+  font-weight: 600;
+  margin: 0;
+  word-break: break-word;
+  flex: 1;
+}
+
+.note-card-actions {
+  display: flex;
+  gap: 2px;
+  flex: none;
+}
+
+.note-card-actions .icon-btn {
+  width: 32px;
+  height: 32px;
+  font-size: 0.9rem;
+  border-radius: 6px;
+}
+
+.note-card-actions .icon-btn:hover {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.note-body {
+  margin: 0;
+  font-size: 0.92rem;
+  color: var(--paper);
+  line-height: 1.45;
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 180px;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 6;
+  -webkit-box-orient: vertical;
+}
+
+/* ---- Modal: seletor de cor ---- */
+.color-row {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 4px;
+}
+
+.color-dot {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  border: 2px solid transparent;
+  cursor: pointer;
+  transition: transform 0.15s ease, border-color 0.15s ease;
+}
+
+.color-dot.on {
+  border-color: var(--paper);
+  transform: scale(1.1);
+}
+
+/* ---- Modal de resumo ---- */
+.summary-block {
+  background: var(--ink);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 14px 16px;
+  display: grid;
+  gap: 10px;
+}
+
+.summary-title {
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--accent);
+  margin: 0;
+}
+
+.summary-text {
+  margin: 0;
+  font-size: 0.98rem;
+  line-height: 1.55;
+  color: var(--paper);
+  white-space: pre-wrap;
+}
+
+.summary-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+
+.summary-item {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 10px 12px;
+}
+
+.summary-item-body {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+
+.summary-item-body strong {
+  font-size: 0.98rem;
+  word-break: break-word;
+}
+
+.summary-meta {
+  font-size: 0.8rem;
+  color: var(--mute);
+}
+
+.summary-desc {
+  margin: 2px 0 0;
+  font-size: 0.86rem;
+  color: var(--mute);
+  word-break: break-word;
+}
+
+.summary-item .btn {
+  flex: none;
+  min-height: 40px;
+  padding: 6px 14px;
+  font-size: 0.9rem;
+}
+
+/* ---- Saúde ---- */
+.health-page {
+  width: min(1120px, 100%);
+  max-width: 1120px;
+  margin: 0 auto;
+  padding-bottom: 24px;
+}

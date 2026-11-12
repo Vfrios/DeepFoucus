@@ -1,0 +1,95 @@
+
+* {
+  box-sizing: border-box;
+  -webkit-tap-highlight-color: transparent;
+}
+
+html,
+body,
+button,
+input,
+select,
+textarea {
+  cursor: default;
+}
+
+button,
+a,
+select {
+  cursor: pointer;
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--scroll-thumb) var(--scroll-track);
+}
+
+*::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+*::-webkit-scrollbar-track {
+  background: var(--scroll-track);
+  border-radius: 999px;
+}
+
+*::-webkit-scrollbar-thumb {
+  background: var(--scroll-thumb);
+  border: 3px solid var(--scroll-track);
+  border-radius: 999px;
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background: var(--scroll-thumb-hover);
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+/* anti-zoom, anti-seleção, anti-bounce */
+body {
+  background: var(--ink);
+  color: var(--paper);
+  font-size: 16px;
+  line-height: 1.4;
+  overflow: hidden;
+  overscroll-behavior: none;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+  touch-action: manipulation;
+}
+
+input {
+  user-select: text;
+  -webkit-user-select: text;
+  font: inherit;
+  font-size: 16px;
+  /* >=16px evita zoom do iOS */
+}
+
+code {
+  background: var(--panel);
+  padding: 1px 6px;
+  border-radius: 4px;
+  user-select: text;
+}
+
+h1,
+h2,
+h3 {
+  margin: 0;
+  font-weight: 600;
+}
+
+.shell {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+}

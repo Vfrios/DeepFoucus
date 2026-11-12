@@ -1,0 +1,333 @@
+
+.sidebar-backdrop.is-open {
+  background: rgba(0, 0, 0, 0.55);
+  pointer-events: auto;
+}
+
+.sidebar {
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 100dvh;
+  width: 300px;
+  max-width: 85vw;
+  background: var(--panel);
+  border-right: 1px solid var(--line);
+  display: flex;
+  flex-direction: column;
+  transform: translateX(-100%);
+  transition: transform 0.3s ease;
+  box-shadow: 0 0 40px rgba(0, 0, 0, 0.4);
+  padding-top: env(safe-area-inset-top);
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+.sidebar.is-open {
+  transform: translateX(0);
+}
+
+/* ---- Perfil ---- */
+.sidebar-profile {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 20px 18px;
+  border-bottom: 1px solid var(--line);
+  min-height: 80px;
+}
+
+.avatar {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  overflow: hidden;
+  background: var(--ink);
+  flex: none;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--line);
+}
+
+.avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.avatar-fallback {
+  color: var(--accent);
+  font-weight: 700;
+  font-size: 1.1rem;
+}
+
+.avatar-skeleton {
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(90deg, var(--ink) 0%, var(--line) 50%, var(--ink) 100%);
+  background-size: 200% 100%;
+  animation: avatar-shimmer 1.4s infinite linear;
+}
+
+@keyframes avatar-shimmer {
+  from {
+    background-position: 200% 0;
+  }
+
+  to {
+    background-position: -200% 0;
+  }
+}
+
+.profile-meta {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  font-size: 0.95rem;
+}
+
+.profile-name {
+  font-size: 1rem;
+  color: var(--paper);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.profile-email {
+  color: var(--mute);
+  font-size: 0.85rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ---- Navegação ---- */
+.sidebar-nav {
+  display: flex;
+  flex-direction: column;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.sidebar-link {
+  min-height: 44px;
+  text-align: left;
+  padding: 0 18px;
+  background: transparent;
+  border: 0;
+  color: var(--paper);
+  font-size: 1rem;
+  cursor: pointer;
+  border-left: 3px solid transparent;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.sidebar-link:hover {
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.sidebar-link.is-active {
+  background: rgba(134, 215, 192, 0.08);
+  border-left-color: var(--accent);
+  color: var(--accent);
+  font-weight: 600;
+}
+
+/* ---- Preferências ---- */
+.sidebar-section {
+  padding: 16px 18px;
+  display: grid;
+  gap: 12px;
+  border-bottom: 1px solid var(--line);
+}
+
+.sidebar-title {
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--mute);
+  font-weight: 600;
+  margin: 0 0 4px;
+}
+
+.sidebar-push .push {
+  display: grid;
+  gap: 6px;
+}
+
+/* ---- Rodapé ---- */
+.sidebar-footer {
+  margin-top: auto;
+  padding: 14px 18px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  color: var(--mute);
+  font-size: 0.8rem;
+  border-top: 1px solid var(--line);
+}
+
+.sidebar-footer a {
+  color: var(--mute);
+  text-decoration: none;
+  border-bottom: 1px dotted var(--line);
+}
+
+.sidebar-footer a:hover {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+/* ---- Botão hambúrguer do header ---- */
+.icon-menu {
+  width: 44px;
+  height: 44px;
+  display: grid;
+  place-items: center;
+  background: transparent;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  color: var(--paper);
+  cursor: pointer;
+  flex: none;
+}
+
+.icon-menu:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.sidebar-footer-actions {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.sidebar-logout {
+  min-height: 44px;
+  padding: 0 10px;
+  background: transparent;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--paper);
+  font: inherit;
+  cursor: pointer;
+}
+
+.sidebar-logout:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.login-page {
+  min-height: 100dvh;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background:
+    radial-gradient(ellipse at 50% 0%, rgba(134, 215, 192, 0.12), transparent 55%),
+    var(--ink);
+}
+
+.login-card {
+  width: min(100%, 430px);
+  padding: 38px;
+  background: rgba(26, 34, 44, 0.94);
+  border: 1px solid var(--line);
+  border-radius: 20px;
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.28);
+  text-align: center;
+}
+
+.login-mark {
+  width: 54px;
+  height: 54px;
+  margin: 0 auto 20px;
+  display: grid;
+  place-items: center;
+  border-radius: 17px;
+  background: var(--accent);
+  color: var(--ink);
+  font-size: 1.8rem;
+  font-weight: 800;
+}
+
+.login-eyebrow {
+  margin: 0 0 8px;
+  color: var(--accent);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+}
+
+.login-card h1 {
+  font-size: 1.8rem;
+}
+
+.login-description {
+  margin: 12px 0 26px;
+  color: var(--mute);
+}
+
+.google-login {
+  min-height: 50px;
+  padding: 0 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  background: #fff;
+  border-radius: 10px;
+  color: #202124;
+  font-weight: 600;
+  text-decoration: none;
+  transition: background 0.15s ease, transform 0.15s ease;
+}
+
+.google-login:hover {
+  background: #f3f4f5;
+  transform: translateY(-1px);
+}
+
+.login-error {
+  padding: 10px 12px;
+  background: rgba(230, 124, 115, 0.12);
+  border: 1px solid rgba(230, 124, 115, 0.4);
+  border-radius: 8px;
+  color: #f2a39c;
+  font-size: 0.9rem;
+}
+
+.login-legal {
+  margin: 22px 0 0;
+  color: var(--mute);
+  font-size: 0.78rem;
+}
+
+.login-legal a {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+.login-legal a:hover {
+  text-decoration: underline;
+}
+
+@media (max-width: 480px) {
+  .login-card {
+    padding: 30px 22px;
+  }
+}
+
+
+/* =========================================================
+   FASE 2 — Página 1: Calendário Focado (Hoje/Amanhã)
+   ========================================================= */
+
+/* Input de IA inline no topo */
+.ai-inline {
+  display: flex;
+  gap: 8px;
+  margin: 4px 0 6px;
+}

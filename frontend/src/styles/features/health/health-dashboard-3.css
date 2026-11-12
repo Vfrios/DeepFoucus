@@ -1,0 +1,17 @@
+
+@media (prefers-reduced-motion: reduce) {
+
+  .health-page *,
+  .health-page *::before,
+  .health-page *::after {
+    scroll-behavior: auto !important;
+    animation-duration: .01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: .01ms !important;
+  }
+}
+
+.health-content-grid {
+  min-height: clamp(620px, 75dvh, 760px);
+  grid-template-columns: minmax(210px, .55fr) minmax(0, 1.45fr);
+}

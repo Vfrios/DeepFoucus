@@ -1,0 +1,11 @@
+
+.finance-expense-modal {
+  width: min(92vw, 520px);
+}
+
+.shopping-emoji svg {
+  width: 22px;
+  height: 22px;
+  stroke: currentColor;
+  stroke-width: 1.7;
+}

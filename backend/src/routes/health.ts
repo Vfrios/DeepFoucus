@@ -6,7 +6,6 @@ import { createCalendarEvent, deleteCalendarEvent, ensureCalendarEvent, isConnec
 import { apiTokenAuth } from '../middleware/apiToken';
 import { jwtAuth } from '../middleware/jwtAuth';
 import { requireRole } from '../middleware/requireRole';
-import { generateWeeklyReport } from './ai';
 import { getWeather } from '../lib/weather';
 
 const r = Router();
@@ -1744,13 +1743,5 @@ export async function rotateWaterMetrics(): Promise<void> {
   } catch (error) { console.warn('[health] metric rotation skipped:', error instanceof Error ? error.message : String(error)); }
   finally { metricRotationRunning = false; }
 }
-
-r.get('/weekly-report', async (req, res, next) => {
-  try {
-    const email = requestEmail(req, res);
-    if (!email) return;
-    res.json({ texto: await generateWeeklyReport(email) });
-  } catch (error) { next(error); }
-});
 
 export default r;

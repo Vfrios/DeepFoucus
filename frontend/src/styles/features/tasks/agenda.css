@@ -1,0 +1,372 @@
+
+.tasks-command-page .health-tab-body {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ---------- Aba 1: Agenda IA ---------- */
+
+.agenda-ia-layout {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(320px, 0.92fr) minmax(0, 1.08fr);
+  gap: 14px;
+  overflow: hidden;
+}
+
+.agenda-ia-composer,
+.agenda-ia-list-panel {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+  gap: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 18px;
+  background: linear-gradient(145deg, rgba(255, 255, 255, 0.07), rgba(255, 255, 255, 0.02));
+  box-shadow: inset 0 1px rgba(255, 255, 255, 0.07), 0 12px 30px rgba(0, 0, 0, 0.16);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+}
+
+.agenda-ia-composer .btn svg,
+.agenda-analyze-btn svg,
+.task-ai-prompt .btn svg,
+.modal-close svg {
+  width: 18px;
+  height: 18px;
+  stroke: currentColor;
+  stroke-width: 1.9;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.agenda-ia-textarea {
+  flex: 1;
+  min-height: 120px;
+  width: 100%;
+  resize: none;
+  padding: 14px 16px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 14px;
+  background: rgba(8, 14, 20, 0.62);
+  color: var(--paper);
+  font: inherit;
+  font-size: 0.95rem;
+  line-height: 1.5;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.agenda-ia-textarea:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(134, 215, 192, 0.14);
+}
+
+.agenda-ia-composer-foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.agenda-legend-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.agenda-legend-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--mute);
+  font-size: 0.74rem;
+}
+
+.agenda-legend-pill i {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  display: inline-block;
+}
+
+.agenda-analyze-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 46px;
+  padding: 10px 20px;
+  color: #081310;
+  font-weight: 600;
+}
+
+.agenda-timeline-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding-right: 4px;
+}
+
+.agenda-task-row {
+  border-color: var(--task-prio-border, var(--line));
+  background: linear-gradient(90deg,
+      var(--task-prio-bg, rgba(255, 255, 255, 0.02)) 0%,
+      rgba(15, 22, 30, 0.85) 45%);
+  transition: transform 0.16s ease, border-color 0.2s ease, background 0.2s ease;
+}
+
+.agenda-task-row:hover {
+  border-color: var(--task-prio-color, var(--accent));
+}
+
+.agenda-task-row .check svg {
+  width: 15px;
+  height: 15px;
+  stroke: currentColor;
+  stroke-width: 2.4;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.agenda-task-row .cal-item-time {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.agenda-task-row .cal-item-time svg {
+  width: 14px;
+  height: 14px;
+  stroke: currentColor;
+  stroke-width: 1.8;
+}
+
+.agenda-prio-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 9px;
+  border: 1px solid;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+.agenda-priority-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--prio-color, currentColor);
+  flex: none;
+}
+
+.agenda-delete-btn svg {
+  width: 17px;
+  height: 17px;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+/* ---------- Modal de Revisão (z-index: 9999) + Seletor de Prioridade ---------- */
+
+.agenda-review-backdrop {
+  z-index: 9999 !important;
+}
+
+.agenda-review-modal {
+  z-index: 10000 !important;
+  width: min(820px, 100%);
+}
+
+.agenda-review-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.agenda-review-card {
+  display: grid;
+  gap: 12px;
+  padding: 14px 16px;
+  border: 1px solid var(--card-prio-border, rgba(255, 255, 255, 0.14));
+  border-left: 4px solid var(--card-prio-color, var(--accent));
+  border-radius: 14px;
+  background: linear-gradient(135deg,
+      var(--card-prio-bg, rgba(255, 255, 255, 0.05)),
+      rgba(16, 22, 30, 0.88) 65%);
+  transition: border-color 0.2s ease, background 0.2s ease, box-shadow 0.2s ease;
+}
+
+.agenda-review-card-top {
+  display: flex;
+  align-items: flex-end;
+  gap: 10px;
+}
+
+.agenda-review-title-field {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+  gap: 5px;
+}
+
+.agenda-review-title-field>span,
+.agenda-review-datetime>span,
+.agenda-review-priority-label {
+  color: var(--mute);
+  font-size: 0.74rem;
+  font-weight: 500;
+}
+
+.agenda-review-title-field input {
+  width: 100%;
+  min-height: 40px;
+  padding: 8px 12px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 10px;
+  background: rgba(8, 14, 20, 0.72);
+  color: var(--paper);
+  font: inherit;
+  font-weight: 600;
+}
+
+.agenda-review-title-field input:focus {
+  outline: none;
+  border-color: var(--card-prio-color, var(--accent));
+}
+
+.agenda-trash-btn {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  flex: none;
+  border: 1px solid rgba(239, 68, 68, 0.32);
+  border-radius: 10px;
+  background: rgba(239, 68, 68, 0.1);
+  color: #ef4444;
+  cursor: pointer;
+  transition: background 0.18s ease, transform 0.16s ease;
+}
+
+.agenda-trash-btn:hover {
+  background: rgba(239, 68, 68, 0.22);
+  transform: scale(1.04);
+}
+
+.agenda-trash-btn svg {
+  width: 18px;
+  height: 18px;
+  stroke: currentColor;
+  stroke-width: 1.9;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.agenda-review-card-times {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.agenda-review-datetime {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+}
+
+.agenda-review-datetime-inputs {
+  display: grid;
+  grid-template-columns: minmax(0, 1.3fr) minmax(84px, 0.7fr);
+  gap: 6px;
+}
+
+.agenda-review-datetime-inputs input {
+  width: 100%;
+  min-width: 0;
+  min-height: 38px;
+  padding: 6px 10px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 9px;
+  background: rgba(8, 14, 20, 0.72);
+  color: var(--paper);
+  font: inherit;
+  font-size: 0.86rem;
+  font-variant-numeric: tabular-nums;
+  color-scheme: dark;
+}
+
+.agenda-review-priority-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.agenda-priority-selector {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.agenda-priority-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 34px;
+  padding: 5px 12px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 999px;
+  background: rgba(8, 14, 20, 0.6);
+  color: var(--mute);
+  font: inherit;
+  font-size: 0.78rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.18s ease;
+}
+
+.agenda-priority-chip:hover {
+  border-color: var(--prio-border);
+  color: var(--paper);
+}
+
+.agenda-priority-chip.is-selected {
+  border-color: var(--prio-color);
+  background: var(--prio-bg);
+  color: var(--prio-color);
+  box-shadow: 0 0 14px var(--prio-bg);
+  font-weight: 600;
+}
+
+/* ---------- Aba 2: Plano do Dia (Conselheiro ChatGPT-style) ---------- */
+
+.daily-plan-layout {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(320px, 0.9fr) minmax(0, 1.1fr);
+  gap: 14px;
+  overflow: hidden;
+}

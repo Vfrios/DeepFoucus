@@ -1,0 +1,137 @@
+
+.shopping-recipe-search label {
+  display: block;
+  margin-bottom: 10px;
+  font-weight: 800;
+}
+
+.shopping-recipe-search>div {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 10px;
+}
+
+.shopping-recipe-search input {
+  min-width: 0;
+}
+
+.recipe-card {
+  margin-top: 20px;
+  overflow: hidden;
+  border: 1px solid rgba(134, 215, 192, .22);
+  border-radius: 20px;
+  background: rgba(5, 14, 12, .38);
+}
+
+.recipe-card>header {
+  padding: 22px;
+  border-bottom: 1px solid var(--line);
+  background: linear-gradient(120deg, rgba(134, 215, 192, .12), transparent);
+}
+
+.recipe-card>header span {
+  color: var(--accent);
+  font-size: .7rem;
+  font-weight: 800;
+  letter-spacing: .13em;
+  text-transform: uppercase;
+}
+
+.recipe-card>header h3 {
+  margin: 5px 0 0;
+  font-size: 1.5rem;
+}
+
+.recipe-columns {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+  padding: 18px;
+}
+
+.recipe-columns section {
+  padding: 16px;
+  border-radius: 14px;
+}
+
+.recipe-columns h4,
+.recipe-steps h4 {
+  margin: 0 0 12px;
+}
+
+.recipe-columns ul {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.recipe-columns li {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding-bottom: 7px;
+  border-bottom: 1px solid rgba(255, 255, 255, .07);
+}
+
+.recipe-columns li small {
+  color: var(--mute);
+  text-align: right;
+}
+
+.recipe-have {
+  border: 1px solid rgba(74, 222, 128, .22);
+  background: rgba(34, 197, 94, .08);
+}
+
+.recipe-have h4 {
+  color: #86efac;
+}
+
+.recipe-missing {
+  border: 1px solid rgba(250, 204, 21, .22);
+  background: rgba(234, 179, 8, .08);
+}
+
+.recipe-missing h4 {
+  color: #fde047;
+}
+
+.recipe-steps {
+  padding: 2px 24px 20px;
+}
+
+.recipe-steps ol {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+  padding-left: 22px;
+  color: var(--mute);
+}
+
+.recipe-steps li::marker {
+  color: var(--accent);
+  font-weight: 800;
+}
+
+.recipe-card footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 16px 22px;
+  border-top: 1px solid var(--line);
+  background: rgba(255, 255, 255, .025);
+}
+
+.recipe-card footer p {
+  margin: 0;
+}
+
+.shopping-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}

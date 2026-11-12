@@ -1,0 +1,43 @@
+
+.override .hint {
+  width: 100%;
+}
+
+.kiosk-prompt {
+  position: fixed;
+  left: 50%;
+  bottom: calc(env(safe-area-inset-bottom) + 16px);
+  transform: translateX(-50%);
+  z-index: 40;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 10px 14px;
+}
+
+.gate {
+  max-width: 360px;
+  margin: 18vh auto 0;
+  padding: 0 20px;
+  display: grid;
+  gap: 12px;
+}
+
+.gate input,
+.add input {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  color: var(--paper);
+  border-radius: 10px;
+  padding: 12px 14px;
+  width: 100%;
+}
+
+/* ---------- páginas ---------- */
+.page-title {
+  font-size: 1.6rem;
+  margin: 8px 0 14px;
+}

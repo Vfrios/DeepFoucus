@@ -1,0 +1,176 @@
+
+.shopping-kicker {
+  color: var(--accent);
+  font-size: .72rem;
+  font-weight: 800;
+  letter-spacing: .16em;
+  text-transform: uppercase;
+}
+
+.shopping-heading .page-title {
+  margin-top: 5px;
+}
+
+.shopping-tabs {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+  margin: 18px 0;
+  padding: 6px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, .025);
+  backdrop-filter: blur(18px);
+}
+
+.shopping-tabs button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 48px;
+  border: 0;
+  border-radius: 11px;
+  background: transparent;
+  color: var(--mute);
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+  transition: .2s ease;
+}
+
+.shopping-tabs button:hover {
+  color: var(--paper);
+  background: rgba(255, 255, 255, .04);
+}
+
+.shopping-tabs button.active {
+  color: #08120f;
+  background: var(--accent);
+  box-shadow: 0 8px 24px rgba(134, 215, 192, .2);
+}
+
+.shopping-tabs button span {
+  display: grid;
+  min-width: 21px;
+  height: 21px;
+  padding: 0 5px;
+  place-items: center;
+  border-radius: 20px;
+  background: rgba(0, 0, 0, .16);
+  font-size: .7rem;
+}
+
+.shopping-panel {
+  padding: 22px;
+  border: 1px solid var(--line);
+  border-radius: 20px;
+  background: linear-gradient(145deg, rgba(255, 255, 255, .055), rgba(255, 255, 255, .018));
+  box-shadow: 0 20px 50px rgba(0, 0, 0, .12);
+  backdrop-filter: blur(18px);
+}
+
+.shopping-section-title {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 18px;
+}
+
+.shopping-section-title h3 {
+  margin: 0 0 5px;
+  font-size: 1.25rem;
+}
+
+.shopping-section-title p {
+  margin: 0;
+  color: var(--mute);
+  font-size: .9rem;
+}
+
+.shopping-list .task-text {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.shopping-list .task-text small {
+  color: var(--mute);
+  font-size: .78rem;
+  font-weight: 500;
+}
+
+.shopping-empty {
+  display: grid;
+  min-height: 180px;
+  place-items: center;
+  align-content: center;
+  gap: 12px;
+  color: var(--mute);
+  text-align: center;
+}
+
+.shopping-empty svg {
+  width: 42px;
+  height: 42px;
+  stroke: currentColor;
+  stroke-width: 1.2;
+  opacity: .55;
+}
+
+.shopping-empty p {
+  margin: 0;
+}
+
+.shopping-checkout {
+  width: 100%;
+  min-height: 62px;
+  margin-top: 20px;
+  border-radius: 15px;
+  font-size: 1rem;
+  font-weight: 800;
+}
+
+.shopping-checkout svg,
+.shopping-toast svg {
+  width: 22px;
+  height: 22px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2.2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.shopping-toast {
+  position: fixed;
+  z-index: 1000;
+  top: 24px;
+  left: 50%;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  max-width: calc(100vw - 32px);
+  padding: 13px 18px;
+  transform: translateX(-50%);
+  border: 1px solid rgba(134, 215, 192, .5);
+  border-radius: 13px;
+  background: rgba(18, 74, 57, .95);
+  color: #eafff8;
+  box-shadow: 0 14px 38px rgba(0, 0, 0, .32);
+  animation: shopping-toast-in .25s ease-out;
+}
+
+@keyframes shopping-toast-in {
+  from {
+    opacity: 0;
+    transform: translate(-50%, -12px);
+  }
+}
+
+.shopping-recipe-search {
+  padding: 18px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: rgba(0, 0, 0, .12);
+}

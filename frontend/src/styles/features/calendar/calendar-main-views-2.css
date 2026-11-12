@@ -1,0 +1,118 @@
+
+@media (max-width: 600px) {
+  .dock-page {
+    padding-left: 12px;
+    padding-right: 12px;
+  }
+
+  .dock-page-calendar {
+    padding-left: 12px;
+    padding-right: 12px;
+  }
+
+  .calendar-mode-switch {
+    gap: 1px;
+    margin-bottom: 8px;
+  }
+
+  .calendar-mode-switch button {
+    min-height: 34px;
+    padding: 5px 13px;
+    font-size: .82rem;
+  }
+
+  .cal-current-toolbar {
+    min-height: 42px;
+  }
+
+  .cal-current-status {
+    gap: 0;
+  }
+
+  .cal-water-status {
+    font-size: .8rem;
+  }
+
+  .cal-focus-grid {
+    gap: 8px;
+  }
+
+  .cal-day {
+    padding: 10px 10px 12px;
+  }
+
+  .cal-timeline-event {
+    gap: 4px;
+    padding: 2px 5px;
+    font-size: .7rem;
+  }
+
+  .cal-timeline-event-type {
+    display: none;
+  }
+
+  .calendar-back {
+    flex: 1 0 100%;
+  }
+
+  .dock {
+    gap: 1px;
+    padding: 6px;
+    border-radius: 19px;
+  }
+
+  .dock-item {
+    min-width: 52px;
+    padding: 7px 6px 6px;
+    font-size: .64rem;
+  }
+
+  .dock-item svg {
+    width: 22px;
+    height: 22px;
+  }
+
+  .calendar-view-header {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .calendar-nav {
+    align-self: stretch;
+    flex-wrap: wrap;
+  }
+
+  .calendar-nav>.btn {
+    flex: 1;
+  }
+
+  .calendar-view-toggle {
+    flex: 1 0 100%;
+    margin: 0;
+  }
+
+  .calendar-view-toggle .btn {
+    flex: 1;
+  }
+
+  .week-calendar .rbc-time-view {
+    overflow-x: auto;
+  }
+
+  .week-calendar .rbc-time-header,
+  .week-calendar .rbc-time-content {
+    min-width: 680px;
+  }
+}
+
+/* =========================================================
+   SIDEBAR / DRAWER
+   ========================================================= */
+.sidebar-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  background: rgba(0, 0, 0, 0);
+  pointer-events: none;
+  transition: background 0.3s ease;
+}

@@ -1,0 +1,356 @@
+
+.ai-inline input {
+  flex: 1;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  color: var(--paper);
+  border-radius: 10px;
+  padding: 12px 14px;
+  font: inherit;
+  font-size: 16px;
+  /* evita zoom do iOS */
+  min-height: 48px;
+}
+
+.ai-inline input:disabled {
+  opacity: 0.6;
+}
+
+.ai-inline .btn {
+  min-height: 48px;
+  padding: 0 20px;
+  white-space: nowrap;
+}
+
+.ai-feedback {
+  font-size: 0.9rem;
+  margin: 0 0 10px;
+}
+
+.ai-feedback.ok {
+  color: var(--accent);
+}
+
+.ai-feedback.err {
+  color: var(--danger);
+}
+
+/* Grid dos dois blocos (Hoje | Amanhã) */
+.cal-focus-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 18px;
+  margin-top: 12px;
+}
+
+@media (min-width: 760px) {
+  .cal-focus-grid {
+    grid-template-columns: 1fr 1fr;
+    gap: 22px;
+  }
+}
+
+/* Bloco de dia */
+.cal-day {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 14px 16px 16px;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.cal-day.today {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px rgba(134, 215, 192, 0.15);
+}
+
+.cal-day-head {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin-bottom: 12px;
+  flex-wrap: wrap;
+}
+
+.cal-day-head h2 {
+  font-size: 1.15rem;
+  margin: 0;
+}
+
+.cal-day.today .cal-day-head h2 {
+  color: var(--accent);
+}
+
+.cal-day-sub {
+  color: var(--mute);
+  font-size: 0.85rem;
+  text-transform: capitalize;
+}
+
+.cal-empty {
+  color: var(--mute);
+  font-size: 0.95rem;
+  margin: 0 0 6px;
+}
+
+.cal-allday-slot {
+  display: flex;
+  min-height: 56px;
+  max-height: 72px;
+  flex: none;
+  align-items: stretch;
+  gap: 8px;
+  margin-bottom: 8px;
+  padding: 5px;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: rgba(17, 22, 29, .55);
+}
+
+.cal-allday-label {
+  display: grid;
+  min-width: 62px;
+  place-items: center;
+  border-right: 1px solid var(--line);
+  padding-right: 7px;
+  color: var(--mute);
+  font-size: .68rem;
+  line-height: 1.15;
+  text-align: center;
+}
+
+.cal-allday-events {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  align-items: stretch;
+  gap: 6px;
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
+.cal-allday-event {
+  display: flex;
+  min-width: 120px;
+  max-width: 240px;
+  flex: 1 1 160px;
+  flex-direction: column;
+  justify-content: center;
+  gap: 2px;
+  overflow: hidden;
+  padding: 4px 8px;
+  border: 1px solid var(--line);
+  border-left: 4px solid var(--accent);
+  border-radius: 7px;
+  background: var(--panel);
+}
+
+.cal-allday-event strong {
+  overflow: hidden;
+  font-size: .78rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cal-allday-event span {
+  color: var(--mute);
+  font-size: .65rem;
+  text-transform: uppercase;
+}
+
+.cal-allday-event.done {
+  opacity: .58;
+}
+
+.cal-allday-event.done strong {
+  text-decoration: line-through;
+}
+
+.cal-timeline {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.cal-timeline-canvas {
+  position: relative;
+  height: 720px;
+  margin-left: 48px;
+  background: repeating-linear-gradient(to bottom,
+      transparent 0,
+      transparent 29px,
+      rgba(139, 151, 166, .16) 29px,
+      rgba(139, 151, 166, .16) 30px);
+}
+
+.cal-hour-label {
+  position: absolute;
+  left: -46px;
+  width: 40px;
+  transform: translateY(-50%);
+  color: var(--mute);
+  font-size: .68rem;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.cal-hour-label:first-child {
+  transform: none;
+}
+
+.cal-timeline-event {
+  position: absolute;
+  z-index: 1;
+  left: 4px;
+  right: 4px;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  overflow: hidden;
+  padding: 3px 8px;
+  border: 1px solid var(--line);
+  border-left: 4px solid var(--accent);
+  border-radius: 7px;
+  background: rgba(17, 22, 29, .96);
+  font-size: .78rem;
+}
+
+.cal-timeline-event.done {
+  opacity: .58;
+}
+
+.cal-timeline-event.done strong {
+  text-decoration: line-through;
+}
+
+.cal-timeline-event-time {
+  flex: none;
+  color: var(--warm);
+  font-variant-numeric: tabular-nums;
+}
+
+.cal-timeline-event strong {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cal-timeline-event-type {
+  margin-left: auto;
+  color: var(--mute);
+  font-size: .66rem;
+  text-transform: uppercase;
+}
+
+.type-bar {
+  display: block;
+  width: 4px;
+  align-self: stretch;
+  flex: none;
+  border-radius: 4px 0 0 4px;
+  margin-right: 2px;
+}
+
+.cal-item-time {
+  color: var(--warm);
+  font-size: .85rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.type-tag {
+  padding: 1px 8px;
+  border: 1px solid currentColor;
+  border-radius: 999px;
+  font-size: .7rem;
+  font-weight: 700;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+}
+
+/* Card convite quando os dois dias estão vazios */
+.cal-empty-card {
+  margin-top: 18px;
+  background: var(--panel);
+  border: 1px dashed var(--line);
+  border-radius: 12px;
+  padding: 18px 20px;
+  text-align: center;
+}
+
+.cal-empty-card strong {
+  color: var(--accent);
+  display: block;
+  font-size: 1.05rem;
+  margin-bottom: 4px;
+}
+
+.cal-empty-card p {
+  color: var(--mute);
+  margin: 0;
+  font-size: 0.92rem;
+  line-height: 1.5;
+}
+
+.cal-empty-card em {
+  font-style: normal;
+  color: var(--paper);
+}
+
+/* WebShell: mais respiro na página do calendário */
+.shell-web .cal-focus {
+  max-width: 1100px;
+}
+
+.calendar-mode-content>.cal-focus {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  margin: 0 auto;
+  overflow: hidden;
+}
+
+.cal-focus .clock,
+.cal-focus .ai-inline,
+.cal-focus>.ai-feedback,
+.cal-focus>.notice,
+.cal-focus>.cal-empty-card,
+.cal-focus .calendar-filters,
+.cal-focus .calendar-filters-status {
+  flex: none;
+}
+
+.cal-focus .cal-focus-grid {
+  flex: 1;
+  min-height: 0;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-rows: minmax(0, 1fr);
+}
+
+.cal-focus .cal-day {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.cal-focus .cal-timeline {
+  flex: 1;
+  min-height: 0;
+}
+
+.cal-focus-web .clock {
+  margin: 0;
+}
+
+.cal-focus-web .clock-time {
+  font-size: clamp(3.2rem, 5.4vw, 5.5rem);
+}

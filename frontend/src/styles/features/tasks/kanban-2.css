@@ -1,0 +1,134 @@
+
+/* MobileShell: fluxo continuo como app nativo; desktop/tablet mantem fit-to-screen. */
+@media (max-width: 768px) {
+
+  html,
+  body,
+  #root {
+    height: auto;
+    min-height: 100%;
+  }
+
+  body {
+    overflow-x: hidden;
+    overflow-y: auto;
+  }
+
+  .shell,
+  .shell-mobile,
+  .dock-page,
+  .page {
+    height: auto !important;
+    min-height: 100dvh;
+    overflow-y: auto !important;
+    overscroll-behavior-y: contain;
+  }
+
+  .shell {
+    overflow-x: hidden;
+  }
+
+  .shell-content {
+    flex: none;
+    min-height: 100dvh;
+    overflow: visible;
+  }
+
+  .dock-page {
+    position: relative;
+    inset: auto;
+    overflow-x: hidden;
+  }
+
+  .dock-page:not(.dock-page-calendar)>.page,
+  .shell-mobile .health-page,
+  .shell-mobile .tasks-command-page {
+    height: auto !important;
+    min-height: 100dvh;
+    overflow-x: hidden !important;
+    overflow-y: auto !important;
+    overscroll-behavior-y: contain;
+  }
+
+  .health-top,
+  .tasks-toolbar {
+    position: static !important;
+    inset: auto !important;
+    flex: none;
+  }
+
+  .health-tab-body,
+  .tasks-command-page .health-tab-body,
+  .health-nutrition-panel,
+  .agenda-ia-layout,
+  .agenda-ia-composer,
+  .agenda-ia-list-panel {
+    flex: none;
+    height: auto !important;
+    min-height: 0;
+    overflow: visible !important;
+  }
+
+  .task-list,
+  .timeline-list,
+  .meal-list {
+    flex: none;
+    height: auto;
+    min-height: 0;
+    overflow: visible;
+  }
+
+  .dock-page-calendar>.calendar-subviews {
+    height: auto;
+    min-height: 100dvh;
+    overflow: visible;
+  }
+
+  .kanban-panel-wrap,
+  .kanban-column {
+    flex: none;
+    height: auto;
+    overflow: visible;
+  }
+
+  .tasks-command-page .health-tab-body.is-kanban {
+    height: auto;
+    overflow-y: auto;
+  }
+
+  .kanban-board {
+    flex: none;
+    display: flex;
+    flex-direction: column;
+    grid-template-columns: 1fr;
+    gap: 14px;
+    height: auto;
+    overflow: visible;
+  }
+
+  .kanban-column {
+    width: 100%;
+    min-height: 0;
+  }
+
+  .modal,
+  .review-modal,
+  .health-food-modal,
+  .health-swap-modal,
+  .finance-expense-modal {
+    max-height: 90vh;
+  }
+
+  .modal-body,
+  .review-body,
+  .health-food-modal-list {
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior-y: contain;
+  }
+
+  .dock {
+    position: fixed;
+    bottom: 0;
+  }
+}

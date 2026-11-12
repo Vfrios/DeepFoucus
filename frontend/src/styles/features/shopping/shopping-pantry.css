@@ -1,0 +1,274 @@
+
+.shopping-heading .page-title {
+  margin-right: auto;
+}
+
+.shopping-clear-button {
+  color: var(--danger);
+}
+
+.shopping-list {
+  gap: 14px;
+}
+
+.shopping-list li {
+  gap: 16px;
+  min-height: 82px;
+  padding: 14px 18px;
+}
+
+.shopping-check {
+  appearance: none;
+  width: 30px;
+  height: 30px;
+  flex: none;
+  border: 2px solid var(--mute);
+  border-radius: 50%;
+  background-color: transparent;
+  background-image: linear-gradient(45deg, transparent 44%, #0c1a16 44%, #0c1a16 56%, transparent 56%), linear-gradient(-45deg, transparent 42%, #0c1a16 42%, #0c1a16 54%, transparent 54%);
+  background-position: 8px 13px, 13px 10px;
+  background-repeat: no-repeat;
+  background-size: 7px 10px, 12px 7px;
+}
+
+.shopping-check:checked {
+  border-color: var(--accent);
+  background-color: var(--accent);
+}
+
+.shopping-check:focus-visible {
+  outline: 3px solid rgba(134, 215, 192, .4);
+  outline-offset: 3px;
+}
+
+.shopping-emoji {
+  display: grid;
+  width: 54px;
+  height: 54px;
+  flex: none;
+  place-items: center;
+  border: 1px solid rgba(255, 255, 255, .07);
+  border-radius: 50%;
+  background: rgba(255, 255, 255, .05);
+  font-size: 1.8rem;
+  line-height: 1;
+  opacity: 1;
+}
+
+.shopping-list li .task-text {
+  font-size: 1.25rem;
+}
+
+.shopping-list li.done .shopping-emoji {
+  opacity: .6;
+}
+
+.shopping-add {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  margin: 12px 0 20px;
+}
+
+.shopping-add input {
+  width: 100%;
+  min-width: 0;
+  padding: 13px 15px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  outline: none;
+  background: var(--panel);
+  color: var(--paper);
+  font: inherit;
+  transition: border-color .2s ease, box-shadow .2s ease, background .2s ease;
+}
+
+.shopping-add input::placeholder {
+  color: var(--mute);
+  opacity: .9;
+}
+
+.shopping-add input:hover {
+  border-color: rgba(255, 255, 255, .18);
+}
+
+.shopping-add input:focus {
+  border-color: var(--accent);
+  background: rgba(255, 255, 255, .055);
+  box-shadow: 0 0 0 3px rgba(134, 215, 192, .13);
+}
+
+.shopping-add-button {
+  min-width: 132px;
+}
+
+.shopping-add-button svg {
+  width: 19px;
+  height: 19px;
+  transition: transform .2s ease;
+}
+
+.shopping-add-button:not(:disabled):hover svg {
+  transform: rotate(90deg) scale(1.08);
+}
+
+.shopping-error {
+  margin: 10px 0;
+  color: var(--danger);
+}
+
+.guest-shopping-shell {
+  height: 100dvh;
+  overflow-y: auto;
+  padding: max(24px, env(safe-area-inset-top)) max(20px, env(safe-area-inset-right)) max(24px, env(safe-area-inset-bottom)) max(20px, env(safe-area-inset-left));
+}
+
+.guest-shopping-page {
+  max-width: 960px;
+  min-height: 100%;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+}
+
+.guest-shopping-page .page-title {
+  font-size: clamp(2rem, 6vw, 3.25rem);
+  margin: 12px 0 20px;
+}
+
+.guest-shopping-page .shopping-clear-button {
+  min-height: 56px;
+  font-size: 1.15rem;
+}
+
+.guest-shopping-page .shopping-add {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 12px;
+  margin: 12px 0 24px;
+}
+
+.guest-shopping-page .shopping-add input {
+  min-height: 72px;
+  padding: 18px;
+  font-size: 1.4rem;
+}
+
+.guest-shopping-page .guest-add-button {
+  min-height: 88px;
+  border-radius: 18px;
+  font-size: 1.7rem;
+}
+
+.guest-shopping-page .shopping-list {
+  gap: 16px;
+}
+
+.guest-shopping-page .shopping-list li {
+  min-height: 96px;
+  padding: 14px 18px;
+}
+
+.guest-shopping-page .shopping-list .task-text {
+  font-size: 1.55rem;
+}
+
+.guest-shopping-page .shopping-emoji {
+  width: 70px;
+  height: 70px;
+  font-size: 2.5rem;
+}
+
+.guest-shopping-page .shopping-check {
+  width: 38px;
+  height: 38px;
+}
+
+.guest-shopping-page .shopping-list .icon-btn {
+  width: 48px;
+  height: 48px;
+  font-size: 1.25rem;
+}
+
+@media (max-width: 600px) {
+  .shopping-tabs {
+    position: sticky;
+    z-index: 5;
+    top: 6px;
+  }
+
+  .shopping-tabs button {
+    font-size: .8rem;
+  }
+
+  .shopping-panel {
+    padding: 16px;
+  }
+
+  .shopping-add {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .shopping-add-button {
+    min-width: 0;
+    padding-inline: 14px;
+  }
+
+  .shopping-recipe-search>div,
+  .recipe-columns {
+    grid-template-columns: 1fr;
+  }
+
+  .shopping-recipe-search button {
+    min-height: 48px;
+  }
+
+  .recipe-card footer {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .recipe-card footer button {
+    width: 100%;
+  }
+
+  .shopping-heading {
+    align-items: flex-start;
+  }
+
+  .shopping-clear-button {
+    padding-inline: 12px;
+  }
+
+  .guest-shopping-page .shopping-list li {
+    gap: 12px;
+    padding: 14px 10px;
+  }
+
+  .guest-shopping-page .shopping-emoji {
+    width: 76px;
+    height: 76px;
+    font-size: 2.7rem;
+  }
+
+  .guest-shopping-page .shopping-list .task-text {
+    font-size: 1.35rem;
+  }
+}
+
+@media (max-width: 420px) {
+  .shopping-add {
+    grid-template-columns: 1fr;
+  }
+
+  .shopping-add-button {
+    width: 100%;
+    min-height: 48px;
+  }
+}
+
+.finance-page {
+  max-width: 1280px;
+  margin: 0 auto;
+  padding-bottom: 20px;
+}

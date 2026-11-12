@@ -1,0 +1,27 @@
+
+.hint {
+  color: var(--mute);
+  font-size: .85rem;
+  margin: 6px 0 0;
+}
+
+.muted {
+  color: var(--mute);
+}
+
+.notice {
+  background: #3a2a1d;
+  border: 1px solid #6b4a2b;
+  color: var(--warm);
+  border-radius: 10px;
+  padding: 10px 14px;
+  user-select: text;
+}
+
+.seg {
+  display: inline-flex;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  overflow: hidden;
+  margin-right: 8px;
+}

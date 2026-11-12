@@ -1,0 +1,321 @@
+
+.health-tab-body {
+  overflow-y: auto;
+}
+
+.health-water-card {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 10px;
+  padding: 14px;
+}
+
+.health-water-card .health-section-heading h2 {
+  font-size: 1rem;
+}
+
+.health-water-card .health-section-heading p {
+  font-size: .76rem;
+}
+
+.health-water-card .health-water-ring-wrap {
+  width: min(154px, 23vh);
+  margin: 0 auto;
+}
+
+.health-water-card .health-water-ring-label strong {
+  font-size: clamp(1.35rem, 3.2vh, 2rem);
+}
+
+.health-water-card .health-water-ring-label span {
+  font-size: .72rem;
+}
+
+.health-water-card .health-actions {
+  gap: 7px;
+}
+
+.health-water-card .health-actions .btn {
+  min-height: 42px;
+  padding: 7px 9px;
+  font-size: .9rem;
+}
+
+.health-water-card .health-push {
+  gap: 3px;
+  padding-top: 8px;
+}
+
+.health-water-card .health-push h3 {
+  font-size: .8rem;
+}
+
+.health-water-card .health-push>p {
+  font-size: .7rem;
+}
+
+.health-water-card .health-push .push .btn {
+  min-height: 34px;
+}
+
+.workout-panel {
+  gap: 10px;
+}
+
+.health-workout-pending {
+  display: grid;
+  align-content: center;
+  justify-items: start;
+  gap: 16px;
+  flex: 1;
+}
+
+.health-workout-pending h3 {
+  margin: 0;
+  font-size: 1.1rem;
+}
+
+.health-workout-pending p {
+  margin: 6px 0 0;
+  color: var(--mute);
+}
+
+.health-workout-preview {
+  display: grid;
+  min-height: 0;
+  gap: 6px;
+  overflow-y: auto;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.health-workout-preview li {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 7px 9px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--ink);
+  font-size: .82rem;
+}
+
+.health-workout-preview li span {
+  color: var(--mute);
+  white-space: nowrap;
+}
+
+.health-exercise-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  min-height: auto;
+  gap: 7px;
+  padding: 8px 10px;
+}
+
+.health-exercise-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.health-exercise-title>strong {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.health-exercise-title>div {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 8px;
+}
+
+.health-swap-button {
+  min-height: 34px;
+  padding: 5px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--accent);
+  font: inherit;
+  font-size: .8rem;
+}
+
+.health-exercise-row .health-exercise-inputs {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.health-exercise-row .health-exercise-inputs label {
+  gap: 4px;
+  font-size: .68rem;
+}
+
+.health-exercise-row .health-exercise-inputs input {
+  min-height: 34px;
+  height: 34px;
+  font-size: .86rem;
+}
+
+.health-exercise-row .health-done-button {
+  width: 36px;
+  height: 36px;
+}
+
+.health-swap-backdrop {
+  position: fixed;
+  z-index: 1000;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 18px;
+  background: rgba(3, 8, 13, .74);
+  backdrop-filter: blur(8px);
+}
+
+.health-swap-modal {
+  display: grid;
+  width: min(460px, 100%);
+  gap: 18px;
+  padding: 20px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: var(--panel);
+  box-shadow: 0 24px 80px rgba(0, 0, 0, .4);
+}
+
+.health-swap-modal .health-section-heading {
+  align-items: flex-start;
+}
+
+.health-swap-modal .health-section-heading h2 {
+  overflow-wrap: anywhere;
+}
+
+.health-swap-close {
+  padding: 7px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--paper);
+  font: inherit;
+}
+
+.health-swap-options {
+  display: grid;
+  gap: 8px;
+}
+
+.health-swap-options .btn {
+  width: 100%;
+  justify-content: flex-start;
+  text-align: left;
+}
+
+@media (max-width: 680px) {
+  .health-content-grid {
+    height: 100%;
+    min-height: 0;
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto minmax(0, 1fr);
+    overflow: hidden;
+  }
+
+  .health-water-card {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    align-items: center;
+    gap: 6px 12px;
+    padding: 9px 12px;
+  }
+
+  .health-water-card .health-section-heading {
+    grid-column: 1;
+  }
+
+  .health-water-card .health-water-ring-wrap {
+    grid-column: 2;
+    grid-row: 1 / span 2;
+    width: min(92px, 12vh);
+  }
+
+  .health-water-card .health-water-ring-track,
+  .health-water-card .health-water-ring-progress {
+    stroke-width: 8;
+  }
+
+  .health-water-card .health-water-ring-label strong {
+    font-size: 1.05rem;
+  }
+
+  .health-water-card .health-water-ring-label span {
+    font-size: .58rem;
+  }
+
+  .health-water-card .health-actions {
+    grid-column: 1;
+    grid-row: 2;
+  }
+
+  .health-water-card .health-actions .btn {
+    min-height: 36px;
+    font-size: .8rem;
+  }
+
+  .health-water-card .health-push {
+    grid-column: 1 / -1;
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+    border-top: 0;
+    padding-top: 0;
+  }
+
+  .health-water-card .health-push h3,
+  .health-water-card .health-push>p {
+    display: none;
+  }
+
+  .health-water-card .health-push .push .row {
+    margin: 0;
+  }
+
+  .workout-panel {
+    height: auto;
+  }
+
+  .health-workout-pending {
+    gap: 10px;
+  }
+
+  .health-workout-pending .health-actions {
+    width: 100%;
+  }
+
+  .health-workout-pending .health-actions .btn {
+    flex: 1;
+  }
+
+  .health-exercise-row .health-exercise-inputs {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .health-workout-preview li {
+    font-size: .76rem;
+  }
+}
+
+.health-focus-view {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+  gap: 10px;
+  overflow: hidden;
+}

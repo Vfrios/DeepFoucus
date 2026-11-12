@@ -1,0 +1,332 @@
+
+.health-focus-header {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 11px 16px;
+  border: 1px solid rgba(134, 215, 192, .35);
+  border-radius: 14px;
+  background: linear-gradient(110deg, rgba(134, 215, 192, .17), rgba(134, 215, 192, .04));
+  box-shadow: 0 8px 26px rgba(0, 0, 0, .18);
+}
+
+.health-focus-header h2 {
+  margin: 2px 0 0;
+  font-size: clamp(1.05rem, 2.5vh, 1.45rem);
+}
+
+.health-focus-header p {
+  margin: 0;
+  color: var(--mute);
+}
+
+.health-focus-eyebrow {
+  color: var(--accent);
+  font-size: .68rem;
+  font-weight: 700;
+  letter-spacing: .12em;
+}
+
+.health-focus-grid {
+  flex: 1;
+}
+
+.health-focus-workout {
+  min-height: 0;
+}
+
+.health-focus-workout .health-section-heading {
+  flex: none;
+}
+
+.health-focus-workout .health-exercise-list {
+  gap: 7px;
+}
+
+.health-finish-workout {
+  flex: none;
+  min-height: 46px;
+}
+
+.health-management-panel {
+  display: flex;
+  min-width: 0;
+  height: 100%;
+  min-height: clamp(720px, 82dvh, 900px);
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.health-management-panel>.health-section-heading {
+  flex: none;
+}
+
+.health-week-grid {
+  display: grid;
+  flex: none;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 7px;
+}
+
+.health-week-day {
+  display: grid;
+  min-width: 0;
+  min-height: 74px;
+  align-content: space-between;
+  gap: 5px;
+  padding: 8px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--ink);
+  color: var(--mute);
+  text-align: left;
+}
+
+.health-week-day:disabled {
+  opacity: .48;
+}
+
+.health-week-day:not(:disabled) {
+  cursor: pointer;
+}
+
+.health-week-day.is-selected {
+  border-color: var(--accent);
+  background: rgba(134, 215, 192, .1);
+  color: var(--paper);
+}
+
+.health-week-day>span {
+  color: var(--accent);
+  font-size: .72rem;
+  font-weight: 700;
+}
+
+.health-week-day strong {
+  overflow: hidden;
+  font-size: .76rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.health-week-day small {
+  overflow: hidden;
+  color: var(--mute);
+  font-size: .67rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.health-plan-editor {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+  gap: 8px;
+  overflow: hidden;
+}
+
+.health-plan-editor>.health-section-heading {
+  flex: none;
+}
+
+.health-plan-editor>.health-section-heading h3 {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.health-plan-editor>.health-section-heading .btn {
+  min-height: 36px;
+  padding: 6px 12px;
+}
+
+.health-today-notice {
+  flex: none;
+  margin: 0;
+  color: var(--mute);
+  font-size: .76rem;
+}
+
+.health-plan-exercises {
+  display: grid;
+  flex: 1 1 0;
+  align-content: start;
+  min-height: 0;
+  gap: 6px;
+  padding-right: 8px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(134, 215, 192, .28) transparent;
+}
+
+.health-plan-exercises::-webkit-scrollbar {
+  width: 6px;
+}
+
+.health-plan-exercises::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.health-plan-exercises::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: rgba(134, 215, 192, .28);
+}
+
+.health-plan-exercises::-webkit-scrollbar-thumb:hover {
+  background: rgba(134, 215, 192, .5);
+}
+
+.health-plan-exercise {
+  display: grid;
+  grid-template-columns: minmax(130px, 1fr) 76px minmax(80px, .7fr) auto;
+  align-items: end;
+  gap: 7px;
+  padding: 7px 8px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: var(--ink);
+}
+
+.health-plan-exercise>label,
+.health-add-exercise {
+  display: grid;
+  min-width: 0;
+  gap: 4px;
+  color: var(--mute);
+  font-size: .69rem;
+}
+
+.health-plan-exercise input,
+.health-add-exercise input {
+  width: 100%;
+  min-width: 0;
+  height: 34px;
+  padding: 5px 7px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: var(--panel);
+  color: var(--paper);
+  font: inherit;
+  font-size: .82rem;
+}
+
+.health-plan-actions {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 5px;
+}
+
+.health-plan-actions .health-swap-button {
+  min-height: 34px;
+  white-space: nowrap;
+  font-size: .72rem;
+}
+
+.health-remove-exercise {
+  min-height: 32px;
+  white-space: nowrap;
+  padding: 4px 7px;
+  border: 0;
+  background: transparent;
+  color: var(--danger);
+  font: inherit;
+  font-size: .7rem;
+}
+
+.health-add-exercise {
+  display: flex;
+  flex: none;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+}
+
+.health-add-exercise .btn {
+  min-height: 34px;
+  padding: 5px 10px;
+}
+
+@media (max-width: 950px) {
+  .health-week-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  .health-plan-exercise {
+    grid-template-columns: minmax(100px, 1fr) 62px minmax(70px, .7fr);
+  }
+
+  .health-plan-actions {
+    grid-column: 1 / -1;
+    justify-content: flex-end;
+  }
+}
+
+@media (max-width: 680px) {
+  .health-focus-view {
+    gap: 7px;
+  }
+
+  .health-focus-header {
+    padding: 8px 11px;
+  }
+
+  .health-focus-header p {
+    font-size: .76rem;
+  }
+
+  .health-focus-grid {
+    grid-template-rows: auto minmax(0, 1fr);
+  }
+
+  .health-week-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  .health-week-day {
+    min-height: 60px;
+    padding: 6px;
+  }
+
+  .health-week-day strong {
+    font-size: .68rem;
+  }
+
+  .health-management-panel {
+    gap: 8px;
+    padding: 10px;
+  }
+
+  .health-management-panel>.health-section-heading {
+    flex-direction: row;
+    align-items: center;
+  }
+
+  .health-management-panel>.health-section-heading .btn {
+    width: auto;
+  }
+
+  .health-plan-exercise {
+    grid-template-columns: minmax(0, 1fr) 60px 75px;
+  }
+
+  .health-plan-actions {
+    gap: 4px;
+  }
+
+  .health-plan-actions .health-swap-button {
+    padding-inline: 7px;
+  }
+}
+
+.health-profile-panel {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+  gap: 12px;
+  overflow: hidden;
+}

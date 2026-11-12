@@ -1,0 +1,81 @@
+
+.review-row-info li input {
+  width: 100%;
+  min-width: 0;
+  background: rgba(255, 255, 255, .04);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--paper);
+  padding: .4rem .55rem;
+}
+
+@media (max-width: 720px) {
+  .finance-actions {
+    flex-wrap: wrap;
+  }
+
+  .calendar-nav {
+    flex-wrap: wrap;
+  }
+}
+
+
+/* Mobile: força a rolagem global (última regra do arquivo, vence qualquer overflow/height herdado). */
+@media (max-width: 768px) {
+
+  html,
+  body,
+  #root {
+    height: auto !important;
+    overflow-y: auto !important;
+    overflow-x: hidden !important;
+    position: relative !important;
+  }
+
+  .shell-mobile,
+  .shell-mobile .dock-page,
+  .shell-mobile .page {
+    height: auto !important;
+    min-height: 100dvh !important;
+    overflow-y: visible !important;
+    position: relative !important;
+  }
+
+  .health-top {
+    width: 100%;
+  }
+
+  .health-tabs {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    justify-self: stretch;
+    width: 100%;
+    max-width: 100%;
+    gap: 4px;
+    overflow: visible;
+  }
+
+  .health-tab {
+    width: 100%;
+    min-width: 0;
+    flex-direction: row;
+    gap: 6px;
+    padding: 7px 8px;
+    font-size: clamp(.68rem, 3.2vw, .78rem);
+  }
+
+  .health-tab span {
+    min-width: 0;
+    white-space: nowrap;
+  }
+
+  .health-tab[aria-selected="false"],
+  .health-tab[aria-selected="false"]:hover {
+    color: rgba(185, 196, 208, .62);
+  }
+
+  .health-management-panel {
+    height: auto;
+    min-height: 0;
+  }
+}

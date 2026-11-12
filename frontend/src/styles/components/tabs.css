@@ -1,0 +1,21 @@
+
+.seg button {
+  background: transparent;
+  color: var(--paper);
+  border: 0;
+  padding: 10px 14px;
+  min-height: 44px;
+  font-size: 1rem;
+}
+
+.seg button.on {
+  background: var(--accent);
+  color: #0c1a16;
+  font-weight: 600;
+}
+
+.override {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+}

@@ -1,0 +1,363 @@
+
+/* Web/Parede (PC/Tablet): fit-to-screen, sem rolagem do documento. */
+.shell-web {
+  height: 100dvh;
+  overflow: hidden;
+}
+
+/* Mobile (Celular): fluxo contínuo, o documento rola livremente. */
+html.is-mobile-shell,
+html.is-mobile-shell body,
+html.is-mobile-shell #root {
+  height: auto;
+  min-height: 100%;
+}
+
+html.is-mobile-shell body {
+  overflow-x: hidden;
+  overflow-y: auto;
+}
+
+.shell-mobile {
+  height: auto !important;
+  min-height: 100dvh;
+  overflow-y: auto !important;
+  overflow-x: hidden;
+  position: relative;
+}
+
+.shell-mobile .shell-content {
+  flex: none;
+  min-height: 100dvh;
+  overflow: visible;
+}
+
+.shell-mobile .dock-page {
+  position: relative;
+  inset: auto;
+  overflow-x: hidden;
+  padding-bottom: calc(env(safe-area-inset-bottom) + 132px);
+}
+
+.shell-content {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+}
+
+.shell-toolbar {
+  position: absolute;
+  z-index: 15;
+  top: calc(env(safe-area-inset-top) + 10px);
+  left: 16px;
+  right: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  pointer-events: none;
+}
+
+.shell-menu-button {
+  display: grid;
+  width: 42px;
+  height: 42px;
+  place-items: center;
+  border: 1px solid rgba(255, 255, 255, .12);
+  border-radius: 50%;
+  background: rgba(26, 34, 44, .68);
+  color: var(--paper);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  pointer-events: auto;
+}
+
+.shell-menu-button svg {
+  width: 20px;
+  height: 20px;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+}
+
+.streak-badge {
+  margin-left: auto;
+  padding: 8px 12px;
+  border: 1px solid rgba(255, 255, 255, .1);
+  border-radius: 999px;
+  background: rgba(26, 34, 44, .68);
+  color: var(--warm);
+  font-size: .82rem;
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+}
+
+.shell.is-locked .shell-toolbar {
+  display: none;
+}
+
+.sheet {
+  position: absolute;
+  z-index: 20;
+  right: 16px;
+  top: calc(env(safe-area-inset-top) + 56px);
+  width: min(360px, calc(100vw - 32px));
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 14px;
+  display: grid;
+  gap: 14px;
+}
+
+/* ---------- bottom dock ---------- */
+.dock-page {
+  position: absolute;
+  inset: 0;
+  overflow-y: auto;
+  padding: 62px 20px calc(env(safe-area-inset-bottom) + 112px);
+  overscroll-behavior: contain;
+  animation: dock-page-in .24s ease both;
+  touch-action: pan-y;
+}
+
+.dock-page-calendar {
+  overflow: hidden;
+  padding: 58px 20px 88px;
+}
+
+.shell.is-locked .dock-page-calendar {
+  padding-bottom: 16px;
+}
+
+.dock-page-calendar>.calendar-subviews {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  margin: 0 auto;
+  overflow: hidden;
+}
+
+.calendar-subviews-week,
+.calendar-subviews-month {
+  touch-action: pan-y;
+}
+
+.calendar-mode-switch {
+  display: flex;
+  width: max-content;
+  max-width: 100%;
+  align-self: center;
+  gap: 3px;
+  flex: none;
+  margin: 0 auto 10px;
+  padding: 4px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: rgba(26, 34, 44, .78);
+}
+
+.calendar-mode-switch button {
+  min-height: 36px;
+  padding: 6px 16px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--mute);
+  font: inherit;
+  font-size: .88rem;
+  transition: background-color .18s ease, color .18s ease;
+}
+
+.calendar-mode-switch button[aria-selected="true"] {
+  background: var(--accent);
+  color: #0c1a16;
+  font-weight: 600;
+}
+
+.calendar-mode-switch button:focus-visible {
+  outline: 2px solid var(--paper);
+  outline-offset: 2px;
+}
+
+.calendar-mode-content {
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+}
+
+.calendar-mode-content>.cal-focus {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  margin: 0 auto;
+  overflow: hidden;
+}
+
+.calendar-mode-content>.calendar-subview {
+  height: 100%;
+}
+
+.calendar-current-toolbar {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 14px;
+  min-height: 96px;
+}
+
+.cal-current-status {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+}
+
+.cal-current-status .clock {
+  margin: 0;
+}
+
+.cal-current-status .clock-time {
+  font-size: clamp(3.2rem, 5.4vw, 5.5rem);
+}
+
+.cal-current-status .clock-date {
+  font-size: .9rem;
+}
+
+.cal-water-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--accent);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.cal-water-status svg {
+  width: 22px;
+  height: 22px;
+  flex: none;
+  stroke: currentColor;
+  stroke-width: 1.7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.calendar-create-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+}
+
+.calendar-create-button svg {
+  width: 18px;
+  height: 18px;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+}
+
+.dock-page:not(.dock-page-calendar)>.page {
+  min-height: 100%;
+}
+
+@keyframes dock-page-in {
+  from {
+    opacity: 0;
+    transform: translateX(8px);
+  }
+
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.dock {
+  position: fixed;
+  z-index: 20;
+  left: 50%;
+  bottom: calc(env(safe-area-inset-bottom) + 12px);
+  display: flex;
+  align-items: stretch;
+  justify-content: center;
+  gap: 4px;
+  width: max-content;
+  max-width: calc(100vw - 24px);
+  padding: 7px;
+  transform: translateX(-50%);
+  border: 1px solid rgba(255, 255, 255, .13);
+  border-radius: 22px;
+  background: rgba(26, 34, 44, .72);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, .32);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+}
+
+.dock-item {
+  display: flex;
+  min-width: 58px;
+  flex: 1 1 68px;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 7px 10px 6px;
+  border: 0;
+  border-radius: 15px;
+  background: transparent;
+  color: var(--mute);
+  font: inherit;
+  font-size: .7rem;
+  line-height: 1.1;
+  white-space: nowrap;
+  transition: transform .18s ease, color .18s ease, background-color .18s ease;
+}
+
+.dock-item svg {
+  width: 23px;
+  height: 23px;
+  stroke: currentColor;
+  stroke-width: 1.7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  transition: transform .18s ease;
+}
+
+.dock-item.is-active {
+  color: var(--accent);
+  background: rgba(134, 215, 192, .11);
+}
+
+.dock-item:hover {
+  transform: scale(1.06);
+  color: var(--paper);
+}
+
+.dock-item:hover svg {
+  transform: scale(1.08);
+}
+
+.dock-item.is-active:hover {
+  color: var(--accent);
+}
+
+.dock-item:focus-visible,
+.shell-menu-button:focus-visible,
+.lock-btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+
+.ambient-unlock-surface {
+  position: absolute;
+  z-index: 30;
+  inset: 0;
+  touch-action: none;
+}

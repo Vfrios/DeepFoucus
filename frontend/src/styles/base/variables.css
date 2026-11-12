@@ -1,0 +1,14 @@
+:root {
+  --ink: #11161d;
+  --panel: #1a222c;
+  --line: #2b3644;
+  --paper: #ece6da;
+  --mute: #8b97a6;
+  --accent: #86d7c0;
+  --warm: #f0b95a;
+  --danger: #e67c73;
+  --scroll-track: #11161d;
+  --scroll-thumb: #465565;
+  --scroll-thumb-hover: #86d7c0;
+  font-family: 'Avenir Next', 'Segoe UI', Roboto, system-ui, sans-serif;
+}

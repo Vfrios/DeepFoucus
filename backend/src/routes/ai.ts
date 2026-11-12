@@ -345,37 +345,4 @@ r.post('/daily-plan', aiUserOrTokenAuth, async (req, res, next) => {
 });
 
 
-r.get('/weekly-report', jwtAuth, requireRole(['owner']), async (req, res, next) => {
-  try {
-    const email = req.user?.email;
-    if (!email) { res.status(503).json({ error: 'health_api_email_not_configured' }); return; }
-    res.json({ texto: await generateWeeklyReport(email) });
-  } catch (error) { next(error); }
-});
-
-export async function generateWeeklyReport(email: string): Promise<string> {
-  const db = await getDb();
-  const now = new Date();
-  const start = new Date(now.getTime() - 7 * 86400000);
-  const [profile, weights, workouts, water] = await Promise.all([
-    db.collection('profile').findOne({ email }),
-    db.collection('weight_logs').find({ email, data: { $gte: start } }).sort({ data: 1 }).toArray(),
-    db.collection('workout_logs').find({ email, data: { $gte: start } }).toArray(),
-    db.collection('water_logs').aggregate<{ total: number }>([
-      { $match: { email, data: { $gte: start } } }, { $group: { _id: null, total: { $sum: '$ml' } } },
-    ]).toArray(),
-  ]);
-  const initialWeight = Number(weights[0]?.peso ?? profile?.peso ?? 0);
-  const finalWeight = Number(weights[weights.length - 1]?.peso ?? profile?.peso ?? initialWeight);
-  const goal = (Number(profile?.peso) || 70) * 35 * 7;
-  const facts = { variacaoPesoKg: Math.round((finalWeight - initialWeight) * 10) / 10, treinosRegistrados: new Set(workouts.map((w: any) => new Date(w.data).toDateString())).size, aguaMl: water[0]?.total || 0, metaAguaMlSemana: Math.round(goal) };
-  try {
-    const result = await callAI('Gere feedback semanal de saúde em portugués brasileiro, curto, acolhedor e baseado somente nos números recebidos. Náo invente macros ou dados. Retorne JSON {"texto":"..."}.', JSON.stringify(facts), { temperature: 0.4, maxTokens: 250 });
-    const text = String(record(result).texto || '').trim();
-    if (text) return text;
-  } catch (error) { console.warn('[ai] weekly report generation failed:', error instanceof Error ? error.message : String(error)); }
-  const waterPercent = Math.round(facts.aguaMl / Math.max(facts.metaAguaMlSemana, 1) * 100);
-  return `Na última semana, seu peso variou ${facts.variacaoPesoKg} kg, vocé registrou ${facts.treinosRegistrados} dias de treino e atingiu ${waterPercent}% da meta de água.`;
-}
-
 export default r;

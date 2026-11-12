@@ -1,0 +1,138 @@
+
+.health-meal-heading h3 {
+  font-size: 1rem;
+}
+
+.health-meal-heading span {
+  color: var(--warm);
+  font-size: .85rem;
+  white-space: nowrap;
+}
+
+.health-meal ul {
+  display: grid;
+  gap: 5px;
+  margin: 0;
+  padding-left: 18px;
+  color: var(--paper);
+  font-size: .88rem;
+}
+
+.health-macros {
+  margin: 0;
+  color: var(--mute);
+  font-size: .78rem;
+}
+
+.health-metric-select {
+  min-width: min(260px, 100%);
+}
+
+.health-chart-wrap {
+  min-width: 0;
+}
+
+.health-chart {
+  display: block;
+  width: 100%;
+  min-height: 180px;
+  overflow: visible;
+}
+
+.health-chart-grid {
+  fill: none;
+  stroke: var(--line);
+  stroke-width: 1;
+}
+
+.health-chart-line {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 3;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.health-chart-point {
+  fill: var(--accent);
+  stroke: var(--panel);
+  stroke-width: 2;
+}
+
+.health-chart-labels {
+  display: flex;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px;
+  color: var(--mute);
+  font-size: .78rem;
+}
+
+@media (max-width: 760px) {
+  .health-page {
+    padding-bottom: 12px;
+  }
+
+  .health-content-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .health-form-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 520px) {
+  .health-heading {
+    align-items: flex-start;
+  }
+
+  .health-tabs {
+    width: 100%;
+    justify-content: flex-start;
+  }
+
+  .health-tab {
+    flex: 1 0 auto;
+    padding-inline: 10px;
+  }
+
+  .health-tab span {
+    font-size: .78rem;
+  }
+
+  .health-panel {
+    gap: 16px;
+    padding: 16px;
+  }
+
+  .health-form-grid,
+  .health-meal-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .health-section-heading {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .health-section-heading>.btn {
+    width: 100%;
+  }
+
+  .health-exercise-inputs {
+    grid-template-columns: 1fr;
+  }
+}
+
+.dock-page:not(.dock-page-calendar)>.health-page {
+  width: min(1320px, 100%);
+  height: 100%;
+  min-height: 0;
+  margin: 0 auto;
+  padding: 0 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  overflow: hidden;
+}

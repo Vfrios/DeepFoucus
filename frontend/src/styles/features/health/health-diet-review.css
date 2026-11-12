@@ -1,0 +1,247 @@
+
+.review-modal {
+  position: relative;
+  z-index: 10000;
+  display: flex;
+  flex-direction: column;
+  width: min(760px, 100%);
+  max-height: calc(100dvh - 40px);
+  border: 1px solid rgba(255, 255, 255, .14);
+  border-radius: 20px;
+  background: rgba(24, 26, 32, .88);
+  backdrop-filter: blur(24px) saturate(140%);
+  -webkit-backdrop-filter: blur(24px) saturate(140%);
+  box-shadow: 0 24px 80px rgba(0, 0, 0, .6), inset 0 1px rgba(255, 255, 255, .08);
+  overflow: hidden;
+}
+
+.review-header {
+  flex: none;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 18px 22px 14px;
+  border-bottom: 1px solid rgba(255, 255, 255, .08);
+}
+
+.review-header h2 {
+  margin: 0;
+  font-size: 1.3rem;
+}
+
+.review-sub {
+  margin: 4px 0 0;
+  color: var(--muted, #8b8b95);
+  font-size: .85rem;
+}
+
+.review-close {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  background: rgba(255, 255, 255, .04);
+  color: var(--paper);
+  cursor: pointer;
+  position: relative;
+  z-index: 2;
+}
+
+.review-close:hover:not(:disabled) {
+  background: rgba(255, 255, 255, .12);
+}
+
+.review-close svg,
+.review-footer svg {
+  width: 18px;
+  height: 18px;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.review-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: grid;
+  align-content: start;
+  gap: 16px;
+  padding: 16px 22px;
+  overscroll-behavior: contain;
+}
+
+.review-section h3 {
+  margin: 0 0 8px;
+  font-size: .75rem;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: var(--muted, #8b8b95);
+}
+
+.review-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.review-row {
+  display: flex;
+  gap: 12px;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, .03);
+  transition: background .18s ease, border-color .18s ease;
+}
+
+.review-row:hover {
+  background: rgba(255, 255, 255, .06);
+  border-color: rgba(255, 255, 255, .16);
+}
+
+.review-row-info {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+  gap: 6px;
+}
+
+.review-row-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.review-row-top h4 {
+  margin: 0;
+  font-size: .98rem;
+  text-transform: capitalize;
+}
+
+.review-time {
+  width: 5.5ch;
+  box-sizing: content-box;
+  padding: 6px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--ink);
+  color: var(--paper);
+  font: inherit;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+  color-scheme: dark;
+}
+
+.review-time:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.review-time[aria-invalid="true"] {
+  border-color: #ef4444;
+}
+
+.review-row ul {
+  margin: 0;
+  padding-left: 18px;
+  display: grid;
+  gap: 2px;
+  font-size: .86rem;
+}
+
+.review-macros {
+  margin: 0;
+  color: var(--muted, #8b8b95);
+  font-size: .8rem;
+}
+
+.review-footer {
+  flex: none;
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 14px 22px;
+  border-top: 1px solid rgba(255, 255, 255, .08);
+  background: rgba(18, 20, 26, .92);
+  position: relative;
+  z-index: 2;
+}
+
+.review-footer .btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.review-save {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #000;
+}
+
+.review-save:hover:not(:disabled) {
+  filter: brightness(1.1);
+}
+
+.review-save:disabled {
+  opacity: .5;
+  cursor: not-allowed;
+}
+
+@media (max-width: 640px) {
+
+  .review-overlay,
+  .review-modal-backdrop {
+    padding: max(10px, env(safe-area-inset-top)) 10px max(14px, env(safe-area-inset-bottom));
+  }
+
+  .review-modal {
+    max-height: calc(100dvh - 24px);
+    border-radius: 16px;
+  }
+
+  .review-header {
+    padding: 14px 16px 12px;
+  }
+
+  .review-body {
+    padding: 12px 16px;
+    gap: 14px;
+  }
+
+  .review-footer {
+    flex-direction: column-reverse;
+    padding: 12px 16px;
+  }
+
+  .review-footer .btn {
+    justify-content: center;
+    width: 100%;
+  }
+
+  .review-row .meal-icon {
+    display: none;
+  }
+}
+
+/* ==========================================================================
+   Centro de Comando da Agenda (PageTasks.tsx) — Layout Premium Fit-to-Screen
+   ========================================================================== */
+
+.dock-page:not(.dock-page-calendar)>.tasks-command-page,
+.tasks-command-page {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+  gap: 14px;
+}

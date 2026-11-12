@@ -1,0 +1,21 @@
+
+.kanban-priority-badge {
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+  margin-top: 8px;
+  padding: 3px 8px;
+  border: 1px solid;
+  border-radius: 999px;
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+}
+
+/* CRUD additions: keep new controls within the existing glass/dark visual system. */
+.daily-plan-saved-list {
+  margin-top: 1.25rem;
+  display: grid;
+  gap: .65rem;
+}
