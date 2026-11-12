@@ -1,0 +1,18 @@
+/* Remove somente o scroll externo da aba Academia e Água. */
+@media (min-width: 901px) {
+  .health-tab-body.is-gym {
+    overflow: hidden !important;
+  }
+
+  .health-tab-body.is-gym > .health-content-grid {
+    height: 100%;
+    min-height: 0;
+    grid-auto-rows: minmax(0, 1fr);
+    align-items: stretch;
+  }
+
+  .health-tab-body.is-gym > .health-content-grid > .health-panel {
+    height: 100% !important;
+    min-height: 0;
+  }
+}

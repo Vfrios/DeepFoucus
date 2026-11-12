@@ -47,3 +47,5 @@
 @import './styles/features/health/health-overrides.css';
 @import './styles/features/health/health-overrides-2.css';
 @import './styles/features/health/health-profile-compact.css';
+@import './styles/features/health/health-gym-compact.css';
+@import './styles/features/health/health-diet-compact.css';

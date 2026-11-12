@@ -197,7 +197,7 @@
   .health-page > .health-tab-body {
     display: block;
     overflow-x: hidden !important;
-    overflow-y: scroll !important;
+    overflow-y: auto !important;
   }
 
   .health-page > .health-tab-body > [role="tabpanel"] {

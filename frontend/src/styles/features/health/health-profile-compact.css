@@ -1,7 +1,8 @@
 /* Perfil: compacta o grid no desktop; scroll permanece apenas como fallback. */
 @media (min-width: 901px) {
   .health-tab-body.is-profile {
-    overflow-y: auto !important;
+    padding-bottom: 0 !important;
+    overflow: hidden !important;
     scrollbar-gutter: auto;
   }
 

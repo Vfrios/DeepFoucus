@@ -909,7 +909,7 @@ export default function PageHealth() {
       {(error || message) && <p className={`health-message${error ? ' is-error' : ''}`} role={error ? 'alert' : 'status'}>{error || message}</p>}
       {workoutStartOpen && <div className="health-food-modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget && !busy) setWorkoutStartOpen(false); }}><section className="health-food-modal" role="dialog" aria-modal="true" aria-labelledby="workout-weight-title"><div className="health-food-modal-heading"><h2 id="workout-weight-title">Qual seu peso hoje?</h2><button type="button" aria-label="Fechar" onClick={() => setWorkoutStartOpen(false)}><svg aria-hidden="true" viewBox="0 0 24 24" fill="none"><path d="m6 6 12 12M18 6 6 18" /></svg></button></div><label>Peso (kg)<input type="number" min="20" max="400" step="0.1" value={workoutWeight} onChange={(event) => setWorkoutWeight(event.target.value)} autoFocus /></label><div className="health-actions"><button className="btn ghost" type="button" disabled={busy} onClick={() => setWorkoutStartOpen(false)}>Cancelar</button><button className="btn" type="button" disabled={busy} onClick={startWorkoutWithWeight}>{busy ? 'Iniciando...' : 'Salvar e iniciar'}</button></div></section></div>}
 
-      <div className={`health-tab-body${tab === 'Dashboard' ? ' is-dashboard' : tab === 'Perfil' ? ' is-profile' : ''}`}>
+      <div className={`health-tab-body${tab === 'Dashboard' ? ' is-dashboard' : tab === 'Perfil' ? ' is-profile' : tab === 'Academia & Água' ? ' is-gym' : tab === 'Nutrição' ? ' is-diet' : ''}`}>
         {tab === 'Perfil' && (
           <section className="health-profile-panel" role="tabpanel" aria-label="Perfil">
             <div className="health-profile-grid">
