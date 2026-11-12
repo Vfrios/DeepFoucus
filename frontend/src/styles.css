@@ -7,6 +7,7 @@
 @import './styles/components/tabs.css';
 @import './styles/components/forms-controls.css';
 @import './styles/features/calendar/calendar-main.css';
+@import './styles/features/shopping/shopping.css';
 @import './styles/features/shopping/shopping-cart.css';
 @import './styles/features/shopping/shopping-recipe.css';
 @import './styles/features/shopping/shopping-pantry.css';

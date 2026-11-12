@@ -181,7 +181,7 @@ export default function DockShell({ mode, streak }: Props) {
           return (
             <section
               key={activePage.id}
-              className={`dock-page${activePage.id === 'calendar' ? ' dock-page-calendar' : ''}`}
+              className={`dock-page dock-page-${activePage.id}`}
               aria-label={activePage.title}
             >
               <Page />

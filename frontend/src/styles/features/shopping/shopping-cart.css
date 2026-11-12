@@ -15,12 +15,13 @@
   display: grid;
   grid-template-columns: repeat(3, 1fr);
   gap: 6px;
-  margin: 18px 0;
-  padding: 6px;
+  margin: 10px 0;
+  padding: 5px;
   border: 1px solid var(--line);
-  border-radius: 16px;
+  border-radius: 14px;
   background: rgba(255, 255, 255, .025);
   backdrop-filter: blur(18px);
+  flex-shrink: 0;
 }
 
 .shopping-tabs button {
@@ -28,9 +29,9 @@
   align-items: center;
   justify-content: center;
   gap: 8px;
-  min-height: 48px;
+  min-height: 40px;
   border: 0;
-  border-radius: 11px;
+  border-radius: 10px;
   background: transparent;
   color: var(--mute);
   font: inherit;
@@ -62,7 +63,12 @@
 }
 
 .shopping-panel {
-  padding: 22px;
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  padding: 16px 20px 0;
   border: 1px solid var(--line);
   border-radius: 20px;
   background: linear-gradient(145deg, rgba(255, 255, 255, .055), rgba(255, 255, 255, .018));
@@ -74,29 +80,36 @@
   display: flex;
   justify-content: space-between;
   gap: 16px;
-  margin-bottom: 18px;
+  margin-bottom: 10px;
+  flex-shrink: 0;
 }
 
 .shopping-section-title h3 {
-  margin: 0 0 5px;
-  font-size: 1.25rem;
+  margin: 0 0 2px;
+  font-size: 1.15rem;
 }
 
 .shopping-section-title p {
   margin: 0;
   color: var(--mute);
-  font-size: .9rem;
+  font-size: .85rem;
 }
 
 .shopping-list .task-text {
   display: flex;
-  flex-direction: column;
-  gap: 3px;
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
 }
 
-.shopping-list .task-text small {
+.shopping-list .task-text small,
+.task-text small {
+  font-size: 0.75rem;
+  background: rgba(255, 255, 255, 0.1);
+  padding: 2px 6px;
+  border-radius: 6px;
   color: var(--mute);
-  font-size: .78rem;
+  white-space: nowrap;
   font-weight: 500;
 }
 
@@ -124,11 +137,13 @@
 
 .shopping-checkout {
   width: 100%;
-  min-height: 62px;
-  margin-top: 20px;
-  border-radius: 15px;
-  font-size: 1rem;
+  min-height: 50px;
+  margin-top: 8px;
+  margin-bottom: 14px;
+  border-radius: 14px;
+  font-size: .95rem;
   font-weight: 800;
+  flex-shrink: 0;
 }
 
 .shopping-checkout svg,

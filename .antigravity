@@ -1,0 +1,6 @@
+# Regras do Projeto LOSAI
+- O idioma principal do projeto é o Português do Brasil (PT-BR).
+- Todas as mensagens de commit geradas devem estar em Português do Brasil.
+- Siga o padrão Conventional Commits (ex: "feat: adiciona tela", "fix: corrige scroll").
+- Não apague dados do MongoDB automaticamente.
+- Use TypeScript estrito.

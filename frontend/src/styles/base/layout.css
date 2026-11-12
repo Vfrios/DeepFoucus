@@ -263,6 +263,13 @@ html.is-mobile-shell body {
   stroke-linecap: round;
 }
 
+/* Modo Parede: Compras gerencia o próprio scroll interno; o container da página fica travado e compacto. */
+.shell-web .dock-page-shopping {
+  height: 100%;
+  overflow: hidden;
+  padding: 54px 20px calc(env(safe-area-inset-bottom) + 92px);
+}
+
 .dock-page:not(.dock-page-calendar)>.page {
   min-height: 100%;
 }

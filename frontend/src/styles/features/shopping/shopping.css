@@ -1,0 +1,85 @@
+/* Compras: layout fit-to-screen com scroll isolado apenas na lista de itens */
+
+.shopping-page {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  max-width: 900px;
+  width: 100%;
+  margin: 0 auto;
+  padding-bottom: 0;
+}
+
+.shopping-page > .shopping-heading,
+.shopping-page > .shopping-tabs,
+.shopping-page > .shopping-error {
+  flex-shrink: 0;
+}
+
+.shopping-page > .shopping-panel,
+.shopping-panel {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  padding-bottom: 0;
+}
+
+/* Na aba de receitas não há ul.shopping-list, então o card gerado pode rolar internamente */
+.shopping-page > .shopping-panel.shopping-recipes {
+  overflow-y: auto;
+  padding-bottom: 22px;
+}
+
+.shopping-section-title,
+.shopping-add,
+.shopping-checkout,
+.shopping-recipe-search {
+  flex-shrink: 0;
+}
+
+.shopping-page .shopping-list,
+.shopping-list {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  max-height: none;
+  overflow-y: auto;
+  margin-bottom: 0;
+  padding-bottom: 8px;
+  padding-right: 4px;
+}
+
+.shopping-list > li {
+  flex-shrink: 0;
+}
+
+.shopping-empty {
+  flex: 1;
+  min-height: 0;
+}
+
+/* Mobile e Guest: fluxo contínuo, o documento rola normalmente */
+.shell-mobile .shopping-page,
+.guest-shopping-shell .shopping-page {
+  height: auto;
+  overflow: visible;
+}
+
+.shell-mobile .shopping-page > .shopping-panel,
+.guest-shopping-shell .shopping-page > .shopping-panel {
+  flex: none;
+  overflow: visible;
+  padding-bottom: 22px;
+}
+
+.shell-mobile .shopping-page .shopping-list,
+.shell-mobile .shopping-list,
+.guest-shopping-shell .shopping-page .shopping-list,
+.guest-shopping-shell .shopping-list {
+  flex: none;
+  overflow: visible;
+}

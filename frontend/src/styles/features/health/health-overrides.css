@@ -276,8 +276,12 @@
   }
 
   .shopping-list {
-    max-height: 380px;
+    flex: 1;
+    min-height: 0;
+    max-height: none;
     padding-right: 8px;
+    padding-bottom: 16px;
+    margin-bottom: 0;
     overflow-y: auto;
     overscroll-behavior: contain;
     scrollbar-width: thin;
