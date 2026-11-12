@@ -8715,4 +8715,30 @@ th {
     min-height: 200px;
     max-height: 200px;
   }
+
+  .shopping-list {
+    max-height: clamp(210px, calc(100dvh - 610px), 380px);
+    padding-right: 8px;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    scrollbar-width: thin;
+    scrollbar-color: rgba(134, 215, 192, .35) transparent;
+  }
+
+  .shopping-list::-webkit-scrollbar {
+    width: 6px;
+  }
+
+  .shopping-list::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  .shopping-list::-webkit-scrollbar-thumb {
+    border-radius: 999px;
+    background: rgba(134, 215, 192, .35);
+  }
+
+  .shopping-list::-webkit-scrollbar-thumb:hover {
+    background: rgba(134, 215, 192, .58);
+  }
 }
