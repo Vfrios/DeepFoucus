@@ -7912,7 +7912,9 @@ th {
   .dock-page,
   .page {
     height: auto !important;
+    min-height: 100dvh;
     overflow-y: auto !important;
+    overscroll-behavior-y: contain;
   }
 
   .shell {
@@ -7929,11 +7931,46 @@ th {
   .dock-page {
     position: relative;
     inset: auto;
-    min-height: 100dvh;
-    overflow-y: auto !important;
     overflow-x: hidden;
     padding-bottom: calc(env(safe-area-inset-bottom) + 132px);
-    overscroll-behavior-y: auto;
+  }
+
+  .dock-page:not(.dock-page-calendar) > .page,
+  .health-page,
+  .tasks-command-page {
+    height: auto !important;
+    min-height: 100dvh;
+    overflow-x: hidden !important;
+    overflow-y: auto !important;
+    overscroll-behavior-y: contain;
+  }
+
+  .health-top,
+  .tasks-toolbar {
+    position: static !important;
+    inset: auto !important;
+    flex: none;
+  }
+
+  .health-tab-body,
+  .tasks-command-page .health-tab-body,
+  .health-nutrition-panel,
+  .agenda-ia-layout,
+  .agenda-ia-composer,
+  .agenda-ia-list-panel {
+    flex: none;
+    height: auto !important;
+    min-height: 0;
+    overflow: visible !important;
+  }
+
+  .task-list,
+  .timeline-list,
+  .meal-list {
+    flex: none;
+    height: auto;
+    min-height: 0;
+    overflow: visible;
   }
 
   .dock-page-calendar > .calendar-subviews {
@@ -7944,6 +7981,7 @@ th {
 
   .kanban-panel-wrap,
   .kanban-column {
+    flex: none;
     height: auto;
     overflow: visible;
   }
@@ -7954,14 +7992,32 @@ th {
   }
 
   .kanban-board {
+    flex: none;
     grid-template-columns: 1fr;
     height: auto;
     overflow-y: auto;
+    overscroll-behavior-y: contain;
   }
 
-  .review-modal {
+  .modal,
+  .review-modal,
+  .health-food-modal,
+  .health-swap-modal,
+  .finance-expense-modal {
     max-height: 90vh;
+  }
+
+  .modal-body,
+  .review-body,
+  .health-food-modal-list {
+    min-height: 0;
     overflow-y: auto;
+    overscroll-behavior-y: contain;
+  }
+
+  .dock {
+    position: fixed;
+    bottom: 0;
   }
 }
 

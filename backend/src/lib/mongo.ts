@@ -25,7 +25,7 @@ export function getDb(): Promise<Db> {
       const uri = process.env.MONGODB_URI;
       if (!uri) throw new Error('MONGODB_URI não definida');
 
-      const client = new MongoClient(uri);
+      const client = new MongoClient(uri, { serverSelectionTimeoutMS: 10000, connectTimeoutMS: 10000, socketTimeoutMS: 15000 });
       await client.connect();
 
       const d = client.db(process.env.MONGODB_DB || 'wall_dashboard');

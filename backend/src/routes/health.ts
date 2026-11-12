@@ -105,6 +105,19 @@ async function ensureScheduledWorkoutSession(email: string, now: Date): Promise<
   const existingToday = await sessions.findOne({ email, scheduledFor: { $gte: dayStart, $lt: dayEnd } });
   if (existingToday) return null;
 
+  const moved = await db.collection('workouts').findOne({ email, agentMovedAt: { $exists: true }, agendadoPara: { $gte: dayStart, $lt: dayEnd } });
+  if (moved) {
+    const scheduledFor = new Date(moved.agendadoPara);
+    if (now < scheduledFor || +now >= +scheduledFor + 30 * 60000) return null;
+    const sessionKey = `agent:${moved._id}:${dateKey(scheduledFor)}`;
+    await sessions.updateOne({ email, sessionKey }, { $setOnInsert: {
+      email, sessionKey, workout: { diaSemana: moved.diaSemana, nomeTreino: moved.nomeTreino, exercicios: moved.exercicios },
+      scheduledFor, windowEndsAt: new Date(+scheduledFor + 30 * 60000), status: 'pendente', criadoEm: now,
+    } }, { upsert: true });
+    return sessions.findOne({ email, sessionKey });
+  }
+  if (await db.collection('workouts').findOne({ email, agentOriginalDate: { $gte: dayStart, $lt: dayEnd } })) return null;
+
   const profile = await db.collection('profile').findOne({ email }) as Partial<Profile> | null;
   const times = profile?.disponibilidadePorDia?.[day] || [];
   const currentTime = localClock(now);

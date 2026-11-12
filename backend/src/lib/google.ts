@@ -164,7 +164,7 @@ export interface UserCalendar {
 }
 
 /** Cliente autenticado para escrita. Retorna null se não conectado. */
-async function authedCalendar() {
+export async function authedCalendar() {
   const db = await getDb();
   const doc = await db.collection<any>('auth').findOne({ _id: 'google' });
   if (!doc?.refresh_token) return null;

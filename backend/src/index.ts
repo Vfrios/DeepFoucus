@@ -21,6 +21,9 @@ import healthRoute, { startWorkoutSessionJob, rotateWaterMetrics } from './route
 import dailyPlansRoute from './routes/dailyPlans';
 import { generateWeeklyReport } from './routes/ai';
 import { getDb } from './lib/mongo';
+import cron from 'node-cron';
+import { runScheduledAgent } from './agents/scheduler';
+import { agentLog } from './agents/log';
 
 const app = express();
 const PROD = process.env.NODE_ENV === 'production';
@@ -73,6 +76,10 @@ app.use((err: any, _req: express.Request, res: express.Response, _next: express.
 });
 
 initVapid();
+try {
+  cron.schedule('0 6 * * *', () => runScheduledAgent('maestro'), { timezone: 'America/Sao_Paulo', noOverlap: true });
+  cron.schedule('5 6 * * *', () => runScheduledAgent('tutor'), { timezone: 'America/Sao_Paulo', noOverlap: true });
+} catch (error) { void agentLog({ action: 'cron_setup_error', error: String(error) }); }
 startReminderJob();
 const runWorkoutSessionJob = () => {
   startWorkoutSessionJob().catch((error) => {

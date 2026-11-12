@@ -62,7 +62,7 @@ export interface TarefaIA {
 
 const TIPOS_VALIDOS: TipoItem[] = ['tarefa', 'evento', 'estudo'];
 
-function provedores(): Provedor[] {
+export function provedores(): Provedor[] {
   return [
     {
       nome: 'Groq',
