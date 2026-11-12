@@ -291,3 +291,45 @@ it('sends the selected workout split, level and available hours to the training 
   assert.match(userPrompt, /"disponibilidadePorDia":\{"segunda-feira":\["18:00"\],"quarta-feira":\["19:00"\],"sexta-feira":\["18:00"\]\}/);
   assert.match(userPrompt, /"duracaoMinutos":75/);
 });
+
+it('uses the previous workout as the primary split and preserves its muscle groups', async () => {
+  process.env.GROQ_API_KEY = 'test-groq-key';
+  delete process.env.GEMINI_API_KEY;
+  delete process.env.OPENROUTER_API_KEY;
+  let systemPrompt = '';
+  let userPrompt = '';
+  globalThis.fetch = async (_input, init) => {
+    const body = JSON.parse(String(init?.body)) as { messages: Array<{ role: string; content: string }> };
+    systemPrompt = body.messages.find((message) => message.role === 'system')?.content || '';
+    userPrompt = body.messages.find((message) => message.role === 'user')?.content || '';
+    return new Response(JSON.stringify({
+      choices: [{ message: { content: '{"treinos":[]}' } }],
+    }), { status: 200, headers: { 'content-type': 'application/json' } });
+  };
+
+  await gerarTreinoSaude({
+    peso: 70,
+    altura: 170,
+    idade: 30,
+    sexo: 'Outro',
+    nivel: 'intermediário',
+    diasDisponiveis: ['segunda-feira', 'terça-feira', 'quinta-feira', 'sexta-feira'],
+    disponibilidadePorDia: {
+      'segunda-feira': ['18:00'],
+      'terça-feira': ['18:00'],
+      'quinta-feira': ['19:00'],
+      'sexta-feira': ['19:00'],
+    },
+    duracaoTreino: 60,
+    treinoBase: 'abcd-4-dias',
+    treinoAntigo: [
+      { diaSemana: 'segunda-feira', nomeTreino: 'Peito + Costas + Abdômen', exercicios: ['Supino', 'Remada'] },
+      { diaSemana: 'terça-feira', nomeTreino: 'Ombro + Braços', exercicios: ['Desenvolvimento', 'Rosca'] },
+    ],
+  });
+
+  assert.match(systemPrompt, /Preserve EXATAMENTE o agrupamento/i);
+  assert.match(systemPrompt, /não mova músculos entre sessões/i);
+  assert.match(userPrompt, /"treinoAntigo":\[\{"diaSemana":"segunda-feira","nomeTreino":"Peito \+ Costas \+ Abdômen"/);
+  assert.match(userPrompt, /"regraHistorico":"Manter exatamente os grupos musculares/);
+});

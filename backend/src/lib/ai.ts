@@ -419,6 +419,11 @@ export interface TreinoSaudeInput {
   disponibilidadePorDia: Record<string, string[]>;
   duracaoTreino: number;
   treinoBase: string;
+  treinoAntigo?: Array<{
+    diaSemana: string;
+    nomeTreino: string;
+    exercicios?: string[];
+  }> | string;
 }
 
 const TREINO_SPLITS: Record<string, string> = {
@@ -429,8 +434,13 @@ const TREINO_SPLITS: Record<string, string> = {
 
 export async function gerarTreinoSaude(input: TreinoSaudeInput): Promise<unknown> {
   const divisao = TREINO_SPLITS[input.treinoBase] || input.treinoBase;
+  const temHistorico = Array.isArray(input.treinoAntigo)
+    ? input.treinoAntigo.length > 0
+    : Boolean(input.treinoAntigo?.trim());
   return callAI(
-    'Você é um treinador. Adapte a divisão selecionada ao nível, aos dias e horários disponíveis e à duração pedida. Gere uma sessão por dia da divisão, distribua os treinos em dias da semana distintos, escolhidos exclusivamente entre os dias disponíveis, e escolha em cada sessão somente um horário disponível para aquele dia. Planeje sessões que caibam na duração em minutos indicada. Retorne somente JSON válido. Não invente restrições médicas.',
+    temHistorico
+      ? 'Você é um treinador. Use o Treino Antigo como regra principal. Preserve EXATAMENTE o agrupamento de grupos musculares de cada sessão e a ordem lógica da divisão histórica; não mova músculos entre sessões e não substitua a divisão por ABC, ABCD ou outra divisão genérica. Você pode ajustar exercícios, séries, repetições e descansos. Gere exatamente uma sessão para cada dia disponível, usando somente dias e horários informados. Se houver menos dias disponíveis que no histórico, use as primeiras sessões da sequência histórica necessárias para preencher esses dias, sem fundir nem reorganizar grupos musculares. Distribua em dias distintos e respeite a duração pedida. Retorne somente JSON válido. Não invente restrições médicas.'
+      : 'Você é um treinador. Adapte a divisão selecionada ao nível, aos dias e horários disponíveis e à duração pedida. Gere uma sessão por dia da divisão, distribua os treinos em dias da semana distintos, escolhidos exclusivamente entre os dias disponíveis, e escolha em cada sessão somente um horário disponível para aquele dia. Planeje sessões que caibam na duração em minutos indicada. Retorne somente JSON válido. Não invente restrições médicas.',
     JSON.stringify({
       perfil: {
         peso: input.peso,
@@ -440,6 +450,10 @@ export async function gerarTreinoSaude(input: TreinoSaudeInput): Promise<unknown
         nivel: input.nivel,
       },
       divisao,
+      treinoAntigo: input.treinoAntigo || null,
+      regraHistorico: temHistorico
+        ? 'Manter exatamente os grupos musculares e a ordem das sessões do Treino Antigo.'
+        : null,
       diasDisponiveis: input.diasDisponiveis,
       disponibilidadePorDia: input.disponibilidadePorDia,
       duracaoMinutos: input.duracaoTreino,

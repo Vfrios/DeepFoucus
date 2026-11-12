@@ -7,6 +7,7 @@ import { apiTokenAuth } from '../middleware/apiToken';
 import { jwtAuth } from '../middleware/jwtAuth';
 import { requireRole } from '../middleware/requireRole';
 import { generateWeeklyReport } from './ai';
+import { getWeather } from '../lib/weather';
 
 const r = Router();
 const TIME_ZONE = 'America/Sao_Paulo';
@@ -35,6 +36,8 @@ type Profile = {
   objetivo: 'emagrecer' | 'ganhar_massa' | 'manter';
   treinoBase: string;
   nivelTreino: string;
+  caloriasRecomendadas?: number;
+  metaCalorias?: number;
 };
 
 type WorkoutExercise = { nome: string; series: number; repeticoes: string; descanso: string; pesoInicial?: number };
@@ -485,8 +488,44 @@ async function sumWater(email: string, start: Date, end: Date): Promise<number> 
   return Math.max(0, result[0]?.total || 0);
 }
 
-function dailyWaterGoal(profile: { peso?: number } | null): number {
+function calculateRecommendedCalories(profile: Pick<Profile, 'peso' | 'altura' | 'idade' | 'sexo' | 'objetivo' | 'disponibilidadeDias'>): number {
+  const sexAdjustment = profile.sexo === 'Masculino' ? 5 : profile.sexo === 'Feminino' ? -161 : -78;
+  const tmb = 10 * profile.peso + 6.25 * profile.altura - 5 * profile.idade + sexAdjustment;
+  const trainingDays = profile.disponibilidadeDias?.length || 0;
+  const activityFactor = trainingDays >= 5 ? 1.5 : trainingDays >= 3 ? 1.35 : 1.2;
+  const goalAdjustment = profile.objetivo === 'emagrecer' ? -300 : profile.objetivo === 'ganhar_massa' ? 300 : 0;
+  return Math.max(1000, Math.round((tmb * activityFactor + goalAdjustment) / 10) * 10);
+}
+
+function baseWaterGoal(profile: { peso?: number } | null): number {
   return typeof profile?.peso === 'number' ? Math.round(profile.peso * 35) : 0;
+}
+
+async function waterGoalForDay(
+  email: string,
+  profile: { peso?: number } | null,
+  lat?: string,
+  lon?: string,
+  now = new Date()
+) {
+  const db = await getDb();
+  const [workout, weather] = await Promise.all([
+    db.collection('workouts').findOne({ email, diaSemana: dayName(now) }, { projection: { _id: 1 } }),
+    getWeather(lat, lon),
+  ]);
+  const treinoHoje = Boolean(workout);
+  const climaQuente = Boolean(weather && weather.temperatureC >= 30);
+  const base = baseWaterGoal(profile);
+  const meta = base + (treinoHoje ? 500 : 0) + (climaQuente ? 300 : 0);
+  const reasons: string[] = [];
+  if (treinoHoje) reasons.push('500ml por causa do treino de hoje');
+  if (climaQuente) reasons.push('300ml por causa do clima quente');
+  return {
+    meta,
+    treinoHoje,
+    climaQuente,
+    dica: reasons.length ? `Beba mais ${reasons.join(' e mais ')}.` : 'Mantenha sua hidratação ao longo do dia.',
+  };
 }
 
 const LEGACY_HEALTH_TEXT = 'SEGUNDA – Peito + Costas + Abdômen (Pesado) Supino inclinado, Supino máquina, Pulley costas, Remada baixa, Elevação de pernas, Prancha. TERÇA – Ombro + Braços Desenvolvimento, Elevação lateral, Rosca Scott, Rosca martelo polia, Tríceps corda, Tríceps francês, Rosca inversa. QUARTA – Pernas Completas Leg press, Cadeira extensora, Mesa flexora, Stiff, Panturrilha em pé, Panturrilha sentado, Abdominal máquina. QUINTA – Peito + Costas + Trapézio Crucifixo polia, Voador, Supino inclinado, Pull down, Remada baixa, Voador invertido, Encolhimento. SEXTA – Ombro + Braços (Volume) Desenvolvimento, Elevação lateral, Voador invertido, Rosca direta polia, Rosca martelo polia, Tríceps barra W, Tríceps corda, Flexão de punho. SÁBADO – Manutenção e Recuperação Mobilidade, Alongamentos, Caminhada, Prancha. DIETA: 07:00 Café da manhã (pão francês, ovo, queijo, presunto, laranja). 09:30 Lanche (leite integral, whey, hipercalórico, pasta de amendoim). 12:00 Almoço (arroz, feijão, carne/frango). 15:00 Lanche (pão, ovos mexidos, laranja). 16:15 Pré-treino (pré-treino, bananas, pão com geleia). 18:30 Pós-treino (pães, frango/carne, laranja). 20:40 Lanche Faculdade (banana + amendoim). 22:50 Jantar (arroz, feijão, carne/frango). 23:10 Ceia (iogurte ou laranja ou banana ou leite).';
@@ -599,6 +638,14 @@ r.get('/overview', async (req, res, next) => {
     const db = await getDb();
     const now = new Date();
     const profile = await ensureHealthProfile(email);
+    const caloriasRecomendadas = calculateRecommendedCalories(profile);
+    if (profile.caloriasRecomendadas !== caloriasRecomendadas) {
+      await db.collection('profile').updateOne(
+        { email },
+        { $set: { caloriasRecomendadas, atualizadoEm: now } }
+      );
+      profile.caloriasRecomendadas = caloriasRecomendadas;
+    }
     const [rawWorkouts, diets, workoutLogs, workoutSession] = await Promise.all([
       db.collection<WorkoutPlan & { email: string }>('workouts').find({ email }).sort({ diaSemana: 1 }).toArray(),
       db.collection('diets').find({ email }).sort({ geradoEm: -1 }).limit(1).toArray(),
@@ -619,6 +666,13 @@ r.get('/overview', async (req, res, next) => {
     const todayStart = saoPauloDayStart(today);
     const todayEnd = saoPauloDayStart(addDays(today, 1));
     const waterToday = await sumWater(email, todayStart, todayEnd);
+    const waterGoal = await waterGoalForDay(
+      email,
+      profile,
+      typeof req.query.lat === 'string' ? req.query.lat : undefined,
+      typeof req.query.lon === 'string' ? req.query.lon : undefined,
+      now
+    );
 
     const waterLogs = await db.collection('water_logs').find({
       email,
@@ -675,8 +729,10 @@ r.get('/overview', async (req, res, next) => {
       todayWorkout: enrichedTodayWorkout,
       workoutSession: enrichedSession,
       diet: sanitizeSavedDiet(diets[0]),
+      caloriasRecomendadas,
       waterToday,
-      waterGoalMl: dailyWaterGoal(profile),
+      waterGoalMl: waterGoal.meta,
+      waterTip: waterGoal.dica,
       waterHistory: [...waterByDay.entries()].map(([data, valor]) => ({ data, valor: Math.max(0, valor) })),
       weightHistory,
       workoutHistory: [...workoutByDay.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([data, values]) => ({
@@ -723,15 +779,46 @@ r.put('/profile', async (req, res, next) => {
       return;
     }
     const now = new Date();
+    const caloriasRecomendadas = calculateRecommendedCalories(validated.profile);
     const update: Record<string, unknown> = {
-      $set: { ...validated.profile, email, atualizadoEm: now },
+      $set: { ...validated.profile, caloriasRecomendadas, email, atualizadoEm: now },
       $setOnInsert: { criadoEm: now },
     };
     if (!existing || existing.peso !== validated.profile.peso) {
       update.$push = { pesoHistorico: { data: now, peso: validated.profile.peso } };
     }
     await collection.updateOne({ email }, update, { upsert: true });
-    res.json({ ok: true, profile: { ...validated.profile, email } });
+    res.json({
+      ok: true,
+      profile: {
+        ...validated.profile,
+        email,
+        caloriasRecomendadas,
+        ...(typeof existing?.metaCalorias === 'number' ? { metaCalorias: existing.metaCalorias } : {}),
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+r.patch('/profile', async (req, res, next) => {
+  try {
+    const email = requestEmail(req, res);
+    if (!email) return;
+    const metaCalorias = record(req.body).metaCalorias;
+    if (typeof metaCalorias !== 'number' || !Number.isInteger(metaCalorias) || metaCalorias < 1000 || metaCalorias > 5000) {
+      res.status(400).json({ error: 'metaCalorias deve ser um número inteiro entre 1000 e 5000' });
+      return;
+    }
+    const now = new Date();
+    const collection = (await getDb()).collection('profile');
+    const result = await collection.findOneAndUpdate(
+      { email },
+      { $set: { metaCalorias, atualizadoEm: now }, $setOnInsert: { email, criadoEm: now } },
+      { upsert: true, returnDocument: 'after' }
+    );
+    res.json({ ok: true, profile: result });
   } catch (error) {
     next(error);
   }
@@ -745,6 +832,7 @@ type PreviewEntry = {
   expiresAt: number;
   objetivo?: string;
   treinoBase?: string;
+  historicoTreino?: string;
   dieta?: ReturnType<typeof normalizeDiet>;
   treino?: PlannedWorkout[];
 };
@@ -825,7 +913,10 @@ async function buildDiet(email: string, body: Record<string, unknown>) {
 
 async function buildWorkout(email: string, body: Record<string, unknown>) {
   const db = await getDb();
-  const savedProfile = await db.collection('profile').findOne({ email }) as (Partial<Profile> & { email: string }) | null;
+  const [savedProfile, savedWorkouts] = await Promise.all([
+    db.collection('profile').findOne({ email }) as Promise<(Partial<Profile> & Record<string, unknown> & { email: string }) | null>,
+    db.collection<WorkoutPlan & { email: string }>('workouts').find({ email }).toArray(),
+  ]);
   if (!savedProfile) return { status: 409, error: 'profile_required' } as const;
   const profile: Profile & { email: string } = {
     ...savedProfile,
@@ -840,7 +931,20 @@ async function buildWorkout(email: string, body: Record<string, unknown>) {
     return { status: 400, error: 'availability_required' } as const;
   }
   const treinoBase = typeof body.treinoBase === 'string' ? body.treinoBase.trim().slice(0, 80) : profile.treinoBase || '';
-  if (WORKOUT_SPLIT_DAYS[treinoBase] > profile.disponibilidadeDias.length) {
+  const orderedHistory = savedWorkouts
+    .sort((a, b) => (DAY_INDEX.get(a.diaSemana) ?? 7) - (DAY_INDEX.get(b.diaSemana) ?? 7))
+    .map((workout) => ({
+      diaSemana: workout.diaSemana,
+      nomeTreino: workout.nomeTreino,
+      exercicios: Array.isArray(workout.exercicios) ? workout.exercicios.map((exercise) => exercise.nome).filter(Boolean) : [],
+    }));
+  const profileHistory = typeof savedProfile.treinoAntigo === 'string'
+    ? savedProfile.treinoAntigo.trim().slice(0, 12000)
+    : typeof savedProfile.treinoAntigoTexto === 'string'
+      ? savedProfile.treinoAntigoTexto.trim().slice(0, 12000)
+      : '';
+  const treinoAntigo = orderedHistory.length ? orderedHistory : profileHistory;
+  if (!treinoAntigo && WORKOUT_SPLIT_DAYS[treinoBase] > profile.disponibilidadeDias.length) {
     return { status: 400, error: 'availability_insufficient' } as const;
   }
   try {
@@ -854,9 +958,12 @@ async function buildWorkout(email: string, body: Record<string, unknown>) {
       disponibilidadePorDia: profile.disponibilidadePorDia,
       duracaoTreino: profile.duracaoTreino,
       treinoBase: treinoBase || 'abc-3-dias',
+      treinoAntigo,
     });
     const normalized = normalizeWorkout(generated);
-    const expectedDays = WORKOUT_SPLIT_DAYS[treinoBase];
+    const expectedDays = treinoAntigo
+      ? profile.disponibilidadeDias.length
+      : WORKOUT_SPLIT_DAYS[treinoBase];
     if (expectedDays && normalized.length !== expectedDays) throw new Error('json_invalido');
     if (normalized.some((workout) =>
       !profile.disponibilidadeDias.includes(workout.diaSemana) || !profile.disponibilidadePorDia[workout.diaSemana]?.length
@@ -865,7 +972,10 @@ async function buildWorkout(email: string, body: Record<string, unknown>) {
       ...workout,
       horario: profile.disponibilidadePorDia[workout.diaSemana][0],
     }));
-    return { workouts, profile, treinoBase } as const;
+    const historicoTreino = orderedHistory.length
+      ? orderedHistory.map((workout) => `${workout.nomeTreino} (${workout.diaSemana})`).join(', ')
+      : profileHistory ? 'divisão registrada no perfil' : undefined;
+    return { workouts, profile, treinoBase, historicoTreino } as const;
   } catch (error) {
     console.error('[health] workout generation failed:', error instanceof Error ? error.message : String(error));
     return { status: 502, error: 'workout_generation_failed' } as const;
@@ -1019,8 +1129,8 @@ r.post('/generate-workout', async (req, res, next) => {
       res.status(201).json({ workouts: built.workouts, calendar });
       return;
     }
-    const previewId = await createPreview({ email, kind: 'workout', treinoBase: built.treinoBase, treino: built.workouts });
-    res.json({ previewId, dieta: [], treino: built.workouts, duracaoTreino: built.profile.duracaoTreino });
+    const previewId = await createPreview({ email, kind: 'workout', treinoBase: built.treinoBase, historicoTreino: built.historicoTreino, treino: built.workouts });
+    res.json({ previewId, dieta: [], treino: built.workouts, duracaoTreino: built.profile.duracaoTreino, historicoTreino: built.historicoTreino });
   } catch (error) {
     next(error);
   }
@@ -1168,7 +1278,8 @@ r.post('/water/quick-add', async (req, res, next) => {
     const today = dateKey(now);
     const total = await sumWater(email, saoPauloDayStart(today), saoPauloDayStart(addDays(today, 1)));
     const profile = await db.collection('profile').findOne({ email }) as { peso?: number } | null;
-    const meta = dailyWaterGoal(profile);
+    const waterGoal = await waterGoalForDay(email, profile);
+    const meta = waterGoal.meta;
     res.status(201).json({
       sucesso: true,
       mensagem: 'Água registrada',
@@ -1206,15 +1317,16 @@ async function latestDietMeals(email: string): Promise<DietMeal[]> {
 
 async function mealTotals(email: string, today: string) {
   const db = await getDb();
-  const [meals, logs] = await Promise.all([
+  const [meals, logs, profile] = await Promise.all([
     latestDietMeals(email),
     db.collection<MealLog>('meal_logs').find({ email, data: today }).sort({ horario: 1 }).toArray(),
+    ensureHealthProfile(email),
   ]);
   const sum = (items: Array<{ cal: number; p: number; c: number; g: number }>) => items.reduce(
     (acc, item) => ({ calorias: acc.calorias + item.cal, proteina: acc.proteina + item.p, carbo: acc.carbo + item.c, gordura: acc.gordura + item.g }),
     { calorias: 0, proteina: 0, carbo: 0, gordura: 0 }
   );
-  const goal = sum(meals.map((meal) => ({
+  const dietGoal = sum(meals.map((meal) => ({
     cal: Number(meal?.calorias) || 0,
     p: Number(meal?.macros?.proteina) || 0,
     c: Number(meal?.macros?.carboidratos) || 0,
@@ -1229,7 +1341,10 @@ async function mealTotals(email: string, today: string) {
   return {
     data: today,
     consumed,
-    goal,
+    goal: {
+      ...dietGoal,
+      calorias: profile.metaCalorias || profile.caloriasRecomendadas || calculateRecommendedCalories(profile),
+    },
     completed: logs
       .filter((log) => log && typeof log.tipoRefeicao === 'string')
       .map((log) => ({ _id: String((log as any)._id), tipoRefeicao: log.tipoRefeicao, horario: log.horario })),
@@ -1520,7 +1635,21 @@ r.get('/water', async (req, res, next) => {
     const profile = await db.collection('profile').findOne({ email }) as { peso?: number } | null;
     const today = dateKey(new Date());
     const total = await sumWater(email, saoPauloDayStart(today), saoPauloDayStart(addDays(today, 1)));
-    res.json({ waterToday: total, waterGoalMl: dailyWaterGoal(profile) });
+    const goal = await waterGoalForDay(
+      email,
+      profile,
+      typeof req.query.lat === 'string' ? req.query.lat : undefined,
+      typeof req.query.lon === 'string' ? req.query.lon : undefined
+    );
+    res.json({
+      meta: goal.meta,
+      consumido: total,
+      dica: goal.dica,
+      treinoHoje: goal.treinoHoje,
+      climaQuente: goal.climaQuente,
+      waterToday: total,
+      waterGoalMl: goal.meta,
+    });
   } catch (error) {
     next(error);
   }

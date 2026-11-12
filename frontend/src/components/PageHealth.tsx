@@ -20,6 +20,8 @@ type HealthProfile = {
   objetivo: 'emagrecer' | 'ganhar_massa' | 'manter';
   treinoBase: string;
   nivelTreino: string;
+  caloriasRecomendadas?: number;
+  metaCalorias?: number;
 };
 type Exercise = { nome: string; series: number; repeticoes: string; descanso: string; pesoInicial?: number };
 type Workout = { diaSemana: string; nomeTreino: string; exercicios: Exercise[] };
@@ -54,9 +56,11 @@ type Review = {
   dietaPreviewId?: string;
   treino?: ReviewWorkout[];
   treinoPreviewId?: string;
+  historicoTreino?: string;
+  metaCalorias?: number;
 };
 type DietPreviewResponse = { previewId: string; dieta: ReviewMeal[] };
-type WorkoutPreviewResponse = { previewId: string; treino: ReviewWorkout[] };
+type WorkoutPreviewResponse = { previewId: string; treino: ReviewWorkout[]; historicoTreino?: string };
 type Point = { data: string; valor: number };
 type Overview = {
   profile: Partial<HealthProfile> & { preferenciasComida?: string[]; pesoHistorico?: Array<{ data: string; peso: number }> };
@@ -64,6 +68,7 @@ type Overview = {
   todayWorkout: Workout | null;
   workoutSession: WorkoutSession | null;
   diet: { _id?: string; refeicoes: Meal[]; objetivo?: string } | null;
+  caloriasRecomendadas: number;
   waterToday: number;
   waterGoalMl: number;
   waterHistory: Point[];
@@ -352,6 +357,7 @@ export default function PageHealth() {
   const [dirtyWorkoutDays, setDirtyWorkoutDays] = useState<string[]>([]);
   const manualFocusMode = useRef<boolean | null>(null);
   const focusDismissedDate = useRef<string | null>(null);
+  const lastSavedCalories = useRef<number | null>(null);
   useEffect(() => {
     const updateFocusMode = () => {
       if (manualFocusMode.current !== null) return;
@@ -388,6 +394,7 @@ export default function PageHealth() {
 
   const applyOverview = (data: Overview) => {
     setOverview(data);
+    lastSavedCalories.current = data.profile.metaCalorias ?? null;
     setSelectedWorkoutDay((current) =>
       data.workouts.some((workout) => workout.diaSemana === current)
         ? current
@@ -509,6 +516,10 @@ export default function PageHealth() {
       dietaPreviewId: diet?.previewId,
       treino: workout?.treino,
       treinoPreviewId: workout?.previewId,
+      historicoTreino: workout?.historicoTreino,
+      metaCalorias: diet
+        ? overview?.caloriasRecomendadas || saved.caloriasRecomendadas || 2000
+        : undefined,
     };
   };
   const startReview = async (kind: Review['kind']) => {
@@ -538,6 +549,7 @@ export default function PageHealth() {
         previewId: diet.previewId,
         dieta: diet.dieta,
         dietaPreviewId: diet.previewId,
+        metaCalorias: overview?.caloriasRecomendadas || saved.caloriasRecomendadas || 2000,
       });
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Não foi possível gerar a dieta.');
@@ -575,6 +587,14 @@ export default function PageHealth() {
     try {
       const normalizedDieta = previewData.dieta?.map((meal) => ({ ...meal, horario: formatTimeOnBlur(meal.horario) }));
       const normalizedTreino = previewData.treino?.map((item) => ({ ...item, horario: formatTimeOnBlur(item.horario) }));
+      if (normalizedDieta?.length && previewData.metaCalorias) {
+        const calorieProfile = await api<{ profile: Partial<HealthProfile> }>('/health/profile', {
+          method: 'PATCH',
+          body: JSON.stringify({ metaCalorias: previewData.metaCalorias }),
+        });
+        lastSavedCalories.current = previewData.metaCalorias;
+        setProfile((current) => ({ ...current, ...calorieProfile.profile, metaCalorias: previewData.metaCalorias }));
+      }
       const result = await api<{ calendar?: { connected: boolean; created: number } }>('/health/confirm-routine', {
         method: 'POST',
         body: JSON.stringify({
@@ -850,7 +870,10 @@ export default function PageHealth() {
     { key: 'agua', label: 'Água', color: '#53d6e8', points: overview?.waterHistory || [], unit: 'ml' },
     { key: 'treino', label: 'Carga média', color: '#f0a45b', points: overview?.workoutHistory || [], unit: 'kg' },
   ];
-  const requiredWorkoutDays = WORKOUT_SPLITS.find((split) => split.value === profile.treinoBase)?.sessions || 1;
+  const requiredWorkoutDays = overview?.workouts.length
+    ? 1
+    : WORKOUT_SPLITS.find((split) => split.value === profile.treinoBase)?.sessions || 1;
+  const calorieTarget = profile.metaCalorias || profile.caloriasRecomendadas || overview?.caloriasRecomendadas || 2000;
   const validProfileMeasurements =
     profile.peso >= 20 && profile.peso <= 400 &&
     profile.altura >= 80 && profile.altura <= 250 &&
@@ -1218,16 +1241,12 @@ export default function PageHealth() {
             {overview?.diet?.refeicoes?.length ? <>
               {(() => {
                 const c = mealLogs?.consumed || { calorias: 0, proteina: 0, carbo: 0, gordura: 0 };
-                const g = mealLogs?.goal || { calorias: 0, proteina: 0, carbo: 0, gordura: 0 };
-                const pct = g.calorias > 0 ? Math.min(100, Math.round((c.calorias / g.calorias) * 100)) : 0;
+                const g = mealLogs?.goal || { calorias: calorieTarget, proteina: 0, carbo: 0, gordura: 0 };
                 return (
                   <div className="nutrition-summary">
                     <div className="nutrition-summary-head">
-                      <span>Resumo diário</span>
-                      <strong>Consumido: {Math.round(c.calorias)} / {Math.round(g.calorias)} kcal</strong>
-                    </div>
-                    <div className="macro-track is-large" role="progressbar" aria-label="Calorias" aria-valuemin={0} aria-valuemax={100} aria-valuenow={pct}>
-                      <span className="macro-fill macro-kcal" style={{ width: `${pct}%` }} />
+                      <span>Macronutrientes</span>
+                      <strong>Consumido: {Math.round(c.calorias)} / {Math.round(calorieTarget)} kcal</strong>
                     </div>
                     <div className="nutrition-macros">
                       <MacroBar label="Proteína" value={c.proteina} goal={g.proteina} unit="g" className="macro-protein" />
@@ -1334,6 +1353,28 @@ export default function PageHealth() {
               {previewData.dieta && (
                 <section className="review-section" aria-label="Dieta">
                   <h3>Dieta</h3>
+                  <div className="review-calorie-target">
+                    <div className="calorie-target-heading">
+                      <div>
+                        <span>Meta diária do plano</span>
+                        <strong>{(previewData.metaCalorias || overview?.caloriasRecomendadas || 2000).toLocaleString('pt-BR')} kcal</strong>
+                      </div>
+                      <small>Recomendado: {(overview?.caloriasRecomendadas || profile.caloriasRecomendadas || 2000).toLocaleString('pt-BR')} kcal</small>
+                    </div>
+                    <input
+                      className="calorie-slider"
+                      type="range"
+                      min="1000"
+                      max="5000"
+                      step="50"
+                      value={previewData.metaCalorias || overview?.caloriasRecomendadas || 2000}
+                      aria-label="Meta diária de calorias do novo plano"
+                      aria-valuetext={`${previewData.metaCalorias || overview?.caloriasRecomendadas || 2000} quilocalorias`}
+                      style={{ '--calorie-progress': `${(((previewData.metaCalorias || overview?.caloriasRecomendadas || 2000) - 1000) / 4000) * 100}%` } as CSSProperties}
+                      onChange={(event) => setPreviewData((current) => current ? { ...current, metaCalorias: Number(event.target.value) } : current)}
+                    />
+                    <div className="review-calorie-scale"><span>1.000 kcal</span><span>5.000 kcal</span></div>
+                  </div>
                   <div className="review-list">
                     {previewData.dieta.map((meal, index) => (
                       <article className="review-row" key={`${meal.nome}-${index}`}>
@@ -1355,6 +1396,12 @@ export default function PageHealth() {
               {previewData.treino && (
                 <section className="review-section" aria-label="Treino">
                   <h3>Treino</h3>
+                  {previewData.historicoTreino && (
+                    <div className="workout-history-card">
+                      <strong>Treino baseado no seu histórico</strong>
+                      <p>{previewData.historicoTreino}</p>
+                    </div>
+                  )}
                   <div className="review-list">
                     {previewData.treino.map((item, index) => (
                       <article className="review-row" key={item.diaSemana}>

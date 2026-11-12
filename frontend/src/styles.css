@@ -8693,6 +8693,259 @@ th {
   }
 }
 
+@media (min-width: 769px) {
+  /* Um único scroll vertical resolve Perfil/Dashboard sem áreas presas. */
+  .dock-page:not(.dock-page-calendar) > .health-page {
+    height: 100%;
+    max-height: 100%;
+    overflow: hidden;
+  }
+
+  .health-page > .health-tab-body {
+    display: block;
+    height: auto;
+    overflow-x: hidden !important;
+    overflow-y: scroll !important;
+  }
+
+  .health-page > .health-tab-body > [role="tabpanel"] {
+    height: auto !important;
+    min-height: calc(100% - 1px);
+    overflow: visible;
+  }
+
+  .health-page > .health-tab-body > .health-nutrition-panel {
+    display: flex;
+    height: calc(100% - 1px) !important;
+    overflow: hidden;
+  }
+
+  .health-profile-grid {
+    min-height: 520px;
+    height: auto;
+  }
+
+  .health-profile-card {
+    max-height: min(68dvh, 650px);
+    overflow-x: hidden;
+    overflow-y: auto;
+  }
+
+  .health-profile-bottom {
+    position: static;
+    padding: 12px 0 4px;
+  }
+
+  .health-dashboard-panel .health-chart-wrap {
+    height: min(36dvh, 360px);
+    min-height: 240px;
+  }
+}
+
+/* Must remain last: wins over legacy health declarations above. */
+.health-page > .health-top,
+.health-page .health-tabs {
+  position: static !important;
+  inset: auto !important;
+  transform: none;
+}
+
+.health-page > .health-tab-body {
+  padding-bottom: calc(env(safe-area-inset-bottom) + 100px) !important;
+}
+
+@media (max-width: 768px) {
+  .shell-mobile .health-page,
+  .health-page {
+    height: auto !important;
+    min-height: 100dvh;
+    padding-bottom: calc(env(safe-area-inset-bottom) + 100px);
+    overflow: visible !important;
+  }
+
+  .shell-mobile .health-tab-body,
+  .health-page > .health-tab-body {
+    height: auto !important;
+    min-height: 0;
+    padding-bottom: calc(env(safe-area-inset-bottom) + 100px) !important;
+    overflow: visible !important;
+  }
+
+  .health-tabs {
+    display: flex;
+    width: 100%;
+    justify-content: space-evenly;
+  }
+
+  .health-tab {
+    min-width: 44px;
+    flex: 1 1 25%;
+    padding-inline: 8px;
+  }
+
+  .health-tab span {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+  }
+
+  .health-dashboard-panel .health-chart-wrap {
+    width: 100%;
+    height: auto;
+    min-height: 220px;
+    max-height: none;
+    overflow: visible;
+  }
+
+  .health-dashboard-panel .health-chart {
+    width: 100%;
+    height: auto;
+    aspect-ratio: 640 / 220;
+  }
+}
+
+/* Final health layout contract: normal-flow header, dock clearance and modal calories. */
+.health-page > .health-top,
+.health-page .health-tabs {
+  position: static !important;
+  inset: auto !important;
+  transform: none;
+}
+
+.health-page > .health-top {
+  z-index: auto;
+  flex: none;
+}
+
+.health-page > .health-tab-body {
+  padding-bottom: calc(env(safe-area-inset-bottom) + 100px) !important;
+}
+
+.review-calorie-target {
+  display: grid;
+  width: 100%;
+  min-width: 0;
+  gap: 11px;
+  padding: 16px;
+  border: 1px solid rgba(255, 255, 255, .1);
+  border-radius: 16px;
+  background: linear-gradient(135deg, rgba(35, 42, 54, .78), rgba(15, 18, 24, .64));
+  box-shadow: inset 0 1px rgba(255, 255, 255, .06), 0 12px 30px rgba(0, 0, 0, .16);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+}
+
+.review-calorie-target {
+  margin-bottom: 14px;
+}
+
+.review-calorie-scale {
+  display: flex;
+  justify-content: space-between;
+  color: var(--mute);
+  font-size: .7rem;
+}
+
+.health-nutrition-panel .nutrition-summary {
+  margin-bottom: 4px;
+  padding: 16px;
+}
+
+.health-dashboard-panel > .daily-plan-raw-box {
+  margin-bottom: 16px;
+  padding: 18px;
+}
+
+.health-dashboard-panel .health-metric-cards {
+  margin-bottom: 14px;
+}
+
+.review-modal {
+  max-height: min(90dvh, 860px);
+}
+
+.review-body {
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+}
+
+@media (max-width: 768px) {
+  .shell-mobile .health-page,
+  .health-page {
+    height: auto !important;
+    min-height: 100dvh;
+    padding-bottom: calc(env(safe-area-inset-bottom) + 100px);
+    overflow: visible !important;
+  }
+
+  .shell-mobile .health-tab-body,
+  .health-page > .health-tab-body {
+    height: auto !important;
+    min-height: 0;
+    padding-bottom: calc(env(safe-area-inset-bottom) + 100px) !important;
+    overflow: visible !important;
+  }
+
+  .health-tabs {
+    display: flex;
+    width: 100%;
+    justify-content: space-evenly;
+  }
+
+  .health-tab {
+    min-width: 44px;
+    flex: 1 1 25%;
+    padding-inline: 8px;
+  }
+
+  .health-tab span {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+  }
+
+  .health-tab svg {
+    width: 22px;
+    height: 22px;
+  }
+
+  .review-calorie-target,
+  .health-nutrition-panel .nutrition-summary {
+    padding: 13px;
+  }
+
+  .calorie-target-heading {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 3px;
+  }
+
+  .health-dashboard-panel .health-chart-wrap {
+    width: 100%;
+    height: auto;
+    min-height: 220px;
+    max-height: none;
+    overflow: visible;
+  }
+
+  .health-dashboard-panel .health-chart {
+    width: 100%;
+    height: auto;
+    aspect-ratio: 640 / 220;
+  }
+}
+
 /* Academia: reserva mais altura para visualizar os exercícios do dia. */
 @media (min-width: 769px) {
   .health-content-grid {
@@ -8717,7 +8970,7 @@ th {
   }
 
   .shopping-list {
-    max-height: clamp(210px, calc(100dvh - 610px), 380px);
+    max-height: 380px;
     padding-right: 8px;
     overflow-y: auto;
     overscroll-behavior: contain;
@@ -8740,5 +8993,368 @@ th {
 
   .shopping-list::-webkit-scrollbar-thumb:hover {
     background: rgba(134, 215, 192, .58);
+  }
+}
+
+/* Health: calorie target, bounded content and dock-safe scrolling. */
+.health-page {
+  width: 100%;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.health-page img,
+.health-page svg { max-width: 100%; }
+
+.health-page img {
+  height: auto;
+  object-fit: contain;
+}
+
+.health-tab-body {
+  min-width: 0;
+  padding-bottom: calc(92px + env(safe-area-inset-bottom));
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+}
+
+.health-tab-body > [role="tabpanel"] {
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.health-profile-panel,
+.health-dashboard-panel,
+.health-nutrition-panel {
+  min-width: 0;
+  overflow-x: hidden;
+}
+
+.health-profile-grid > *,
+.health-metric-cards > *,
+.nutrition-macros > *,
+.meal-row,
+.meal-row-main,
+.meal-info { min-width: 0; }
+
+.calorie-target-card {
+  flex: none;
+  display: grid;
+  width: 100%;
+  min-width: 0;
+  gap: 10px;
+  padding: 16px;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, .1);
+  border-radius: 16px;
+  background: linear-gradient(135deg, rgba(35, 42, 54, .78), rgba(15, 18, 24, .64));
+  box-shadow: inset 0 1px rgba(255, 255, 255, .06), 0 12px 30px rgba(0, 0, 0, .16);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+}
+
+.calorie-target-heading {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.calorie-target-heading > div {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+
+.calorie-target-heading span {
+  color: var(--mute, #8b8b95);
+  font-size: .72rem;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+
+.calorie-target-heading strong {
+  font-size: clamp(1.3rem, 3vw, 1.75rem);
+  line-height: 1.15;
+  overflow-wrap: anywhere;
+}
+
+.calorie-target-heading small {
+  color: var(--mute, #8b8b95);
+  font-size: .76rem;
+}
+
+.calorie-slider {
+  width: 100%;
+  min-width: 0;
+  height: 24px;
+  margin: 0;
+  appearance: none;
+  -webkit-appearance: none;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  touch-action: pan-y;
+}
+
+.calorie-slider::-webkit-slider-runnable-track {
+  height: 7px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #34d399 var(--calorie-progress), rgba(255, 255, 255, .1) var(--calorie-progress));
+}
+
+.calorie-slider::-webkit-slider-thumb {
+  width: 22px;
+  height: 22px;
+  margin-top: -7.5px;
+  appearance: none;
+  -webkit-appearance: none;
+  border: 3px solid #d1fae5;
+  border-radius: 50%;
+  background: #10b981;
+  box-shadow: 0 3px 12px rgba(16, 185, 129, .38);
+}
+
+.calorie-slider::-moz-range-track {
+  height: 7px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, .1);
+}
+
+.calorie-slider::-moz-range-progress {
+  height: 7px;
+  border-radius: 999px;
+  background: #34d399;
+}
+
+.calorie-slider::-moz-range-thumb {
+  width: 18px;
+  height: 18px;
+  border: 3px solid #d1fae5;
+  border-radius: 50%;
+  background: #10b981;
+}
+
+.workout-history-card {
+  display: grid;
+  min-width: 0;
+  gap: 4px;
+  margin-bottom: 10px;
+  padding: 12px 14px;
+  border: 1px solid rgba(52, 211, 153, .24);
+  border-radius: 12px;
+  background: rgba(52, 211, 153, .08);
+}
+
+.workout-history-card strong {
+  color: #a7f3d0;
+  font-size: .86rem;
+}
+
+.workout-history-card p {
+  margin: 0;
+  color: var(--mute, #a1a1aa);
+  font-size: .8rem;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.health-nutrition-panel { max-width: 100%; }
+
+.health-nutrition-panel .meal-list {
+  min-height: 150px;
+  padding-right: 6px;
+  overflow-x: hidden;
+  overflow-y: auto;
+}
+
+.meal-info h3,
+.meal-info p,
+.meal-ingredients li { overflow-wrap: anywhere; }
+
+.health-dashboard-panel {
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.health-dashboard-panel .health-chart-wrap {
+  flex: 0 1 420px;
+  width: 100%;
+  min-height: 220px;
+  max-height: min(42dvh, 420px);
+  overflow: hidden;
+}
+
+.health-dashboard-panel .health-chart {
+  display: block;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  max-height: 100%;
+}
+
+.health-page :is(.health-tab-body, .meal-list, .health-dashboard-panel, .health-profile-panel, .health-plan-exercises) {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(134, 215, 192, .42) transparent;
+}
+
+.health-page :is(.health-tab-body, .meal-list, .health-dashboard-panel, .health-profile-panel, .health-plan-exercises)::-webkit-scrollbar { width: 7px; }
+.health-page :is(.health-tab-body, .meal-list, .health-dashboard-panel, .health-profile-panel, .health-plan-exercises)::-webkit-scrollbar-track { background: transparent; }
+.health-page :is(.health-tab-body, .meal-list, .health-dashboard-panel, .health-profile-panel, .health-plan-exercises)::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: rgba(134, 215, 192, .42);
+}
+
+@media (max-width: 768px) {
+  .shell-mobile .health-page {
+    padding-bottom: calc(104px + env(safe-area-inset-bottom));
+  }
+
+  .shell-mobile .health-tab-body {
+    padding-bottom: 12px;
+    overflow-x: hidden !important;
+    overflow-y: visible !important;
+  }
+
+  .calorie-target-heading {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .calorie-target-card,
+  .nutrition-summary { padding: 13px; }
+
+  .nutrition-macros,
+  .health-metric-cards { grid-template-columns: 1fr; }
+
+  .health-nutrition-panel .meal-list {
+    max-height: min(54dvh, 560px);
+    overflow-y: auto !important;
+    overscroll-behavior: contain;
+  }
+
+  .meal-row-main {
+    display: grid;
+    grid-template-columns: 36px minmax(0, 1fr) auto auto;
+    gap: 9px;
+    padding: 11px;
+  }
+
+  .meal-row-main > .meal-icon { grid-column: 1; grid-row: 1 / span 2; }
+  .meal-row-main > .meal-info { grid-column: 2; grid-row: 1; }
+  .meal-kcal {
+    grid-column: 2;
+    grid-row: 2;
+    justify-self: start;
+  }
+  .meal-row-main > .meal-check { grid-column: 3; grid-row: 1 / span 2; }
+  .meal-row-main > .meal-expand { grid-column: 4; grid-row: 1 / span 2; }
+
+  .health-dashboard-panel { overflow: visible; }
+
+  .health-dashboard-panel .health-chart-wrap {
+    flex: none;
+    min-height: 210px;
+    max-height: 320px;
+  }
+}
+
+@media (min-width: 769px) {
+  .health-page > .health-tab-body {
+    display: block;
+    overflow-x: hidden !important;
+    overflow-y: scroll !important;
+  }
+
+  .health-page > .health-tab-body > [role="tabpanel"] {
+    height: auto !important;
+    min-height: calc(100% - 1px);
+    overflow: visible;
+  }
+
+  .health-page > .health-tab-body > .health-nutrition-panel {
+    display: flex;
+    height: calc(100% - 1px) !important;
+    overflow: hidden;
+  }
+
+  .health-dashboard-panel {
+    overflow: visible;
+  }
+
+  .health-dashboard-panel .health-chart-wrap {
+    height: min(36dvh, 360px);
+    min-height: 240px;
+  }
+}
+
+/* Effective final responsive overrides. */
+.health-page > .health-top,
+.health-page .health-tabs {
+  position: static !important;
+  inset: auto !important;
+  transform: none;
+}
+
+.health-page > .health-tab-body {
+  padding-bottom: calc(env(safe-area-inset-bottom) + 100px) !important;
+}
+
+@media (max-width: 768px) {
+  .shell-mobile .health-page,
+  .health-page {
+    height: auto !important;
+    min-height: 100dvh;
+    padding-bottom: calc(env(safe-area-inset-bottom) + 100px);
+    overflow: visible !important;
+  }
+
+  .shell-mobile .health-tab-body,
+  .health-page > .health-tab-body {
+    height: auto !important;
+    min-height: 0;
+    padding-bottom: calc(env(safe-area-inset-bottom) + 100px) !important;
+    overflow: visible !important;
+  }
+
+  .health-tabs {
+    display: flex;
+    width: 100%;
+    justify-content: space-evenly;
+  }
+
+  .health-tab {
+    min-width: 44px;
+    flex: 1 1 25%;
+    padding-inline: 8px;
+  }
+
+  .health-tab span {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+  }
+
+  .health-dashboard-panel .health-chart-wrap {
+    width: 100%;
+    height: auto;
+    min-height: 220px;
+    max-height: none;
+    overflow: visible;
+  }
+
+  .health-dashboard-panel .health-chart {
+    width: 100%;
+    height: auto;
+    aspect-ratio: 640 / 220;
   }
 }

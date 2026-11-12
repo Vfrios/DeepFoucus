@@ -2,7 +2,7 @@
 export {};
 declare const self: any;
 
-const CACHE = 'wall-v1';
+const CACHE = 'wall-v2-health-layout';
 
 self.addEventListener('install', (e: any) => {
   e.waitUntil(
@@ -41,9 +41,11 @@ self.addEventListener('fetch', (e: any) => {
     );
     return;
   }
-  // Assets: cache primeiro, atualizando em segundo plano
+  // Assets versionados podem usar cache; CSS/JS sem hash devem priorizar a rede
+  // para que correções visuais não fiquem presas em uma versão antiga do PWA.
   e.respondWith(
-    caches.match(req).then((hit) => {
+    caches.match(req).then(async (hit) => {
+      const networkFirst = url.pathname.endsWith('.css') || url.pathname.endsWith('.js');
       const net = fetch(req)
         .then((r) => {
           if (r.ok) {
@@ -53,7 +55,7 @@ self.addEventListener('fetch', (e: any) => {
           return r;
         })
         .catch(() => hit as Response);
-      return hit || net;
+      return networkFirst ? net : hit || net;
     })
   );
 });
