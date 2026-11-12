@@ -1,18 +1,29 @@
-import { Router } from 'express';
+import { Request, Router } from 'express';
 import { ObjectId } from 'mongodb';
 import { getDb } from '../lib/mongo';
-import { gerarTarefasIA } from '../lib/ai';
+import {
+  classificarPrioridadePorData,
+  CorPrioridade,
+  corPrioridadeValida,
+  gerarPreviewAgendaIA,
+  gerarTarefasIA,
+  PRIORIDADE_COLOR_ID,
+  PRIORIDADE_HEX,
+} from '../lib/ai';
 import {
   createCalendarEvent,
   updateCalendarEvent,
   deleteCalendarEvent,
+  listEvents,
   syncLinkedTaskEventsFromGoogle,
+  getGoogleColorIdForPriority,
 } from '../lib/google';
 import { notify } from './push';
 
 const r = Router();
 const col = async () => (await getDb()).collection<any>('tasks');
 const activityCol = async () => (await getDb()).collection<any>('activity');
+const profileCol = async () => (await getDb()).collection<any>('profile');
 
 const TIPOS = ['tarefa', 'evento', 'estudo'] as const;
 type Tipo = (typeof TIPOS)[number];
@@ -23,6 +34,15 @@ const corValida = (v: unknown): v is string =>
 const corPadrao = (tipo: Tipo) =>
   tipo === 'estudo' ? '#f0b95a' : tipo === 'evento' ? '#9db4ff' : '#86d7c0';
 
+function resolverEmailUsuario(req: Request): string {
+  return (
+    req.user?.email ||
+    process.env.HEALTH_API_EMAIL ||
+    process.env.EMAIL_VITOR ||
+    'owner@local'
+  );
+}
+
 function validarCamposItem(body: any): string | null {
   if (!body || typeof body !== 'object' || Array.isArray(body)) return 'body inválido';
   if (body.titulo !== undefined && typeof body.titulo !== 'string') return 'titulo inválido';
@@ -30,6 +50,13 @@ function validarCamposItem(body: any): string | null {
   if (body.descricao !== undefined && typeof body.descricao !== 'string') return 'descricao inválida';
   if (body.tipo !== undefined && !tipoValido(body.tipo)) return 'tipo inválido';
   if (body.cor !== undefined && !corValida(body.cor)) return 'cor inválida';
+  if (
+    body.corPrioridade !== undefined &&
+    body.corPrioridade !== null &&
+    !corPrioridadeValida(body.corPrioridade)
+  ) {
+    return 'corPrioridade inválida';
+  }
   if (body.corPersonalizada !== undefined && typeof body.corPersonalizada !== 'boolean') {
     return 'corPersonalizada inválida';
   }
@@ -60,29 +87,39 @@ function validarCamposItem(body: any): string | null {
 
 const toApi = (t: any) => {
   const tipo = tipoValido(t.tipo) ? t.tipo : 'tarefa';
+  const corPrioridade: CorPrioridade | null = corPrioridadeValida(t.corPrioridade)
+    ? t.corPrioridade
+    : null;
+  const corHex = corValida(t.cor)
+    ? t.cor.toLowerCase()
+    : corPrioridade
+      ? PRIORIDADE_HEX[corPrioridade]
+      : corPadrao(tipo);
   return {
     _id: String(t._id),
     // Campos novos
     titulo: t.titulo ?? t.texto ?? '',
     descricao: t.descricao ?? '',
     tipo,
-    cor: corValida(t.cor) ? t.cor.toLowerCase() : corPadrao(tipo),
+    cor: corHex,
+    corPrioridade,
+    colorId: corPrioridade ? PRIORIDADE_COLOR_ID[corPrioridade] : undefined,
     corPersonalizada:
       typeof t.corPersonalizada === 'boolean'
         ? t.corPersonalizada
-        : corValida(t.cor) && t.cor.toLowerCase() !== corPadrao(tipo),
-    inicio: t.inicio ?? t.data ?? null,
+        : Boolean(corPrioridade) || (corValida(t.cor) && t.cor.toLowerCase() !== corPadrao(tipo)),
+  inicio: t.inicio ?? t.data ?? null,
     fim: t.fim ?? null,
-    // Campos legados (compatibilidade com UI não migrada)
-    texto: t.texto ?? t.titulo ?? '',
-    data: t.data ?? t.inicio ?? null,
-    // Comuns
-    feito: !!t.feito,
-    ordem: typeof t.ordem === 'number' ? t.ordem : 0,
-    googleEventId: t.googleEventId ?? null,
-    calendarId: t.calendarId ?? 'primary',
-    criadoEm: t.criadoEm,
-    atualizadoEm: t.atualizadoEm,
+      // Campos legados (compatibilidade com UI não migrada)
+      texto: t.texto ?? t.titulo ?? '',
+        data: t.data ?? t.inicio ?? null,
+          // Comuns
+          feito: !!t.feito,
+            ordem: typeof t.ordem === 'number' ? t.ordem : 0,
+              googleEventId: t.googleEventId ?? null,
+                calendarId: t.calendarId ?? 'primary',
+                  criadoEm: t.criadoEm,
+                    atualizadoEm: t.atualizadoEm,
   };
 };
 
@@ -104,6 +141,7 @@ function lerCamposItem(body: any): Partial<{
   descricao: string;
   tipo: Tipo;
   cor: string;
+  corPrioridade: CorPrioridade | null;
   corPersonalizada: boolean;
   inicio: string | null;
   fim: string | null;
@@ -120,6 +158,16 @@ function lerCamposItem(body: any): Partial<{
 
   if (typeof body?.descricao === 'string') out.descricao = body.descricao.trim().slice(0, 1000);
   if (tipoValido(body?.tipo)) out.tipo = body.tipo;
+  const prioInput = body?.corPrioridade;
+  if (corPrioridadeValida(prioInput)) {
+    out.corPrioridade = prioInput;
+    if (!corValida(body?.cor)) {
+      out.cor = PRIORIDADE_HEX[prioInput];
+      out.corPersonalizada = true;
+    }
+  } else if (prioInput === null) {
+    out.corPrioridade = null;
+  }
   if (corValida(body?.cor)) out.cor = body.cor.toLowerCase();
   if (typeof body?.corPersonalizada === 'boolean') out.corPersonalizada = body.corPersonalizada;
 
@@ -175,46 +223,327 @@ r.post('/', async (req, res) => {
   const c = await col();
   const last = await c.find().sort({ ordem: -1 }).limit(1).toArray();
   const now = new Date();
+  const corPrioridade: CorPrioridade | null =
+    campos.corPrioridade !== undefined
+      ? campos.corPrioridade
+      : campos.inicio
+        ? classificarPrioridadePorData(campos.inicio, undefined, now)
+        : null;
+  const corFinal =
+    campos.cor ??
+    (corPrioridade ? PRIORIDADE_HEX[corPrioridade] : corPadrao(campos.tipo ?? 'tarefa'));
+
   const doc: any = {
     titulo: campos.titulo,
     texto: campos.titulo, // espelho legado
     descricao: campos.descricao ?? '',
     tipo: campos.tipo ?? 'tarefa',
-    cor: campos.cor ?? corPadrao(campos.tipo ?? 'tarefa'),
+    cor: corFinal,
+    corPrioridade,
     corPersonalizada:
       campos.corPersonalizada ??
-      (campos.cor !== undefined && campos.cor.toLowerCase() !== corPadrao(campos.tipo ?? 'tarefa')),
+      (Boolean(corPrioridade) ||
+        (campos.cor !== undefined &&
+          campos.cor.toLowerCase() !== corPadrao(campos.tipo ?? 'tarefa'))),
     inicio: campos.inicio ?? null,
-    data: campos.inicio ?? null, // espelho legado
-    fim: campos.fim ?? null,
-    calendarId: campos.calendarId ?? 'primary',
-    feito: false,
-    ordem: (last[0]?.ordem ?? -1) + 1,
-    criadoEm: now,
-    atualizadoEm: now,
+      data: campos.inicio ?? null, // espelho legado
+        fim: campos.fim ?? null,
+          calendarId: campos.calendarId ?? 'primary',
+            feito: false,
+              ordem: (last[0]?.ordem ?? -1) + 1,
+                criadoEm: now,
+                  atualizadoEm: now,
   };
-  const ins = await c.insertOne(doc);
-  doc._id = ins.insertedId;
+const ins = await c.insertOne(doc);
+doc._id = ins.insertedId;
 
-  // Sync Google: cria evento se tiver início
-  if (doc.inicio) {
-    const eventId = await createCalendarEvent({
-      titulo: doc.titulo,
-      descricao: doc.descricao,
-      inicio: doc.inicio,
-      fim: doc.fim,
-      feito: doc.feito,
-      calendarId: doc.calendarId,
-    });
-    if (eventId) {
-      await c.updateOne({ _id: ins.insertedId }, { $set: { googleEventId: eventId } });
-      doc.googleEventId = eventId;
-    }
+// Sync Google: cria evento se tiver início
+if (doc.inicio) {
+  const eventId = await createCalendarEvent({
+    titulo: doc.titulo,
+    descricao: doc.descricao,
+    inicio: doc.inicio,
+    fim: doc.fim,
+    feito: doc.feito,
+    calendarId: doc.calendarId,
+    colorId: getGoogleColorIdForPriority(doc.corPrioridade),
+  });
+  if (eventId) {
+    await c.updateOne({ _id: ins.insertedId }, { $set: { googleEventId: eventId } });
+    doc.googleEventId = eventId;
+  }
+}
+
+notify('Novo item', doc.titulo);
+res.status(201).json(toApi(doc));
+});
+
+// ---- IA: PREVIEW INTELIGENTE (O Fim do Café da Manhã + Prioridade GitHub) ----
+r.post('/preview-ai', async (req, res) => {
+  const texto = String(
+    req.body?.texto ?? req.body?.roteiro ?? req.body?.prompt ?? ''
+  ).trim();
+  if (!texto) {
+    res.status(400).json({ error: 'texto obrigatório' });
+    return;
   }
 
-  notify('Novo item', doc.titulo);
-  res.status(201).json(toApi(doc));
+  try {
+    const db = await getDb();
+    const email = resolverEmailUsuario(req);
+    const now = new Date();
+
+    const [profile, diets, tasksAtivas] = await Promise.all([
+      db.collection('profile').findOne({ email }).then((p) => p || db.collection('profile').findOne({})),
+      db.collection('diets').find({ email }).sort({ geradoEm: -1 }).limit(1).toArray(),
+      db.collection('tasks').find({ feito: false, inicio: { $type: 'string' } }).limit(50).toArray(),
+    ]);
+
+    // Horário de fim do café da manhã (padrão 09:00; se a dieta tiver café da manhã mais tarde, respeita)
+    let fimCafeManha = '09:00';
+    const refeicoes = Array.isArray(diets[0]?.refeicoes) ? diets[0].refeicoes : [];
+    const cafe = refeicoes.find((m: any) =>
+      /caf[eé]|manh[aã]|desjejum/i.test(String(m?.nome || ''))
+    );
+    if (cafe && typeof cafe.horario === 'string' && /^\d{2}:\d{2}$/.test(cafe.horario)) {
+      const [hh, mm] = cafe.horario.split(':').map(Number);
+      const fimMin = Math.max(9 * 60, hh * 60 + mm + 30);
+      fimCafeManha = `${String(Math.floor(fimMin / 60)).padStart(2, '0')}:${String(fimMin % 60).padStart(2, '0')}`;
+    }
+
+    // Eventos existentes no Google Calendar + tarefas locais agendadas
+    const eventosExistentes: Array<{ title?: string; start: string; end: string; allDay?: boolean }> = [];
+    try {
+      const googleEvents = await listEvents(now, 14);
+      for (const ev of googleEvents) {
+        eventosExistentes.push({
+          title: ev.title,
+          start: ev.start,
+          end: ev.end,
+          allDay: ev.allDay,
+        });
+      }
+    } catch (err) {
+      console.warn(
+        '[tasks] preview-ai could not load Google Calendar events:',
+        err instanceof Error ? err.message : String(err)
+      );
+    }
+
+    for (const t of tasksAtivas) {
+      if (!t.inicio) continue;
+      const start = String(t.inicio);
+      const end = t.fim
+        ? String(t.fim)
+        : new Date(new Date(start).getTime() + 60 * 60 * 1000).toISOString();
+      eventosExistentes.push({
+        title: String(t.titulo || t.texto || 'Tarefa'),
+        start,
+        end,
+        allDay: false,
+      });
+    }
+
+    const tarefas = await gerarPreviewAgendaIA(texto, {
+      agora: now,
+      fimCafeManha,
+      eventosExistentes,
+      perfil: profile
+        ? {
+          objetivo: profile.objetivo,
+          disponibilidadePorDia: profile.disponibilidadePorDia,
+          duracaoTreino: profile.duracaoTreino,
+        }
+        : null,
+    });
+
+    res.json({ ok: true, tarefas });
+  } catch (e: any) {
+    res.status(500).json({
+      error: 'falha_ia',
+      detalhe: e?.message || 'erro desconhecido',
+    });
+  }
 });
+
+// ---- IA: CONFIRMAR E AGENDAR (Salva no MongoDB com corPrioridade e envia ao Google Calendar) ----
+r.post('/confirm', async (req, res) => {
+  const rawList = Array.isArray(req.body)
+    ? req.body
+    : Array.isArray(req.body?.tarefas)
+      ? req.body.tarefas
+      : Array.isArray(req.body?.itens)
+        ? req.body.itens
+        : null;
+
+  if (!rawList) {
+    res.status(400).json({ error: 'tarefas obrigatórias (array)' });
+    return;
+  }
+
+  if (rawList.length === 0) {
+    res.status(201).json({ ok: true, inseridas: 0, tarefas: [] });
+    return;
+  }
+
+  const calendarIdPadrao =
+    typeof req.body?.calendarId === 'string' && req.body.calendarId.trim()
+      ? req.body.calendarId.trim()
+      : 'primary';
+
+  const now = new Date();
+  const c = await col();
+  const last = await c.find().sort({ ordem: -1 }).limit(1).toArray();
+  let ordemBase = (last[0]?.ordem ?? -1) + 1;
+
+  const docs: any[] = [];
+  for (const item of rawList) {
+    if (!item || typeof item !== 'object') continue;
+    const titulo = String(item.titulo ?? item.texto ?? '').trim().slice(0, 200);
+    if (!titulo) continue;
+    const descricao = typeof item.descricao === 'string' ? item.descricao.trim().slice(0, 1000) : '';
+    const tipo: Tipo = tipoValido(item.tipo) ? item.tipo : 'tarefa';
+
+    const inicioRaw = item.inicio ?? item.data ?? null;
+    const inicio =
+      typeof inicioRaw === 'string' && inicioRaw && !isNaN(new Date(inicioRaw).getTime())
+        ? new Date(inicioRaw).toISOString()
+        : null;
+
+    let fim =
+      typeof item.fim === 'string' && item.fim && !isNaN(new Date(item.fim).getTime())
+        ? new Date(item.fim).toISOString()
+        : null;
+    if (inicio && (!fim || new Date(fim) <= new Date(inicio))) {
+      fim = new Date(new Date(inicio).getTime() + 60 * 60 * 1000).toISOString();
+    }
+
+    const corPrioridade: CorPrioridade = classificarPrioridadePorData(
+      inicio,
+      item.corPrioridade,
+      now
+    );
+    const corHex = PRIORIDADE_HEX[corPrioridade];
+    const calendarId =
+      typeof item.calendarId === 'string' && item.calendarId.trim()
+        ? item.calendarId.trim()
+        : calendarIdPadrao;
+
+    docs.push({
+      titulo,
+      texto: titulo,
+      descricao,
+      tipo,
+      cor: corHex,
+      corPrioridade,
+      corPersonalizada: true,
+      inicio,
+      data: inicio,
+      fim,
+      calendarId,
+      feito: false,
+      ordem: ordemBase++,
+      criadoEm: now,
+      atualizadoEm: now,
+    });
+  }
+
+  if (docs.length === 0) {
+    res.status(400).json({ error: 'nenhuma tarefa válida para confirmar' });
+    return;
+  }
+
+  const ins = await c.insertMany(docs);
+  const ids = Object.values(ins.insertedIds);
+
+  await Promise.all(
+    ids.map(async (id, i) => {
+      docs[i]._id = id;
+      if (!docs[i].inicio) return;
+      const colorId = PRIORIDADE_COLOR_ID[docs[i].corPrioridade as CorPrioridade];
+      const evId = await createCalendarEvent({
+        titulo: docs[i].titulo,
+        descricao: docs[i].descricao,
+        inicio: docs[i].inicio,
+        fim: docs[i].fim,
+        feito: docs[i].feito,
+        calendarId: docs[i].calendarId,
+        colorId,
+      });
+      if (evId) {
+        docs[i].googleEventId = evId;
+        await c.updateOne({ _id: id }, { $set: { googleEventId: evId } });
+      }
+    })
+  );
+
+  const inseridas = docs.map(toApi);
+  notify('Agenda confirmada', `${inseridas.length} tarefa(s) agendada(s)`);
+  res.status(201).json({ ok: true, inseridas: inseridas.length, tarefas: inseridas });
+});
+
+// ---- Quadro de Metas (Kanban salvo no perfil em kanban_goals) ----
+const KANBAN_COLS = ['a_fazer', 'em_andamento', 'concluido'] as const;
+type KanbanCol = (typeof KANBAN_COLS)[number];
+
+function normalizarColunaKanban(v: unknown): KanbanCol {
+  if (v === 'em_andamento' || v === 'doing' || v === 'in_progress') return 'em_andamento';
+  if (v === 'concluido' || v === 'done') return 'concluido';
+  return 'a_fazer';
+}
+
+function sanitizarKanbanGoals(raw: unknown) {
+  if (!Array.isArray(raw)) return null;
+  return raw
+    .filter((item): item is Record<string, unknown> => !!item && typeof item === 'object')
+    .map((item, idx) => ({
+      id:
+        typeof item.id === 'string' && item.id.trim()
+          ? item.id.trim().slice(0, 80)
+          : `goal-${Date.now()}-${idx}`,
+      titulo: String(item.titulo ?? item.title ?? item.texto ?? '')
+        .trim()
+        .slice(0, 200),
+      coluna: normalizarColunaKanban(item.coluna ?? item.status ?? item.column),
+      criadoEm:
+        typeof item.criadoEm === 'string' ? item.criadoEm : new Date().toISOString(),
+    }))
+    .filter((item) => item.titulo.length > 0)
+    .slice(0, 200);
+}
+
+r.get('/kanban', async (req, res) => {
+  const email = resolverEmailUsuario(req);
+  const pCol = await profileCol();
+  const profile = (await pCol.findOne({ email })) || (await pCol.findOne({}));
+  const goals = sanitizarKanbanGoals(profile?.kanban_goals) ?? [];
+  res.json({ ok: true, kanban_goals: goals });
+});
+
+const salvarKanbanHandler = async (req: Request, res: any) => {
+  const raw = Array.isArray(req.body) ? req.body : req.body?.kanban_goals ?? req.body?.goals;
+  const goals = sanitizarKanbanGoals(raw);
+  if (!goals) {
+    res.status(400).json({ error: 'kanban_goals inválido' });
+    return;
+  }
+  const email = resolverEmailUsuario(req);
+  const pCol = await profileCol();
+  const existing = (await pCol.findOne({ email })) || (await pCol.findOne({}));
+  const filter = existing?._id ? { _id: existing._id } : { email };
+  await pCol.updateOne(
+    filter,
+    {
+      $set: { kanban_goals: goals, atualizadoEm: new Date() },
+      $setOnInsert: { email, criadoEm: new Date() },
+    },
+    { upsert: true }
+  );
+  res.json({ ok: true, kanban_goals: goals });
+};
+
+r.put('/kanban', salvarKanbanHandler);
+r.post('/kanban', salvarKanbanHandler);
 
 // ---- IA: gerar itens a partir de um roteiro ----
 r.post('/from-roteiro', async (req, res) => {
@@ -354,6 +683,7 @@ r.patch('/:id', async (req, res) => {
   // Sync Google: se tem evento, atualiza; senão, cria um novo
   const previousCalendarId = before.calendarId || 'primary';
   const calendarId = merged.calendarId || previousCalendarId;
+  const colorId = getGoogleColorIdForPriority(merged.corPrioridade);
   if (merged.googleEventId) {
     if (!merged.inicio && !merged.data) {
       await deleteCalendarEvent(merged.googleEventId, previousCalendarId);
@@ -368,6 +698,7 @@ r.patch('/:id', async (req, res) => {
         fim: merged.fim,
         feito: merged.feito,
         calendarId,
+        colorId,
       });
       if (evId) {
         await c.updateOne({ _id }, { $set: { googleEventId: evId } });
@@ -383,6 +714,7 @@ r.patch('/:id', async (req, res) => {
         inicio: merged.inicio || merged.data,
         fim: merged.fim,
         feito: merged.feito,
+        colorId,
       }, calendarId);
     }
   } else if (merged.inicio || merged.data) {
@@ -393,6 +725,7 @@ r.patch('/:id', async (req, res) => {
       fim: merged.fim,
       feito: merged.feito,
       calendarId,
+      colorId,
     });
     if (evId) {
       await c.updateOne({ _id }, { $set: { googleEventId: evId } });

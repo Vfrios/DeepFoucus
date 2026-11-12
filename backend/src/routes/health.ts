@@ -1133,7 +1133,7 @@ r.post('/water/quick-add', async (req, res, next) => {
     const meta = dailyWaterGoal(profile);
     res.status(201).json({
       sucesso: true,
-      mensagem: `Água registrada: ${ml}ml`,
+      mensagem: 'Água registrada',
       totalHoje: total,
       meta,
       waterToday: total,
@@ -1238,7 +1238,7 @@ r.post('/meals/log', async (req, res, next) => {
     res.status(result.upsertedCount ? 201 : 200).json({
       ok: true,
       sucesso: true,
-      mensagem: `${meal.nome} registrado!`,
+      mensagem: 'Refeição registrada',
       caloriasConsumidas: totals.consumed.calorias,
       alreadyLogged: !result.upsertedCount,
       ...totals,
@@ -1267,7 +1267,7 @@ r.post('/workout/start', async (req, res, next) => {
       res.status(404).json({ error: 'workout_not_available_today' });
       return;
     }
-    res.json({ workoutSession: session });
+    res.json({ sucesso: true, mensagem: 'Treino iniciado', workoutSession: session });
   } catch (error) {
     next(error);
   }

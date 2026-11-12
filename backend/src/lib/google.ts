@@ -228,6 +228,27 @@ export async function listEvents(from: Date, days: number): Promise<CalEvent[]> 
   return perCal.flat().sort((a, b) => new Date(a.start).getTime() - new Date(b.start).getTime());
 }
 
+export type CorPrioridade = 'urgente_hoje' | 'medio_2dias' | 'distante_3dias' | 'futuro';
+
+export const GOOGLE_PRIORITY_COLOR_ID: Record<CorPrioridade, string> = {
+  urgente_hoje: '11',
+  medio_2dias: '6',
+  distante_3dias: '5',
+  futuro: '2',
+};
+
+export const PRIORITY_HEX_COLOR: Record<CorPrioridade, string> = {
+  urgente_hoje: '#ef4444',
+  medio_2dias: '#f97316',
+  distante_3dias: '#eab308',
+  futuro: '#22c55e',
+};
+
+export function getGoogleColorIdForPriority(corPrioridade?: string | null): string | undefined {
+  if (!corPrioridade) return undefined;
+  return GOOGLE_PRIORITY_COLOR_ID[corPrioridade as CorPrioridade];
+}
+
 export interface CalendarTask {
   titulo: string;
   descricao?: string;
@@ -292,6 +313,7 @@ export async function updateCalendarEvent(
         description: task.descricao || 'Criado pelo Wall Dashboard',
         start: { dateTime: calendarDateTime(task.inicio), timeZone: 'America/Sao_Paulo' },
         end: { dateTime: calendarDateTime(end.toISOString()), timeZone: 'America/Sao_Paulo' },
+        ...(task.colorId ? { colorId: task.colorId } : {}),
       },
     });
   } catch (e: any) {

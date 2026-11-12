@@ -1,10 +1,23 @@
-import { Router } from 'express';
+import { NextFunction, Request, Response, Router } from 'express';
 import { ObjectId } from 'mongodb';
 import { getDb } from '../lib/mongo';
 import { notifyAndroid } from '../lib/realtime';
 import { addShoppingItem, ShoppingItem, ShoppingNormalizationError } from '../lib/shopping';
+import { apiTokenAuth } from '../middleware/apiToken';
+import { jwtAuth } from '../middleware/jwtAuth';
+import { requireRole } from '../middleware/requireRole';
 
 const r = Router();
+
+function shoppingAuth(req: Request, res: Response, next: NextFunction): void {
+  if (req.path === '/add' && req.header('x-api-token')) {
+    apiTokenAuth(req, res, next);
+    return;
+  }
+  jwtAuth(req, res, () => requireRole(['owner', 'finance', 'guest'])(req, res, next));
+}
+
+r.use(shoppingAuth);
 
 r.post('/add', async (req, res, next) => {
   const input = req.body?.item;
@@ -15,7 +28,12 @@ r.post('/add', async (req, res, next) => {
 
   try {
     const item = await addShoppingItem(input.trim());
-    res.status(201).json({ ...item, _id: String(item._id) });
+    res.status(201).json({
+      ...item,
+      _id: String(item._id),
+      sucesso: true,
+      mensagem: 'Item adicionado',
+    });
   } catch (error) {
     if (error instanceof ShoppingNormalizationError) {
       res.status(502).json({ error: 'ai_unavailable' });
@@ -33,6 +51,18 @@ r.get('/list', async (_req, res, next) => {
       .sort({ comprado: 1, criadoEm: -1 })
       .toArray();
     res.json(items.map((item) => ({ ...item, _id: String(item._id) })));
+  } catch (error) {
+    next(error);
+  }
+});
+
+r.delete('/clear', async (_req, res, next) => {
+  try {
+    const result = await (await getDb())
+      .collection<ShoppingItem>('shopping_list')
+      .deleteMany({});
+    notifyAndroid('RELOAD_SHOPPING');
+    res.json({ ok: true, deleted: result.deletedCount });
   } catch (error) {
     next(error);
   }

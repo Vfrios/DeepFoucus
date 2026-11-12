@@ -18,6 +18,7 @@ export default function PageShopping() {
   const [input, setInput] = useState('');
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
+  const [clearing, setClearing] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -77,9 +78,33 @@ export default function PageShopping() {
     }
   };
 
+  const clearList = async () => {
+    if (!items.length || clearing || !window.confirm('Limpar todos os itens da lista de compras?')) return;
+    setClearing(true);
+    setError('');
+    try {
+      await api('/shopping/clear', { method: 'DELETE' });
+      setItems([]);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Não foi possível limpar a lista.');
+    } finally {
+      setClearing(false);
+    }
+  };
+
   return (
     <main className={`shopping-page${isGuest ? ' guest-shopping-page' : ''}`}>
-      <h2 className="page-title">Lista de Compras</h2>
+      <div className="shopping-heading">
+        <h2 className="page-title">Lista de Compras</h2>
+        <button
+          className="btn ghost shopping-clear-button"
+          type="button"
+          disabled={!items.length || clearing}
+          onClick={() => void clearList()}
+        >
+          {clearing ? 'Limpando…' : 'Limpar lista'}
+        </button>
+      </div>
       <form className="add shopping-add" onSubmit={addItem}>
         <input
           aria-label="Novo item"

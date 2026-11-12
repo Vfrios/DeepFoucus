@@ -44,7 +44,8 @@ app.use('/api/stats', jwtAuth, statsRoute);
 app.use('/api/push', jwtAuth, pushRoute);
 app.use('/api/health', healthRoute);
 app.use('/api/notes', jwtAuth, requireRole(['owner']), notesRoute);
-app.use('/api/shopping', jwtAuth, requireRole(['owner', 'finance', 'guest']), shoppingRoute);
+// /add tambem aceita x-api-token para os Atalhos do iOS; as demais rotas exigem JWT.
+app.use('/api/shopping', shoppingRoute);
 app.use('/api/ai', aiRoute);
 app.use('/api/finance', financeRoute);
 app.use('/api', (_req, res) => res.status(404).json({ error: 'not_found' }));

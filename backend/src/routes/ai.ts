@@ -1,12 +1,22 @@
-import { Router } from 'express';
+import { NextFunction, Request, Response, Router } from 'express';
 import { createCalendarEvent, listEvents } from '../lib/google';
-import { callAI } from '../lib/ai';
+import { callAI, gerarPlanoDoDiaIA } from '../lib/ai';
 import { getDb } from '../lib/mongo';
 import { addShoppingItem, ShoppingNormalizationError } from '../lib/shopping';
 import { apiTokenAuth } from '../middleware/apiToken';
+import { jwtAuth } from '../middleware/jwtAuth';
+import { requireRole } from '../middleware/requireRole';
 import { notify } from './push';
 
 const r = Router();
+
+function aiUserOrTokenAuth(req: Request, res: Response, next: NextFunction): void {
+  if (req.header('x-api-token')) {
+    apiTokenAuth(req, res, next);
+    return;
+  }
+  jwtAuth(req, res, () => requireRole(['owner'])(req, res, next));
+}
 
 const SYSTEM_PROMPT = `
 Você é o LOSAI, assistente pessoal do usuário. Identifique a intenção do comando e retorne
@@ -228,6 +238,98 @@ r.get('/briefing', apiTokenAuth, async (_req, res, next) => {
     }
   } catch (err) {
     next(err);
+  }
+});
+
+// ---- Rota do "Plano do Dia" (Conselheiro): POST /api/ai/daily-plan ----
+r.post('/daily-plan', aiUserOrTokenAuth, async (req, res, next) => {
+  try {
+    const rawTexto = req.body?.texto ?? req.body?.prompt ?? req.body?.roteiro ?? req.body?.comando ?? '';
+    const texto = typeof rawTexto === 'string' ? rawTexto.trim() : '';
+    if (!texto || texto.length > 6000) {
+      res.status(400).json({ error: 'texto obrigatório (máx. 6000 caracteres)' });
+      return;
+    }
+
+    const email = req.user?.email || process.env.HEALTH_API_EMAIL || process.env.EMAIL_VITOR || '';
+    const db = await getDb();
+    const now = new Date();
+
+    // Cruza com os eventos das próximas 4 semanas (28 dias) do Google Calendar
+    let eventos4Semanas: Array<{ data: string; horario: string; titulo: string }> = [];
+    try {
+      const events = await listEvents(now, 28);
+      eventos4Semanas = events.map((ev) => {
+        const startDate = new Date(ev.start);
+        const data = isNaN(startDate.getTime())
+          ? ev.start.slice(0, 10)
+          : new Intl.DateTimeFormat('sv-SE', { timeZone: 'America/Sao_Paulo' }).format(startDate);
+        const horario = ev.allDay
+          ? 'dia todo'
+          : isNaN(startDate.getTime())
+            ? ''
+            : new Intl.DateTimeFormat('pt-BR', {
+              hour: '2-digit',
+              minute: '2-digit',
+              hourCycle: 'h23',
+              timeZone: 'America/Sao_Paulo',
+            }).format(startDate);
+        return { data, horario, titulo: ev.title };
+      });
+    } catch (err) {
+      console.warn(
+        '[ai] daily-plan could not load 4-week Google Calendar events:',
+        err instanceof Error ? err.message : String(err)
+      );
+    }
+
+    const [profile, workouts] = await Promise.all([
+      email
+        ? db.collection('profile').findOne({ email })
+        : db.collection('profile').findOne({}),
+      email
+        ? db.collection('workouts').find({ email }).toArray()
+        : db.collection('workouts').find({}).limit(7).toArray(),
+    ]);
+
+    const disponibilidadePorDia = record(profile?.disponibilidadePorDia);
+    const treinosResumo = workouts.map((w: any) => {
+      const dia = String(w.diaSemana || '');
+      const horariosDia = Array.isArray(disponibilidadePorDia[dia])
+        ? (disponibilidadePorDia[dia] as string[])
+        : [];
+      return {
+        diaSemana: dia,
+        nomeTreino: String(w.nomeTreino || 'Treino'),
+        horario: horariosDia[0] || '18:00',
+      };
+    });
+
+    const resultado = await gerarPlanoDoDiaIA({
+      texto,
+      eventos4Semanas,
+      treinos: treinosResumo,
+      perfil: profile
+        ? {
+          objetivo: profile.objetivo,
+          disponibilidadePorDia: profile.disponibilidadePorDia,
+        }
+        : null,
+      agora: now,
+    });
+
+    res.json({
+      ok: true,
+      plano: resultado.plano,
+      texto: resultado.plano,
+      itens: resultado.itens,
+    });
+  } catch (err: any) {
+    console.error('[ai] daily-plan failed:', err instanceof Error ? err.message : String(err));
+    res.status(502).json({
+      error: 'falha_ia',
+      detalhe: err instanceof Error ? err.message : 'erro desconhecido',
+    });
   }
 });
 

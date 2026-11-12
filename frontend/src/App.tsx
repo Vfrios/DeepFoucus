@@ -5,6 +5,7 @@ import WebShell from './shells/WebShell';
 import { KioskPrompt } from './components/DeviceOverride';
 import PageShopping from './components/PageShopping';
 import { useAuth } from './AuthContext';
+import { api } from './lib/api';
 
 interface Props {
   loginResult: 'success' | 'error' | null;
@@ -53,6 +54,22 @@ export default function App({ loginResult }: Props) {
     if (url.searchParams.get('page') === 'shopping') return;
     url.searchParams.set('page', 'shopping');
     history.replaceState(null, '', url.toString());
+  }, [role]);
+
+  useEffect(() => {
+    if (!role) return;
+
+    const checkReminders = () => {
+      api('/push/check-reminders', { method: 'POST' }).catch((error) => {
+        if (error instanceof Error && error.message !== 'unauthorized') {
+          console.warn('[push] reminder check failed:', error.message);
+        }
+      });
+    };
+
+    checkReminders();
+    const interval = window.setInterval(checkReminders, 5 * 60 * 1000);
+    return () => window.clearInterval(interval);
   }, [role]);
 
   if (!role) return <LoginScreen loginResult={loginResult} />;

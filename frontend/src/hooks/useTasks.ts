@@ -3,6 +3,7 @@ import { api } from '../lib/api';
 import { getDefaultTaskColor } from '../lib/taskColors';
 
 export type Tipo = 'tarefa' | 'evento' | 'estudo';
+export type CorPrioridade = 'urgente_hoje' | 'medio_2dias' | 'distante_3dias' | 'futuro';
 
 export interface Task {
   _id: string;
@@ -10,6 +11,8 @@ export interface Task {
   descricao: string;
   tipo: Tipo;
   cor?: string;
+  corPrioridade?: CorPrioridade | null;
+  colorId?: string;
   corPersonalizada?: boolean;
   inicio: string | null;
   fim: string | null;
@@ -30,6 +33,7 @@ export interface TaskPayload {
   descricao?: string;
   tipo?: Tipo;
   cor?: string;
+  corPrioridade?: CorPrioridade | null;
   corPersonalizada?: boolean;
   inicio?: string | null;
   fim?: string | null;
@@ -43,6 +47,9 @@ export interface PreviewItem {
   tipo: Tipo;
   inicio: string | null;
   fim: string | null;
+  corPrioridade?: CorPrioridade;
+  cor?: string;
+  colorId?: string;
 }
 
 export function useTasks() {
@@ -100,6 +107,7 @@ export function useTasks() {
         descricao: payload.descricao ?? '',
         tipo: payload.tipo ?? 'tarefa',
         cor: payload.cor ?? getDefaultTaskColor(payload.tipo ?? 'tarefa'),
+        corPrioridade: payload.corPrioridade ?? null,
         corPersonalizada: payload.corPersonalizada ?? false,
         inicio: payload.inicio ?? null,
         fim: payload.fim ?? null,
@@ -119,6 +127,7 @@ export function useTasks() {
             descricao: payload.descricao,
             tipo: payload.tipo,
             cor: payload.cor,
+            corPrioridade: payload.corPrioridade,
             corPersonalizada: payload.corPersonalizada,
             inicio: payload.inicio,
             fim: payload.fim,
@@ -159,6 +168,7 @@ export function useTasks() {
                   ...(patch.descricao !== undefined ? { descricao: patch.descricao } : {}),
                   ...(patch.tipo !== undefined ? { tipo: patch.tipo } : {}),
                   ...(patch.cor !== undefined ? { cor: patch.cor } : {}),
+                  ...(patch.corPrioridade !== undefined ? { corPrioridade: patch.corPrioridade } : {}),
                   ...(patch.corPersonalizada !== undefined
                     ? { corPersonalizada: patch.corPersonalizada }
                     : {}),
@@ -239,10 +249,29 @@ export function useTasks() {
   const previewFromIA = useCallback(
     async (roteiro: string): Promise<PreviewItem[]> => {
       const res = await api<{ ok: boolean; tarefas: PreviewItem[] }>(
-        '/tasks/from-roteiro',
-        { method: 'POST', body: JSON.stringify({ roteiro, preview: true }) }
+        '/tasks/preview-ai',
+        { method: 'POST', body: JSON.stringify({ texto: roteiro, roteiro }) }
       );
       return res.tarefas ?? [];
+    },
+    []
+  );
+
+  const confirmFromIA = useCallback(
+    async (tarefas: PreviewItem[], calendarId = 'primary'): Promise<{ inseridas: number; tarefas: Task[] }> => {
+      pending.current++;
+      try {
+        const res = await api<{ ok: boolean; inseridas: number; tarefas: Task[] }>(
+          '/tasks/confirm',
+          { method: 'POST', body: JSON.stringify({ tarefas, calendarId }) }
+        );
+        if (res.tarefas?.length) {
+          setTasks((prev) => [...prev, ...res.tarefas]);
+        }
+        return { inseridas: res.inseridas ?? 0, tarefas: res.tarefas ?? [] };
+      } finally {
+        pending.current--;
+      }
     },
     []
   );
@@ -278,6 +307,7 @@ export function useTasks() {
     commitOrder,
     generateFromIA,
     previewFromIA,
+    confirmFromIA,
     sugestaoIA,
     refetch,
   };

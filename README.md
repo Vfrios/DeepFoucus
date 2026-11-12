@@ -65,7 +65,7 @@ npx web-push generate-vapid-keys
 Coloque em `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY` e ajuste `VAPID_SUBJECT=mailto:voce@email.com`.
 
 Push é disparado em: tarefa criada, tarefa concluída, evento começando em até 15 min (job de 60 s)
-e lembretes de hidratação (verificação horária entre 08h e 22h, com meta de 35 ml por kg).
+e lembretes de hidratação, refeições e treinos. Enquanto o app está aberto, o frontend verifica os lembretes a cada 5 minutos e acorda o backend quando necessário. Não são enviados lembretes entre 22h e 08h.
 Ative as notificações em cada dispositivo/navegador; a assinatura de cada um é salva no servidor, e o app restaura o estado ao ser reaberto. A permissão concedida pelo navegador não é compartilhada entre dispositivos.
 
 ## 5. Deploy no Render (um único serviço)
@@ -82,7 +82,7 @@ Ative as notificações em cada dispositivo/navegador; a assinatura de cada um �
 
 Build: `npm install --include=dev && npm run build` · Start: `node backend/dist/index.js`. O Express serve `/api/*` e o `frontend/dist`.
 
-> No plano free o serviço hiberna após inatividade; o job de lembretes só roda com o serviço acordado. Para lembretes confiáveis use um plano pago ou um ping externo em `/healthz`.
+> No plano free o serviço hiberna após inatividade. Com o app aberto, a verificação periódica do frontend acorda o serviço; com o app fechado, lembretes totalmente autônomos ainda exigem um plano sem hibernação ou um ping externo.
 
 ## 6. Dispositivos e modos
 
@@ -110,6 +110,8 @@ Use o **Fully Kiosk Browser**: Start URL `https://SEU-APP.onrender.com/?view=web
 - Requer **iOS 16.4+**.
 - Precisa instalar a PWA na Tela de Início e **abrir pelo ícone** (no Safari comum não funciona).
 - No app instalado: Ajustes → **Ativar notificações** → permitir → **Enviar teste**.
+
+> **Aviso:** para receber notificações reais no iPhone, o app deve estar instalado na Tela de Início (iOS 16.4+) e o usuário deve ter clicado em **Ativar notificações** no menu de Ajustes.
 
 ## 8. Configurando o iPhone (Atalhos)
 
@@ -139,7 +141,7 @@ Crie o atalho **“LOSAI - Beber Água”**:
 ```json
 {
   "sucesso": true,
-  "mensagem": "Água registrada: 250ml",
+  "mensagem": "Água registrada",
   "totalHoje": 1200,
   "meta": 2500
 }
@@ -167,7 +169,7 @@ Crie o atalho **“LOSAI - Registrar Refeição”**:
 ```json
 {
   "sucesso": true,
-  "mensagem": "Almoço registrado!",
+  "mensagem": "Refeição registrada",
   "caloriasConsumidas": 700
 }
 ```
@@ -216,6 +218,31 @@ Crie o atalho **“LOSAI - Bom Dia”** (pode ser ativado automaticamente ao des
 }
 ```
 7. Adicione a ação **Falar Texto** com a chave `texto` da resposta para que a Siri leia o resumo do seu dia assim que acordar.
+
+---
+
+### 5. Atalho do iPhone: Iniciar Treino
+1. Adicione a ação **Obter Conteúdo do URL**.
+2. **URL:** `https://deepfoucus.onrender.com/api/health/workout/start`
+3. **Método:** `POST`
+4. **Cabeçalhos:** `x-api-token: SEU_API_TOKEN`
+5. **Corpo:** JSON vazio (`{}`).
+6. A resposta contém `{"sucesso":true,"mensagem":"Treino iniciado"}` e os dados da sessão em `workoutSession`.
+
+---
+
+### 6. Atalho do iPhone: Adicionar Compra
+1. Adicione a ação **Obter Conteúdo do URL**.
+2. **URL:** `https://deepfoucus.onrender.com/api/shopping/add`
+3. **Método:** `POST`
+4. **Cabeçalhos:** `x-api-token: SEU_API_TOKEN`
+5. **Corpo da Solicitação:** `JSON`
+```json
+{
+  "item": "Leite"
+}
+```
+6. A resposta contém `{"sucesso":true,"mensagem":"Item adicionado"}`.
 
 ---
 
