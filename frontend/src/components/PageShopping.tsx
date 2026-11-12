@@ -19,6 +19,8 @@ export default function PageShopping() {
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
   const [clearing, setClearing] = useState(false);
+  const [editingId, setEditingId] = useState('');
+  const [editingText, setEditingText] = useState('');
 
   const load = useCallback(async () => {
     try {
@@ -77,6 +79,14 @@ export default function PageShopping() {
       setError(e instanceof Error ? e.message : 'Não foi possível excluir o item.');
     }
   };
+  const saveItemName = async (item: ShoppingItem) => {
+    if (!editingText.trim()) return;
+    try {
+      const updated = await api<ShoppingItem>(`/shopping/${item._id}`, { method: 'PATCH', body: JSON.stringify({ item: editingText.trim() }) });
+      setItems((current) => current.map((entry) => entry._id === updated._id ? updated : entry));
+      setEditingId('');
+    } catch (cause) { setError(cause instanceof Error ? cause.message : 'Não foi possível editar o item.'); }
+  };
 
   const clearList = async () => {
     if (!items.length || clearing || !window.confirm('Limpar todos os itens da lista de compras?')) return;
@@ -132,8 +142,9 @@ export default function PageShopping() {
                 onChange={() => void toggleItem(item)}
                 aria-label={`Marcar ${item.item} como ${item.comprado ? 'não comprado' : 'comprado'}`}
               />
-              <span className="shopping-emoji" aria-hidden="true">{item.emoji || '📦'}</span>
-              <span className="task-text">{item.item}</span>
+              <span className="shopping-emoji" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><path d="m4 8 8-4 8 4-8 4-8-4Zm0 0v9l8 4 8-4V8M12 12v9" /></svg></span>
+              {editingId === item._id ? <input className="shopping-edit-input" autoFocus value={editingText} maxLength={200} aria-label={`Editar ${item.item}`} onChange={(event) => setEditingText(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') void saveItemName(item); if (event.key === 'Escape') setEditingId(''); }} /> : <span className="task-text">{item.item}</span>}
+              <button className="icon-btn" type="button" aria-label={editingId === item._id ? `Salvar ${item.item}` : `Editar ${item.item}`} title={editingId === item._id ? 'Salvar' : 'Editar'} onClick={() => editingId === item._id ? void saveItemName(item) : (setEditingId(item._id), setEditingText(item.item))}><svg viewBox="0 0 24 24" aria-hidden="true" fill="none">{editingId === item._id ? <path d="m5 12 4 4L19 6" /> : <path d="m4 20 4.5-1 10-10a2.1 2.1 0 0 0-3-3l-10 10L4 20ZM14 7l3 3" />}</svg></button>
               <button
                 className="icon-btn"
                 type="button"
@@ -141,7 +152,7 @@ export default function PageShopping() {
                 aria-label={`Excluir ${item.item}`}
                 title="Excluir item"
               >
-                ✕
+                <svg viewBox="0 0 24 24" aria-hidden="true" fill="none"><path d="M6 6l12 12M18 6 6 18" /></svg>
               </button>
             </li>
           ))}

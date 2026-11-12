@@ -6,9 +6,11 @@ let reconnect: ReturnType<typeof setTimeout> | null = null;
 
 function connect() {
   if (socket || listeners.size === 0) return;
-  const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+  const webSocketBaseUrl = import.meta.env.DEV
+    ? 'ws://localhost:3001'
+    : 'wss://deepfoucus.onrender.com';
   const query = new URLSearchParams({ device: 'android', token: getToken() });
-  const connection = new WebSocket(`${protocol}//${window.location.host}/ws?${query}`);
+  const connection = new WebSocket(`${webSocketBaseUrl}/ws?${query.toString()}`);
   socket = connection;
 
   connection.onmessage = (event) => {

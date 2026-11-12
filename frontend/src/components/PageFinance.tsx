@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react';
 import { api, getToken } from '../lib/api';
 import { subscribeRealtime } from '../lib/realtime';
 
@@ -44,6 +44,10 @@ export default function PageFinance() {
   const [loading, setLoading] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [deletingId, setDeletingId] = useState('');
+  const [editingExpense, setEditingExpense] = useState<Expense | null>(null);
+  const [expenseModalOpen, setExpenseModalOpen] = useState(false);
+  const [expenseForm, setExpenseForm] = useState({ valor: '', estabelecimento: '', categoria: 'Outros', responsavel: 'Vitor' });
+  const [savingExpense, setSavingExpense] = useState(false);
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -157,6 +161,23 @@ export default function PageFinance() {
     }
   };
 
+  const openExpenseModal = (expense?: Expense) => {
+    setEditingExpense(expense || null);
+    setExpenseForm(expense ? { valor: String(expense.valor).replace('.', ','), estabelecimento: expense.estabelecimento, categoria: expense.categoria, responsavel: expense.responsavel } : { valor: '', estabelecimento: '', categoria: 'Outros', responsavel: 'Vitor' });
+    setExpenseModalOpen(true);
+  };
+  const saveExpense = async (event: FormEvent) => {
+    event.preventDefault();
+    setSavingExpense(true); setError('');
+    try {
+      const body = { ...expenseForm, data: editingExpense?.data || new Date().toISOString(), local: editingExpense?.local || '', origem: editingExpense?.origem || (expenseForm.responsavel.toLocaleLowerCase('pt-BR') === 'sophia' ? origins.sophia : origins.vitor) };
+      if (editingExpense) await api<Expense>(`/finance/${editingExpense._id}`, { method: 'PATCH', body: JSON.stringify(body) });
+      else await api('/finance/add', { method: 'POST', body: JSON.stringify(body) });
+      setExpenseModalOpen(false); await loadData();
+    } catch (cause) { setError(cause instanceof Error ? cause.message : 'Não foi possível salvar o gasto.'); }
+    finally { setSavingExpense(false); }
+  };
+
   const renderCategoryTag = (category: string) => {
     let hue = 0;
     for (let index = 0; index < category.length; index += 1) {
@@ -189,12 +210,14 @@ export default function PageFinance() {
       </svg>
     </button>
   );
+  const renderActions = (expense: Expense) => <div className="finance-row-actions"><button className="finance-delete" type="button" aria-label={`Editar gasto de ${expense.estabelecimento}`} title="Editar gasto" onClick={() => openExpenseModal(expense)}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m4 20 4.5-1 10-10a2.1 2.1 0 0 0-3-3l-10 10L4 20ZM14 7l3 3" /></svg></button>{renderDeleteButton(expense)}</div>;
 
   return (
     <main className="finance-page">
       <header className="finance-header">
         <h2 className="page-title">Finanças do mês</h2>
         <div className="row finance-actions">
+          <button className="btn" type="button" onClick={() => openExpenseModal()}>Novo Gasto</button>
           <button
             className="btn ghost finance-refresh"
             type="button"
@@ -322,7 +345,7 @@ export default function PageFinance() {
                           <td data-label="Valor" className="finance-value-column finance-numeric">
                             {currency.format(expense.valor)}
                           </td>
-                          <td className="finance-action-column">{renderDeleteButton(expense)}</td>
+                          <td className="finance-action-column">{renderActions(expense)}</td>
                         </tr>
                       );
                     })}
@@ -337,7 +360,7 @@ export default function PageFinance() {
                           <span className="finance-mobile-date finance-numeric">{dateTime.format(new Date(expense.data))}</span>
                           <strong className="finance-mobile-establishment">{expense.estabelecimento}</strong>
                         </div>
-                        {renderDeleteButton(expense)}
+                        {renderActions(expense)}
                       </div>
                       <div className="finance-mobile-card-bottom">
                         <strong className="finance-mobile-value finance-numeric">{currency.format(expense.valor)}</strong>
@@ -358,6 +381,7 @@ export default function PageFinance() {
           </section>
         </>
       )}
+      {expenseModalOpen && <div className="modal-backdrop" role="dialog" aria-modal="true" onMouseDown={(event) => { if (event.target === event.currentTarget && !savingExpense) setExpenseModalOpen(false); }}><form className="modal finance-expense-modal" onSubmit={saveExpense}><header className="modal-head"><h3>{editingExpense ? 'Editar gasto' : 'Novo gasto'}</h3><button className="modal-close" type="button" aria-label="Fechar" onClick={() => setExpenseModalOpen(false)}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18" /></svg></button></header><label className="field"><span>Valor</span><input inputMode="decimal" value={expenseForm.valor} required placeholder="0,00" onChange={(event) => setExpenseForm((form) => ({ ...form, valor: event.target.value }))} /></label><label className="field"><span>Estabelecimento</span><input value={expenseForm.estabelecimento} required maxLength={200} onChange={(event) => setExpenseForm((form) => ({ ...form, estabelecimento: event.target.value }))} /></label><label className="field"><span>Categoria</span><input value={expenseForm.categoria} required maxLength={80} onChange={(event) => setExpenseForm((form) => ({ ...form, categoria: event.target.value }))} /></label><label className="field"><span>Responsável</span><select value={expenseForm.responsavel} onChange={(event) => setExpenseForm((form) => ({ ...form, responsavel: event.target.value }))}><option>Vitor</option><option>Sophia</option></select></label><footer className="modal-foot"><button className="btn ghost" type="button" onClick={() => setExpenseModalOpen(false)}>Cancelar</button><button className="btn" type="submit" disabled={savingExpense}>{savingExpense ? 'Salvando…' : 'Salvar'}</button></footer></form></div>}
     </main>
   );
 }

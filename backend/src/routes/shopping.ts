@@ -69,8 +69,10 @@ r.delete('/clear', async (_req, res, next) => {
 });
 
 r.patch('/:id', async (req, res, next) => {
-  if (!ObjectId.isValid(req.params.id) || typeof req.body?.comprado !== 'boolean') {
-    res.status(400).json({ error: 'id ou status inválido' });
+  const hasStatus = typeof req.body?.comprado === 'boolean';
+  const hasItem = typeof req.body?.item === 'string' && !!req.body.item.trim() && req.body.item.trim().length <= 200;
+  if (!ObjectId.isValid(req.params.id) || (!hasStatus && !hasItem)) {
+    res.status(400).json({ error: 'id ou dados inválidos' });
     return;
   }
 
@@ -79,7 +81,7 @@ r.patch('/:id', async (req, res, next) => {
     const collection = (await getDb()).collection<ShoppingItem>('shopping_list');
     const result = await collection.findOneAndUpdate(
       { _id },
-      { $set: { comprado: req.body.comprado } },
+      { $set: { ...(hasStatus ? { comprado: req.body.comprado } : {}), ...(hasItem ? { item: req.body.item.trim() } : {}) } },
       { returnDocument: 'after' }
     );
     if (!result) {

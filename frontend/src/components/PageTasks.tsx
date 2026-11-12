@@ -56,13 +56,15 @@ const CORES_TIPO: Record<Tipo, string> = {
   evento: getDefaultTaskColor('evento'),
   estudo: getDefaultTaskColor('estudo'),
   tarefa: getDefaultTaskColor('tarefa'),
+  treino: '#c084fc',
 };
 const LABEL_TIPO: Record<Tipo, string> = {
   evento: 'Evento',
   estudo: 'Estudo',
   tarefa: 'Tarefa',
+  treino: 'Treino',
 };
-const TIPOS: Tipo[] = ['tarefa', 'estudo', 'evento'];
+const TIPOS: Tipo[] = ['tarefa', 'estudo', 'evento', 'treino'];
 
 type AgendaTab = 'Agenda IA' | 'Plano do Dia' | 'Quadro de Metas';
 const AGENDA_TABS: AgendaTab[] = ['Agenda IA', 'Plano do Dia', 'Quadro de Metas'];
@@ -73,6 +75,7 @@ interface KanbanGoal {
   titulo: string;
   coluna: KanbanColumnId;
   criadoEm?: string;
+  prioridade?: CorPrioridade;
 }
 
 const KANBAN_COLUMNS: Array<{ id: KanbanColumnId; label: string; accent: string }> = [
@@ -96,6 +99,8 @@ interface DailyPlanResponse {
   texto?: string;
   itens?: DailyPlanItem[];
 }
+interface SavedDailyPlanItem { _id: string; texto: string; prioridade: CorPrioridade; feito: boolean; }
+interface SavedDailyPlan { _id: string; data: string; itens: SavedDailyPlanItem[]; }
 
 // ---------- Ícones SVG (Sem Emojis) ----------
 
@@ -410,6 +415,7 @@ interface ModalProps {
     fim: string | null;
     calendarId: string;
   }) => Promise<void>;
+  onDelete?: () => Promise<void>;
 }
 
 export function TaskModal({
@@ -420,6 +426,7 @@ export function TaskModal({
   onSuggest,
   onClose,
   onSave,
+  onDelete,
 }: ModalProps) {
   const [titulo, setTitulo] = useState('');
   const [descricao, setDescricao] = useState('');
@@ -434,6 +441,7 @@ export function TaskModal({
   const [promptIA, setPromptIA] = useState('');
   const [salvando, setSalvando] = useState(false);
   const [sugerindo, setSugerindo] = useState(false);
+  const [excluindo, setExcluindo] = useState(false);
   const [sugestaoMsg, setSugestaoMsg] = useState<{ tipo: 'ok' | 'err'; texto: string } | null>(null);
 
   useEffect(() => {
@@ -690,7 +698,7 @@ export function TaskModal({
         )}
 
         <footer className="modal-foot">
-          <div style={{ flex: 1 }} />
+          {inicial && onDelete ? <button type="button" className="icon-btn agenda-delete-btn" aria-label="Excluir item" title="Excluir" disabled={excluindo || salvando} onClick={async () => { if (!window.confirm(`Excluir ${titulo}?`)) return; setExcluindo(true); try { await onDelete(); onClose(); } finally { setExcluindo(false); } }}><TrashIcon /></button> : <div style={{ flex: 1 }} />}
           <button type="button" className="btn ghost" onClick={onClose}>
             Cancelar
           </button>
@@ -1063,6 +1071,7 @@ function PreviewModal({ open, itens, onClose, onConfirm }: PreviewModalProps) {
                     remove,
                     previewFromIA,
                     confirmFromIA,
+                    refetch: refetchTasks,
   } = useTasks();
 
                   const [tab, setTab] = useState<AgendaTab>('Agenda IA');
@@ -1083,6 +1092,9 @@ function PreviewModal({ open, itens, onClose, onConfirm }: PreviewModalProps) {
                     const [dailyLoading, setDailyLoading] = useState(false);
                     const [dailyPlan, setDailyPlan] = useState<DailyPlanResponse | null>(null);
                     const [dailyError, setDailyError] = useState('');
+                    const [savedDailyPlan, setSavedDailyPlan] = useState<SavedDailyPlan | null>(null);
+                    const [dailySaving, setDailySaving] = useState(false);
+                    const [briefingLoading, setBriefingLoading] = useState(false);
 
                     // Aba 3: Quadro de Metas (Kanban)
                     const [kanbanGoals, setKanbanGoals] = useState<KanbanGoal[]>([]);
@@ -1113,6 +1125,10 @@ function PreviewModal({ open, itens, onClose, onConfirm }: PreviewModalProps) {
     return () => {
                       active = false;
     };
+  }, []);
+
+  useEffect(() => {
+    api<SavedDailyPlan | null>('/daily-plans').then(setSavedDailyPlan).catch(() => {});
   }, []);
 
   const persistKanban = useCallback(async (nextGoals: KanbanGoal[]) => {
@@ -1178,10 +1194,13 @@ function PreviewModal({ open, itens, onClose, onConfirm }: PreviewModalProps) {
   // Aba 1: Confirmar revisão -> POST /api/tasks/confirm
   const confirmarPreview = async (itens: PreviewItem[]) => {
                     const res = await confirmFromIA(itens);
+                    await refetchTasks();
+                    const refreshedKanban = await api<{ ok: boolean; kanban_goals: KanbanGoal[] }>('/tasks/kanban');
+                    setKanbanGoals(refreshedKanban.kanban_goals || []);
                     setRoteiro('');
                     setIaMsg({
                       tipo: 'ok',
-                    msg: `${res.inseridas} tarefa(s) confirmada(s) e sincronizada(s) com o Google Calendar.`,
+                    msg: 'Tarefas adicionadas ao Plano do Dia e Kanban. Agenda sincronizada com o Google Calendar.',
     });
   };
 
@@ -1204,7 +1223,60 @@ function PreviewModal({ open, itens, onClose, onConfirm }: PreviewModalProps) {
     }
   };
 
+  const salvarPlanoDoDia = async () => {
+    if (!dailyPlan || dailySaving) return;
+    const itens = dailyPlan.itens?.length
+      ? dailyPlan.itens.map((item) => ({ texto: [item.titulo, item.conselho].filter(Boolean).join(' — '), prioridade: item.prioridade, feito: false }))
+      : (dailyPlan.plano || dailyPlan.texto || '').split(/\r?\n/).filter((line) => line.trim()).map((texto) => ({ texto: texto.trim(), prioridade: 'futuro' as CorPrioridade, feito: false }));
+    setDailySaving(true);
+    try {
+      setSavedDailyPlan(await api<SavedDailyPlan>('/daily-plans', { method: 'POST', body: JSON.stringify({ itens }) }));
+    } catch (cause) { setDailyError(cause instanceof Error ? cause.message : 'Não foi possível salvar o plano.'); }
+    finally { setDailySaving(false); }
+  };
+
+  const editarItemPlano = async (item: SavedDailyPlanItem, patch: Partial<SavedDailyPlanItem>) => {
+    if (!savedDailyPlan) return;
+    setSavedDailyPlan(await api<SavedDailyPlan>(`/daily-plans/${savedDailyPlan._id}`, { method: 'PATCH', body: JSON.stringify({ itemId: item._id, ...patch }) }));
+  };
+  const excluirItemPlano = async (item: SavedDailyPlanItem) => {
+    if (!savedDailyPlan) return;
+    setSavedDailyPlan(await api<SavedDailyPlan>(`/daily-plans/${savedDailyPlan._id}?itemId=${encodeURIComponent(item._id)}`, { method: 'DELETE' }));
+  };
+
   // Aba 3: Funções do Kanban
+  const ouvirBriefing = async () => {
+    if (briefingLoading) return;
+    setBriefingLoading(true);
+    setDailyError('');
+    try {
+      const position = await new Promise<GeolocationPosition | null>((resolve) => {
+        if (!navigator.geolocation) { resolve(null); return; }
+        navigator.geolocation.getCurrentPosition(resolve, () => resolve(null), {
+          enableHighAccuracy: false,
+          timeout: 5000,
+          maximumAge: 10 * 60 * 1000,
+        });
+      });
+      const params = new URLSearchParams();
+      if (position) {
+        params.set('lat', String(position.coords.latitude));
+        params.set('lon', String(position.coords.longitude));
+      }
+      const result = await api<{ texto: string }>(`/ai/briefing?${params.toString()}`);
+      window.speechSynthesis.cancel();
+      result.texto.split('\n\n').map((block) => block.trim()).filter(Boolean).forEach((block) => {
+        const utterance = new SpeechSynthesisUtterance(block);
+        utterance.lang = 'pt-BR';
+        window.speechSynthesis.speak(utterance);
+      });
+    } catch (cause) {
+      setDailyError(cause instanceof Error ? cause.message : 'Não foi possível reproduzir o briefing.');
+    } finally {
+      setBriefingLoading(false);
+    }
+  };
+
   const adicionarMetaKanban = (e: FormEvent) => {
                         e.preventDefault();
                       const titulo = newGoalTitle.trim();
@@ -1416,6 +1488,9 @@ function PreviewModal({ open, itens, onClose, onConfirm }: PreviewModalProps) {
                                             Cruza suas pendências com as próximas 4 semanas do Google Calendar e seus horários de treino.
                                           </p>
                                         </div>
+                                        <button type="button" className="btn ghost" disabled={briefingLoading} onClick={ouvirBriefing}>
+                                          {briefingLoading ? 'Preparando…' : 'Ouvir briefing'}
+                                        </button>
                                       </div>
 
                                       <div className="chatgpt-prompt-box">
@@ -1469,6 +1544,7 @@ function PreviewModal({ open, itens, onClose, onConfirm }: PreviewModalProps) {
                                           <h2>Plano Priorizado</h2>
                                           <p>Recomendações realistas baseadas nas suas janelas livres.</p>
                                         </div>
+                                        {dailyPlan && <button type="button" className="btn" disabled={dailySaving} onClick={() => void salvarPlanoDoDia()}>{dailySaving ? 'Salvando…' : 'Salvar Plano'}</button>}
                                       </div>
 
                                       <div className="daily-plan-scroll">
@@ -1540,6 +1616,14 @@ function PreviewModal({ open, itens, onClose, onConfirm }: PreviewModalProps) {
                                             </div>
                                           </div>
                                         )}
+                                        {savedDailyPlan?.itens?.length ? <div className="daily-plan-saved-list">
+                                          <h3>Plano salvo de hoje</h3>
+                                          {savedDailyPlan.itens.map((item) => <div className={`daily-plan-saved-item${item.feito ? ' is-done' : ''}`} key={item._id}>
+                                            <input type="checkbox" checked={item.feito} aria-label={`Concluir ${item.texto}`} onChange={() => void editarItemPlano(item, { feito: !item.feito })} />
+                                            <input value={item.texto} aria-label="Editar item do plano" onChange={(event) => setSavedDailyPlan((current) => current && ({ ...current, itens: current.itens.map((entry) => entry._id === item._id ? { ...entry, texto: event.target.value } : entry) }))} onBlur={(event) => void editarItemPlano(item, { texto: event.target.value })} />
+                                            <button className="icon-btn agenda-delete-btn" type="button" aria-label={`Excluir ${item.texto}`} onClick={() => void excluirItemPlano(item)}><TrashIcon /></button>
+                                          </div>)}
+                                        </div> : null}
                                       </div>
                                     </article>
                                   </section>
@@ -1619,6 +1703,7 @@ function PreviewModal({ open, itens, onClose, onConfirm }: PreviewModalProps) {
                                                     }}
                                                   >
                                                     <p className="kanban-card-title">{card.titulo}</p>
+                                                    {card.prioridade && PRIORIDADE_CONFIG[card.prioridade] && <span className="kanban-priority-badge" style={{ color: PRIORIDADE_CONFIG[card.prioridade].color, background: PRIORIDADE_CONFIG[card.prioridade].bg, borderColor: PRIORIDADE_CONFIG[card.prioridade].border }}>{PRIORIDADE_CONFIG[card.prioridade].label}</span>}
                                                     <div className="kanban-card-actions">
                                                       {prevCol && (
                                                         <button
@@ -1670,6 +1755,7 @@ function PreviewModal({ open, itens, onClose, onConfirm }: PreviewModalProps) {
                                 onSuggest={previewFromIA}
                                 onClose={() => setModalOpen(false)}
                                 onSave={salvar}
+                                onDelete={editando ? () => remove(editando._id) : undefined}
                               />
 
                               <PreviewModal

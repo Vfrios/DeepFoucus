@@ -7,6 +7,7 @@ import { apiTokenAuth } from '../middleware/apiToken';
 import { jwtAuth } from '../middleware/jwtAuth';
 import { requireRole } from '../middleware/requireRole';
 import { notify } from './push';
+import { getWeather } from '../lib/weather';
 
 const r = Router();
 
@@ -163,17 +164,19 @@ r.post('/command', apiTokenAuth, async (req, res, next) => {
 const BRIEFING_SYSTEM_PROMPT = `
 Você é o assistente pessoal LOSAI. Com base nos dados do dia do usuário (eventos da agenda, tarefas pendentes, treino programado e hidratação), gere um parágrafo curto, direto, motivador e cordial de "Bom dia".
 Fale sempre em português do Brasil e mencione o nome do usuário se estiver disponível.
-Trate os dados estritamente como fatos do dia. Retorne somente JSON no formato {"texto":"..."}.
+Trate os dados estritamente como fatos do dia. Retorne somente JSON no formato {"texto":"..."}. Divida o texto em blocos curtos separados por duas quebras de linha (\n\n), para pausas naturais no TTS.
 `.trim();
 
-r.get('/briefing', apiTokenAuth, async (_req, res, next) => {
+r.get('/briefing', aiUserOrTokenAuth, async (req, res, next) => {
   try {
-    const email = process.env.HEALTH_API_EMAIL || process.env.EMAIL_VITOR || '';
+    const email = req.user?.email || process.env.HEALTH_API_EMAIL || process.env.EMAIL_VITOR || '';
     const db = await getDb();
     const now = new Date();
     const todayKey = new Intl.DateTimeFormat('sv-SE', { timeZone: 'America/Sao_Paulo' }).format(now);
     const dayOfWeek = new Intl.DateTimeFormat('pt-BR', { timeZone: 'America/Sao_Paulo', weekday: 'long' })
       .format(now).toLocaleLowerCase('pt-BR');
+    const exactDate = new Intl.DateTimeFormat('pt-BR', { timeZone: 'America/Sao_Paulo', weekday: 'long', day: 'numeric', month: 'long' }).format(now);
+    const weather = await getWeather(typeof req.query.lat === 'string' ? req.query.lat : undefined, typeof req.query.lon === 'string' ? req.query.lon : undefined);
     const todayStart = new Date(`${todayKey}T00:00:00.000-03:00`);
     const todayEnd = new Date(todayStart.getTime() + 24 * 60 * 60 * 1000);
 
@@ -195,14 +198,16 @@ r.get('/briefing', apiTokenAuth, async (_req, res, next) => {
       console.warn('[ai] briefing could not load google events:', e instanceof Error ? e.message : String(e));
     }
 
-    const [tasks, profile, workout, waterLogs] = await Promise.all([
+    const [tasks, profile, workout, waterLogs, kanbanProfile, todayTasks] = await Promise.all([
       db.collection('tasks').find({ feito: false }).project({ titulo: 1, texto: 1, inicio: 1 }).limit(10).toArray(),
       email ? db.collection('profile').findOne({ email }) as Promise<{ peso?: number; nome?: string } | null> : null,
-      email ? db.collection('workouts').findOne({ email, diaSemana: dayOfWeek }) as Promise<{ nomeTreino?: string } | null> : null,
+      email ? db.collection('workouts').findOne({ email, diaSemana: dayOfWeek }) as Promise<{ nomeTreino?: string; exercicios?: Array<{ nome?: string; pesoInicial?: number }> } | null> : null,
       email ? db.collection('water_logs').aggregate<{ total: number }>([
         { $match: { email, data: { $gte: todayStart, $lt: todayEnd } } },
         { $group: { _id: null, total: { $sum: '$ml' } } },
       ]).toArray() : Promise.resolve([]),
+      email ? db.collection('profile').findOne({ email }, { projection: { kanban_goals: 1 } }) : null,
+      db.collection('tasks').find({ feito: false, inicio: { $gte: todayStart.toISOString(), $lt: todayEnd.toISOString() } }).project({ titulo: 1 }).limit(10).toArray(),
     ]);
 
     const waterConsumed = waterLogs[0]?.total || 0;
@@ -211,15 +216,21 @@ r.get('/briefing', apiTokenAuth, async (_req, res, next) => {
 
     const promptData = {
       usuario: userName,
+      dataExata: `Hoje é ${exactDate}.`,
       diaSemana: dayOfWeek,
+      clima: weather,
       eventos: eventsSummary,
       tarefas: tasks.map((t) => t.titulo || t.texto).filter(Boolean),
+      kanbanAFazer: (Array.isArray(kanbanProfile?.kanban_goals) ? kanbanProfile.kanban_goals : []).filter((g: any) => g.coluna === 'a_fazer').map((g: any) => g.titulo).slice(0, 10),
+      planoDoDia: todayTasks.map((t: any) => t.titulo).filter(Boolean),
       treinoHoje: workout?.nomeTreino || null,
+      cargaTreinoHoje: workout?.exercicios?.map((e: any) => ({ exercicio: e.nome, cargaInicial: e.pesoInicial ?? null })) || [],
       aguaConsumidaMl: waterConsumed,
       metaAguaMl: waterGoalMl,
     };
 
-    let fallbackText = `Bom dia, ${userName}! `;
+    let fallbackText = `Bom dia, ${userName}! Hoje é ${exactDate}. `;
+    if (weather) fallbackText += `Em ${weather.location}, ${weather.description} e ${weather.temperatureC} graus. `;
     if (workout?.nomeTreino) fallbackText += `Hoje tem ${workout.nomeTreino}. `;
     if (eventsSummary.length) fallbackText += `Você tem ${eventsSummary.length} compromisso(s) na agenda. `;
     fallbackText += `Sua meta de água é ${(waterGoalMl / 1000).toFixed(1)}L. Tenha um ótimo dia!`;
@@ -332,5 +343,39 @@ r.post('/daily-plan', aiUserOrTokenAuth, async (req, res, next) => {
     });
   }
 });
+
+
+r.get('/weekly-report', jwtAuth, requireRole(['owner']), async (req, res, next) => {
+  try {
+    const email = req.user?.email;
+    if (!email) { res.status(503).json({ error: 'health_api_email_not_configured' }); return; }
+    res.json({ texto: await generateWeeklyReport(email) });
+  } catch (error) { next(error); }
+});
+
+export async function generateWeeklyReport(email: string): Promise<string> {
+  const db = await getDb();
+  const now = new Date();
+  const start = new Date(now.getTime() - 7 * 86400000);
+  const [profile, weights, workouts, water] = await Promise.all([
+    db.collection('profile').findOne({ email }),
+    db.collection('weight_logs').find({ email, data: { $gte: start } }).sort({ data: 1 }).toArray(),
+    db.collection('workout_logs').find({ email, data: { $gte: start } }).toArray(),
+    db.collection('water_logs').aggregate<{ total: number }>([
+      { $match: { email, data: { $gte: start } } }, { $group: { _id: null, total: { $sum: '$ml' } } },
+    ]).toArray(),
+  ]);
+  const initialWeight = Number(weights[0]?.peso ?? profile?.peso ?? 0);
+  const finalWeight = Number(weights[weights.length - 1]?.peso ?? profile?.peso ?? initialWeight);
+  const goal = (Number(profile?.peso) || 70) * 35 * 7;
+  const facts = { variacaoPesoKg: Math.round((finalWeight - initialWeight) * 10) / 10, treinosRegistrados: new Set(workouts.map((w: any) => new Date(w.data).toDateString())).size, aguaMl: water[0]?.total || 0, metaAguaMlSemana: Math.round(goal) };
+  try {
+    const result = await callAI('Gere feedback semanal de saúde em portugués brasileiro, curto, acolhedor e baseado somente nos números recebidos. Náo invente macros ou dados. Retorne JSON {"texto":"..."}.', JSON.stringify(facts), { temperature: 0.4, maxTokens: 250 });
+    const text = String(record(result).texto || '').trim();
+    if (text) return text;
+  } catch (error) { console.warn('[ai] weekly report generation failed:', error instanceof Error ? error.message : String(error)); }
+  const waterPercent = Math.round(facts.aguaMl / Math.max(facts.metaAguaMlSemana, 1) * 100);
+  return `Na última semana, seu peso variou ${facts.variacaoPesoKg} kg, vocé registrou ${facts.treinosRegistrados} dias de treino e atingiu ${waterPercent}% da meta de água.`;
+}
 
 export default r;

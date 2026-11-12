@@ -107,6 +107,31 @@ export function parseAmount(value: unknown): number | null {
   return Number.isFinite(amount) && amount > 0 ? money(amount) : null;
 }
 
+export function buildExpensePatch(body: Record<string, unknown>):
+  | { set: Partial<Expense>; error?: never }
+  | { set?: never; error: string } {
+  const set: Partial<Expense> = {};
+  if (body.valor !== undefined) {
+    const valor = parseAmount(String(body.valor));
+    if (valor === null) return { error: 'valor inválido' };
+    set.valor = valor;
+  }
+  if (body.data !== undefined) {
+    const data = parseIsoDate(body.data);
+    if (!data) return { error: 'data inválida' };
+    set.data = data;
+  }
+  for (const field of ['estabelecimento', 'local', 'responsavel', 'categoria', 'origem'] as const) {
+    if (body[field] === undefined) continue;
+    const value = typeof body[field] === 'string' ? body[field].trim() : '';
+    if ((!value && ['estabelecimento', 'responsavel', 'categoria'].includes(field)) || value.length > 200) {
+      return { error: `${field} inválido` };
+    }
+    set[field] = value;
+  }
+  return Object.keys(set).length ? { set } : { error: 'nenhum campo para atualizar' };
+}
+
 async function categorize(estabelecimento: string): Promise<string> {
   const result = await callAI(
     'Categorize the expense based only on the establishment name. Return JSON {"categoria":"..."} with a concise category in Brazilian Portuguese. If unclear, use "Outros".',
@@ -261,6 +286,20 @@ r.get('/', jwtAuth, financeRole, async (_req, res, next) => {
   } catch (error) {
     next(error);
   }
+});
+
+r.patch('/:id', jwtAuth, financeRole, async (req, res, next) => {
+  if (!ObjectId.isValid(req.params.id)) { res.status(400).json({ error: 'id inválido' }); return; }
+  const patch = buildExpensePatch(req.body && typeof req.body === 'object' ? req.body : {});
+  if (patch.error) { res.status(400).json({ error: patch.error }); return; }
+  try {
+    const expense = await (await collection()).findOneAndUpdate(
+      { _id: new ObjectId(req.params.id) }, { $set: patch.set }, { returnDocument: 'after' }
+    );
+    if (!expense) { res.status(404).json({ error: 'gasto não encontrado' }); return; }
+    notifyAndroid('RELOAD_FINANCE');
+    res.json({ ...expense, _id: String(expense._id) });
+  } catch (error) { next(error); }
 });
 
 r.delete('/:id', jwtAuth, financeRole, async (req, res, next) => {

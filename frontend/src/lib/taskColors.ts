@@ -4,6 +4,7 @@ export const DEFAULT_TASK_COLORS: Record<Tipo, string> = {
   tarefa: '#86d7c0',
   estudo: '#f0b95a',
   evento: '#9db4ff',
+  treino: '#c084fc',
 };
 
 export const isHexColor = (value: unknown): value is string =>

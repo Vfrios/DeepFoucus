@@ -290,6 +290,42 @@ export async function createCalendarEvent(task: CalendarTask): Promise<string | 
   }
 }
 
+/** Finds an exact-title event on the same São Paulo calendar day. */
+export async function findCalendarEventByTitleAndDay(task: CalendarTask): Promise<string | null> {
+  const cal = await authedCalendar();
+  if (!cal) return null;
+  const start = new Date(task.inicio);
+  if (Number.isNaN(start.getTime())) return null;
+  const day = new Intl.DateTimeFormat('sv-SE', { timeZone: 'America/Sao_Paulo' }).format(start);
+  const timeMin = new Date(`${day}T00:00:00-03:00`);
+  const timeMax = new Date(timeMin.getTime() + 24 * 60 * 60 * 1000);
+  const result = await cal.events.list({
+    calendarId: task.calendarId || 'primary',
+    timeMin: timeMin.toISOString(),
+    timeMax: timeMax.toISOString(),
+    singleEvents: true,
+    maxResults: 250,
+  });
+  const title = task.titulo.trim().toLocaleLowerCase('pt-BR');
+  return result.data.items?.find((event) =>
+    event.status !== 'cancelled' && String(event.summary || '').trim().toLocaleLowerCase('pt-BR') === title
+  )?.id || null;
+}
+
+export async function ensureCalendarEvent(
+  task: CalendarTask,
+  dependencies: {
+    find?: (value: CalendarTask) => Promise<string | null>;
+    create?: (value: CalendarTask) => Promise<string | null>;
+  } = {}
+): Promise<{ eventId: string | null; created: boolean }> {
+  const find = dependencies.find ?? findCalendarEventByTitleAndDay;
+  const create = dependencies.create ?? createCalendarEvent;
+  const existingEventId = await find(task);
+  if (existingEventId) return { eventId: existingEventId, created: false };
+  return { eventId: await create(task), created: true };
+}
+
 export async function updateCalendarEvent(
   eventId: string,
   task: CalendarTask,

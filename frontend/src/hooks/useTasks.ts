@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { api } from '../lib/api';
 import { getDefaultTaskColor } from '../lib/taskColors';
 
-export type Tipo = 'tarefa' | 'evento' | 'estudo';
+export type Tipo = 'tarefa' | 'evento' | 'estudo' | 'treino';
 export type CorPrioridade = 'urgente_hoje' | 'medio_2dias' | 'distante_3dias' | 'futuro';
 
 export interface Task {
@@ -24,6 +24,7 @@ export interface Task {
   calendarId?: string;
   calendarBackgroundColor?: string;
   externalCalendarEvent?: boolean;
+  externalEventId?: string;
   allDay?: boolean;
 }
 
@@ -183,7 +184,7 @@ export function useTasks() {
         async () => {
           await api(`/tasks/${id}`, {
             method: 'PATCH',
-            body: JSON.stringify(patch),
+            body: JSON.stringify({ ...patch, ...(id.startsWith('google:') ? { googleEventId: ref.current.find((item) => item._id === id)?.externalEventId } : {}) }),
           });
         }
       );
@@ -204,7 +205,13 @@ export function useTasks() {
     (id: string) =>
       optimistic(
         (t) => t.filter((x) => x._id !== id),
-        () => api(`/tasks/${id}`, { method: 'DELETE' })
+        () => {
+          const task = ref.current.find((item) => item._id === id);
+          const query = task?.externalCalendarEvent
+            ? `?eventId=${encodeURIComponent(task.externalEventId || '')}&calendarId=${encodeURIComponent(task.calendarId || 'primary')}`
+            : '';
+          return api(`/tasks/${id}${query}`, { method: 'DELETE' });
+        }
       ),
     [optimistic]
   );

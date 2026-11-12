@@ -32,6 +32,7 @@ type WorkoutSession = {
   workout: Workout;
 };
 type Meal = {
+  _id?: string;
   nome: string;
   horario?: string;
   alimentos: string[];
@@ -42,7 +43,7 @@ type MacroTotals = { calorias: number; proteina: number; carbo: number; gordura:
 type MealsToday = {
   consumed: MacroTotals;
   goal: MacroTotals;
-  completed: Array<{ tipoRefeicao: string; horario: string }>;
+  completed: Array<{ _id: string; tipoRefeicao: string; horario: string }>;
 };
 type ReviewMeal = Meal & { horario: string };
 type ReviewWorkout = Workout & { horario: string };
@@ -62,7 +63,7 @@ type Overview = {
   workouts: Workout[];
   todayWorkout: Workout | null;
   workoutSession: WorkoutSession | null;
-  diet: { refeicoes: Meal[]; objetivo?: string } | null;
+  diet: { _id?: string; refeicoes: Meal[]; objetivo?: string } | null;
   waterToday: number;
   waterGoalMl: number;
   waterHistory: Point[];
@@ -322,6 +323,8 @@ export default function PageHealth() {
   const [overview, setOverview] = useState<Overview | null>(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
+  const [workoutStartOpen, setWorkoutStartOpen] = useState(false);
+  const [workoutWeight, setWorkoutWeight] = useState('');
   const [editingFoodList, setEditingFoodList] = useState<FoodListKey | null>(null);
   const [newFood, setNewFood] = useState('');
   const [newExerciseName, setNewExerciseName] = useState('');
@@ -330,6 +333,7 @@ export default function PageHealth() {
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
   const [mealLogs, setMealLogs] = useState<MealsToday | null>(null);
+  const [weeklyReport, setWeeklyReport] = useState('');
   const [expandedMeals, setExpandedMeals] = useState<string[]>([]);
   const [loggingMeal, setLoggingMeal] = useState<string | null>(null);
   const [previewData, setPreviewData] = useState<Review | null>(null);
@@ -372,6 +376,14 @@ export default function PageHealth() {
     return () => {
       delete (window as Partial<Window>).forceFocusMode;
     };
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+    api<{ texto: string }>('/health/weekly-report')
+      .then((data) => { if (active) setWeeklyReport(data.texto || ''); })
+      .catch(() => { /* o dashboard continua disponível sem o texto da IA */ });
+    return () => { active = false; };
   }, []);
 
   const applyOverview = (data: Overview) => {
@@ -445,6 +457,14 @@ export default function PageHealth() {
     } finally {
       setLoggingMeal(null);
     }
+  };
+  const uncompleteMeal = async (meal: Meal) => {
+    const log = mealLogs?.completed.find((item) => item.tipoRefeicao === meal.nome);
+    if (!log) return;
+    setLoggingMeal(meal.nome);
+    try { setMealLogs(await api<MealsToday>(`/health/meals/log/${log._id}`, { method: 'DELETE' })); }
+    catch (cause) { setError(cause instanceof Error ? cause.message : 'Não foi possível desmarcar a refeição.'); }
+    finally { setLoggingMeal(null); }
   };
   const toggleMealExpanded = (name: string) => {
     setExpandedMeals((items) => items.includes(name) ? items.filter((item) => item !== name) : [...items, name]);
@@ -542,6 +562,9 @@ export default function PageHealth() {
   const updateReviewMeal = (index: number, horario: string) => {
     setPreviewData((current) => current && ({ ...current, dieta: current.dieta?.map((meal, i) => i === index ? { ...meal, horario } : meal) }));
   };
+  const updateReviewMealName = (index: number, nome: string) => setPreviewData((current) => current && ({ ...current, dieta: current.dieta?.map((meal, i) => i === index ? { ...meal, nome } : meal) }));
+  const updateReviewFood = (mealIndex: number, foodIndex: number, value: string) => setPreviewData((current) => current && ({ ...current, dieta: current.dieta?.map((meal, i) => i === mealIndex ? { ...meal, alimentos: meal.alimentos.map((food, j) => j === foodIndex ? value : food) } : meal) }));
+  const removeReviewMeal = (index: number) => setPreviewData((current) => current && ({ ...current, dieta: current.dieta?.filter((_, i) => i !== index) }));
   const updateReviewWorkout = (index: number, horario: string) => {
     setPreviewData((current) => current && ({ ...current, treino: current.treino?.map((item, i) => i === index ? { ...item, horario } : item) }));
   };
@@ -580,7 +603,7 @@ export default function PageHealth() {
       setIsSaving(false);
     }
   };
-  const logWater = async (ml: 250 | 500) => {
+  const logWater = async (ml: -250 | 250 | 500) => {
     setError('');
     setBusy(true);
     try {
@@ -596,6 +619,11 @@ export default function PageHealth() {
     } finally {
       setBusy(false);
     }
+  };
+  const deleteWorkoutDay = async (day: string) => {
+    if (!window.confirm(`Apagar o treino de ${day}?`)) return;
+    await api(`/health/workouts/${encodeURIComponent(day)}`, { method: 'DELETE' });
+    await loadOverview();
   };
   const suggestExerciseSwap = async (exercise: Exercise) => {
     setSwapExercise(exercise);
@@ -667,6 +695,20 @@ export default function PageHealth() {
       setBusy(false);
     }
   };
+  const startWorkoutWithWeight = async () => {
+    const peso = Number(workoutWeight);
+    if (!Number.isFinite(peso) || peso < 20 || peso > 400) { setError('Informe um peso entre 20 e 400 kg.'); return; }
+    setBusy(true); setError('');
+    try {
+      const result = await api<{ workoutSession: WorkoutSession }>('/health/workout/start', { method: 'POST', body: JSON.stringify({ peso }) });
+      setOverview((current) => current && ({ ...current, workoutSession: result.workoutSession, profile: { ...current.profile, peso } }));
+      setProfile((current) => ({ ...current, peso }));
+      setWorkoutStartOpen(false);
+      setMessage('Treino iniciado. Peso registrado.');
+    } catch (cause) { setError(cause instanceof Error ? cause.message : 'N?o foi poss?vel iniciar o treino.'); }
+    finally { setBusy(false); }
+  };
+
   const finishWorkout = async () => {
     if (!focusWorkout) {
       manualFocusMode.current = null;
@@ -838,6 +880,7 @@ export default function PageHealth() {
       </header>
 
       {(error || message) && <p className={`health-message${error ? ' is-error' : ''}`} role={error ? 'alert' : 'status'}>{error || message}</p>}
+      {workoutStartOpen && <div className="health-food-modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget && !busy) setWorkoutStartOpen(false); }}><section className="health-food-modal" role="dialog" aria-modal="true" aria-labelledby="workout-weight-title"><div className="health-food-modal-heading"><h2 id="workout-weight-title">Qual seu peso hoje?</h2><button type="button" aria-label="Fechar" onClick={() => setWorkoutStartOpen(false)}><svg aria-hidden="true" viewBox="0 0 24 24" fill="none"><path d="m6 6 12 12M18 6 6 18" /></svg></button></div><label>Peso (kg)<input type="number" min="20" max="400" step="0.1" value={workoutWeight} onChange={(event) => setWorkoutWeight(event.target.value)} autoFocus /></label><div className="health-actions"><button className="btn ghost" type="button" disabled={busy} onClick={() => setWorkoutStartOpen(false)}>Cancelar</button><button className="btn" type="button" disabled={busy} onClick={startWorkoutWithWeight}>{busy ? 'Iniciando...' : 'Salvar e iniciar'}</button></div></section></div>}
 
       <div className="health-tab-body">
         {tab === 'Perfil' && (
@@ -985,6 +1028,7 @@ export default function PageHealth() {
               </article>
             </div>
             <div className="health-profile-bottom">
+              <button className="btn ghost" type="button" disabled={busy || loading} onClick={async () => { setBusy(true); try { await persistProfile(); setMessage('Perfil salvo.'); } catch (cause) { setError(cause instanceof Error ? cause.message : 'Não foi possível salvar o perfil.'); } finally { setBusy(false); } }}>Salvar Perfil</button>
               <button
                 className={`btn health-generate-button${busy ? ' is-loading' : ''}`}
                 type="button"
@@ -1034,7 +1078,7 @@ export default function PageHealth() {
             <section className="health-focus-view" role="tabpanel" aria-label="Modo foco do treino">
               <header className="health-focus-header">
                 <div><span className="health-focus-eyebrow">MODO FOCO</span><h2>{focusMinutes !== null && focusMinutes > 0 && focusMinutes <= 15 ? `Faltam ${focusMinutes} minutos` : 'Treino Agendado'}</h2></div>
-                <p>{focusWorkout?.nomeTreino || 'Treino de hoje'}</p>
+                <div className="health-focus-start"><p>{focusWorkout?.nomeTreino || 'Treino de hoje'}</p>{workoutSession?.status !== 'em_andamento' && focusWorkout && <button className="btn" type="button" onClick={() => { setWorkoutWeight(String(profile.peso || '')); setWorkoutStartOpen(true); }}>Iniciar Treino</button>}</div>
               </header>
               <div className="health-content-grid health-focus-grid">
                 <article className="health-panel water-card health-water-card">
@@ -1046,7 +1090,7 @@ export default function PageHealth() {
                     </svg>
                     <div className="health-water-ring-label"><strong>{(overview?.waterToday || 0).toLocaleString('pt-BR')}</strong><span>de {(overview?.waterGoalMl || 0).toLocaleString('pt-BR')} ml</span></div>
                   </div>
-                  <div className="health-actions"><button className="btn ghost" type="button" disabled={busy} onClick={() => logWater(250)}>+ 250 ml</button><button className="btn" type="button" disabled={busy} onClick={() => logWater(500)}>+ 500 ml</button></div>
+                  <div className="health-actions"><button className="btn ghost" type="button" disabled={busy || (overview?.waterToday || 0) < 250} onClick={() => logWater(-250)}>- 250 ml</button><button className="btn ghost" type="button" disabled={busy} onClick={() => logWater(250)}>+ 250 ml</button><button className="btn" type="button" disabled={busy} onClick={() => logWater(500)}>+ 500 ml</button></div>
                 </article>
                 <article className="health-panel workout-panel health-focus-workout">
                   <div className="health-section-heading"><div><h2>{focusWorkout?.nomeTreino || 'Treino de hoje'}</h2><p>{focusWorkout?.diaSemana || 'Nenhum treino disponível'}</p></div></div>
@@ -1087,7 +1131,7 @@ export default function PageHealth() {
                   </svg>
                   <div className="health-water-ring-label"><strong>{(overview?.waterToday || 0).toLocaleString('pt-BR')}</strong><span>de {(overview?.waterGoalMl || 0).toLocaleString('pt-BR')} ml</span></div>
                 </div>
-                <div className="health-actions"><button className="btn ghost" type="button" disabled={busy} onClick={() => logWater(250)}>+ 250 ml</button><button className="btn" type="button" disabled={busy} onClick={() => logWater(500)}>+ 500 ml</button></div>
+                <div className="health-actions"><button className="btn ghost" type="button" disabled={busy || (overview?.waterToday || 0) < 250} onClick={() => logWater(-250)}>- 250 ml</button><button className="btn ghost" type="button" disabled={busy} onClick={() => logWater(250)}>+ 250 ml</button><button className="btn" type="button" disabled={busy} onClick={() => logWater(500)}>+ 500 ml</button></div>
                 <div className="health-push"><h3>Lembretes de hidratação</h3><p>Notificações entre 08h e 22h.</p><PushButton /></div>
               </article>
               <article className="health-panel health-management-panel">
@@ -1109,7 +1153,7 @@ export default function PageHealth() {
                     {overview.workouts.filter((workout) => workout.diaSemana === selectedWorkoutDay).map((workout) => (
                       <section className="health-plan-editor" key={workout.diaSemana} aria-label={`Editar ${workout.diaSemana}`}>
                         <div className="health-section-heading">
-                          <div><h3>{workout.nomeTreino}</h3><p>{workout.diaSemana === todayWorkout?.diaSemana ? 'Treino de hoje · informativo' : 'Ficha do dia selecionado'}</p></div>
+                          <div><h3>{workout.nomeTreino}</h3><p>{workout.diaSemana === todayWorkout?.diaSemana ? 'Treino de hoje · informativo' : 'Ficha do dia selecionado'}</p></div><button className="icon-btn" type="button" aria-label={`Apagar treino de ${workout.diaSemana}`} onClick={() => void deleteWorkoutDay(workout.diaSemana)}><svg aria-hidden="true" viewBox="0 0 24 24" fill="none"><path d="M4 7h16M9 7V4h6v3M6 7l1 14h10l1-14M10 11v6M14 11v6" /></svg></button>
                           <button className="btn" type="button" disabled={busy || !planDirty} onClick={saveWorkoutPlan}>Salvar alterações</button>
                         </div>
                         {workout.diaSemana === todayWorkout?.diaSemana && <p className="health-today-notice">Este treino pode ser consultado aqui; o modo foco será ativado perto do horário agendado.</p>}
@@ -1209,12 +1253,12 @@ export default function PageHealth() {
                         <button
                           className={`meal-check${done ? ' is-done' : ''}`}
                           type="button"
-                          disabled={done || loggingMeal === meal.nome}
-                          aria-label={done ? `${meal.nome} concluído` : `Concluir ${meal.nome}`}
-                          title={done ? 'Concluído' : 'Concluir'}
-                          onClick={() => completeMeal(meal)}
+                          disabled={loggingMeal === meal.nome}
+                          aria-label={done ? `Desmarcar ${meal.nome}` : `Concluir ${meal.nome}`}
+                          title={done ? 'Desmarcar' : 'Concluir'}
+                          onClick={() => done ? uncompleteMeal(meal) : completeMeal(meal)}
                         >
-                          <svg aria-hidden="true" viewBox="0 0 24 24" fill="none"><path d="m5 12.5 4.5 4.5L19 7.5" /></svg>
+                          <svg aria-hidden="true" viewBox="0 0 24 24" fill="none"><path d={done ? 'M7 7l10 10M17 7 7 17' : 'm5 12.5 4.5 4.5L19 7.5'} /></svg>
                         </button>
                         <button
                           className={`meal-expand${open ? ' is-open' : ''}`}
@@ -1238,6 +1282,7 @@ export default function PageHealth() {
         {tab === 'Dashboard' && (
           <section className="health-panel health-dashboard-panel" role="tabpanel" aria-label="Dashboard">
             <div className="health-section-heading"><div><h2>Progresso</h2><p>Tendência das métricas registradas.</p></div></div>
+            {weeklyReport && <article className="daily-plan-raw-box"><h3>Relatório semanal</h3><p>{weeklyReport}</p></article>}
             <div className="health-metric-cards">
               {series.map((item) => {
                 const last = item.points[item.points.length - 1];
@@ -1295,10 +1340,11 @@ export default function PageHealth() {
                         <span className="meal-icon"><MealIcon name={meal.nome} /></span>
                         <div className="review-row-info">
                           <div className="review-row-top">
-                            <h4>{meal.nome}</h4>
+                            <input className="review-name-input" value={meal.nome} aria-label="Nome da refeição" onChange={(event) => updateReviewMealName(index, event.target.value)} />
                             <TimeInput24 value={meal.horario} label={`Horário de ${meal.nome}`} onChange={(value) => updateReviewMeal(index, value)} />
+                            <button className="icon-btn" type="button" aria-label={`Excluir ${meal.nome}`} onClick={() => removeReviewMeal(index)}><svg aria-hidden="true" viewBox="0 0 24 24" fill="none"><path d="M4 7h16M9 7V4h6v3M6 7l1 14h10l1-14" /></svg></button>
                           </div>
-                          <ul>{(meal.alimentos || []).map((food, i) => <li key={`${food}-${i}`}>{food}</li>)}</ul>
+                          <ul>{(meal.alimentos || []).map((food, i) => <li key={i}><input value={food} aria-label={`Alimento ${i + 1} de ${meal.nome}`} onChange={(event) => updateReviewFood(index, i, event.target.value)} /></li>)}</ul>
                           <p className="review-macros">{meal.calorias} kcal · P {meal.macros?.proteina ?? 0}g · C {meal.macros?.carboidratos ?? 0}g · G {meal.macros?.gordura ?? 0}g</p>
                         </div>
                       </article>

@@ -25,14 +25,14 @@ const col = async () => (await getDb()).collection<any>('tasks');
 const activityCol = async () => (await getDb()).collection<any>('activity');
 const profileCol = async () => (await getDb()).collection<any>('profile');
 
-const TIPOS = ['tarefa', 'evento', 'estudo'] as const;
+const TIPOS = ['tarefa', 'evento', 'estudo', 'treino'] as const;
 type Tipo = (typeof TIPOS)[number];
 const tipoValido = (v: unknown): v is Tipo =>
   typeof v === 'string' && (TIPOS as readonly string[]).includes(v);
 const corValida = (v: unknown): v is string =>
   typeof v === 'string' && /^#[0-9a-fA-F]{6}$/.test(v);
 const corPadrao = (tipo: Tipo) =>
-  tipo === 'estudo' ? '#f0b95a' : tipo === 'evento' ? '#9db4ff' : '#86d7c0';
+  tipo === 'estudo' ? '#f0b95a' : tipo === 'evento' ? '#9db4ff' : tipo === 'treino' ? '#c084fc' : '#86d7c0';
 
 function resolverEmailUsuario(req: Request): string {
   return (
@@ -454,6 +454,15 @@ r.post('/confirm', async (req, res) => {
   }
 
   const ins = await c.insertMany(docs);
+  const kanbanCandidates = docs.filter((doc) => !doc.inicio && (doc.corPrioridade === 'distante_3dias' || doc.corPrioridade === 'futuro'));
+  if (kanbanCandidates.length) {
+    const email = resolverEmailUsuario(req);
+    const pCol = await profileCol();
+    const profile = await pCol.findOne({ email });
+    const goals = sanitizarKanbanGoals(profile?.kanban_goals) ?? [];
+    for (const doc of kanbanCandidates) goals.push({ id: `agenda-${new ObjectId().toHexString()}`, titulo: doc.titulo, coluna: 'a_fazer', criadoEm: now.toISOString(), prioridade: doc.corPrioridade });
+    await pCol.updateOne(profile?._id ? { _id: profile._id } : { email }, { $set: { kanban_goals: goals, atualizadoEm: now }, $setOnInsert: { email, criadoEm: now } }, { upsert: true });
+  }
   const ids = Object.values(ins.insertedIds);
 
   await Promise.all(
@@ -507,6 +516,7 @@ function sanitizarKanbanGoals(raw: unknown) {
       coluna: normalizarColunaKanban(item.coluna ?? item.status ?? item.column),
       criadoEm:
         typeof item.criadoEm === 'string' ? item.criadoEm : new Date().toISOString(),
+      ...(item.prioridade === 'urgente_hoje' || item.prioridade === 'medio_2dias' || item.prioridade === 'distante_3dias' || item.prioridade === 'futuro' ? { prioridade: item.prioridade } : {}),
     }))
     .filter((item) => item.titulo.length > 0)
     .slice(0, 200);
@@ -640,6 +650,19 @@ r.post('/reorder', async (req, res) => {
 });
 
 r.patch('/:id', async (req, res) => {
+  if (req.params.id.startsWith('google:')) {
+    const eventId = typeof req.body?.googleEventId === 'string' ? req.body.googleEventId : req.params.id.slice(7);
+    const calendarId = typeof req.body?.calendarId === 'string' ? req.body.calendarId : 'primary';
+    const erro = validarCamposItem(req.body);
+    if (erro || !req.body?.titulo || !req.body?.inicio) { res.status(400).json({ error: erro || 'dados inválidos' }); return; }
+    await updateCalendarEvent(eventId, {
+      titulo: String(req.body.titulo).trim(), descricao: String(req.body.descricao || ''),
+      inicio: req.body.inicio, fim: req.body.fim, calendarId,
+      colorId: getGoogleColorIdForPriority(req.body.corPrioridade),
+    }, calendarId);
+    res.json({ ok: true });
+    return;
+  }
   const _id = oid(req.params.id);
   if (!_id) {
     res.status(400).json({ error: 'id inválido' });
@@ -737,6 +760,13 @@ r.patch('/:id', async (req, res) => {
 });
 
 r.delete('/:id', async (req, res) => {
+  if (req.params.id.startsWith('google:')) {
+    const eventId = typeof req.query.eventId === 'string' ? req.query.eventId : req.params.id.slice(7);
+    const calendarId = typeof req.query.calendarId === 'string' ? req.query.calendarId : 'primary';
+    await deleteCalendarEvent(eventId, calendarId);
+    res.status(204).end();
+    return;
+  }
   const _id = oid(req.params.id);
   if (!_id) {
     res.status(400).json({ error: 'id inválido' });

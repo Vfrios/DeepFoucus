@@ -60,7 +60,9 @@ export function getDb(): Promise<Db> {
       await d.collection('workout_sessions').createIndex({ email: 1, sessionKey: 1 }, { unique: true });
       await d.collection('workout_sessions').createIndex({ email: 1, status: 1, scheduledFor: -1 });
       await d.collection('water_logs').createIndex({ email: 1, data: -1 });
+      await d.collection('weight_logs').createIndex({ email: 1, data: -1 });
       await d.collection('diets').createIndex({ email: 1, geradoEm: -1 });
+      await d.collection('daily_plans').createIndex({ email: 1, data: 1 }, { unique: true });
 
       db = d;
       return d;

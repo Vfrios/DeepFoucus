@@ -27,7 +27,7 @@ interface Props {
 
 export default function PageWeekCalendar({ onBack }: Props) {
   const calendarWrapRef = useRef<HTMLDivElement>(null);
-  const { tasks, error, create, update, previewFromIA } = useTasks();
+  const { tasks, error, create, update, remove, previewFromIA } = useTasks();
   const [date, setDate] = useState(() => new Date());
   const { calendars, selectedIds } = useGoogleCalendars();
   const weekStart = startOfWeek(date, { locale: ptBR });
@@ -112,6 +112,7 @@ export default function PageWeekCalendar({ onBack }: Props) {
           <h2>{rangeLabel}</h2>
         </div>
         <div className="calendar-nav">
+          <button className="btn" type="button" onClick={() => openCreate({ start: new Date(), end: new Date(Date.now() + 60 * 60_000), slots: [], action: 'select' })}>Novo Item</button>
           <button className="btn ghost calendar-back" onClick={onBack}>
             <svg aria-hidden="true" viewBox="0 0 24 24" fill="none">
               <path d="m15 18-6-6 6-6M9 12h12" />
@@ -161,7 +162,7 @@ export default function PageWeekCalendar({ onBack }: Props) {
           onNavigate={setDate}
           onSelectSlot={openCreate}
           onSelectEvent={(event) => {
-            if (!event.resource.externalCalendarEvent) editTask(event);
+            editTask(event);
           }}
           eventPropGetter={(event) => ({
             style: {
@@ -187,6 +188,7 @@ export default function PageWeekCalendar({ onBack }: Props) {
         onSuggest={previewFromIA}
         onClose={() => setModalOpen(false)}
         onSave={saveTask}
+        onDelete={editing ? () => remove(editing._id) : undefined}
       />
     </main>
   );

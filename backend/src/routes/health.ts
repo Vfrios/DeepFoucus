@@ -2,10 +2,11 @@ import { NextFunction, Request, Response, Router } from 'express';
 import { ObjectId } from 'mongodb';
 import { getDb } from '../lib/mongo';
 import { callAI, gerarDietaSaude, gerarTreinoSaude, importarDadosSaude } from '../lib/ai';
-import { createCalendarEvent, isConnected } from '../lib/google';
+import { createCalendarEvent, deleteCalendarEvent, ensureCalendarEvent, isConnected } from '../lib/google';
 import { apiTokenAuth } from '../middleware/apiToken';
 import { jwtAuth } from '../middleware/jwtAuth';
 import { requireRole } from '../middleware/requireRole';
+import { generateWeeklyReport } from './ai';
 
 const r = Router();
 const TIME_ZONE = 'America/Sao_Paulo';
@@ -559,6 +560,7 @@ function sanitizeSavedDiet(raw: unknown): { refeicoes: ReturnType<typeof normali
       ? meal.alimentos.filter((food): food is string => typeof food === 'string').map((food) => food.trim()).filter(Boolean)
       : typeof meal.alimentos === 'string' && meal.alimentos.trim() ? [meal.alimentos.trim()] : [];
     return {
+      _id: ObjectId.isValid(String(meal._id || '')) ? String(meal._id) : undefined,
       nome,
       horario,
       alimentos,
@@ -632,14 +634,21 @@ r.get('/overview', async (req, res, next) => {
     const profileRecord = profile as Record<string, unknown> & {
       pesoHistorico?: Array<{ data: Date; peso: number }>;
     };
-    const weightHistory = Array.isArray(profileRecord.pesoHistorico)
-      ? profileRecord.pesoHistorico
-        .filter((entry) => entry && entry.data && !Number.isNaN(new Date(entry.data).getTime()))
-        .map((entry: { data: Date; peso: number }) => ({
-          data: new Date(entry.data).toISOString(),
-          valor: Number(entry.peso) || 0,
-        }))
-      : [];
+    const weightLogs = await db.collection('weight_logs').find({ email, data: { $gte: saoPauloDayStart(addDays(dateKey(now), -29)) } }).sort({ data: 1 }).toArray();
+    const historyByDay = new Map<string, { data: string; valor: number }>();
+    if (Array.isArray(profileRecord.pesoHistorico)) {
+      for (const entry of profileRecord.pesoHistorico) {
+        if (entry?.data && !Number.isNaN(new Date(entry.data).getTime())) {
+          const data = new Date(entry.data).toISOString();
+          historyByDay.set(dateKey(new Date(data)), { data, valor: Number(entry.peso) || 0 });
+        }
+      }
+    }
+    for (const entry of weightLogs) {
+      const data = new Date(entry.data).toISOString();
+      historyByDay.set(dateKey(new Date(data)), { data, valor: Number(entry.peso) || 0 });
+    }
+    const weightHistory = [...historyByDay.values()].sort((a, b) => a.data.localeCompare(b.data));
     const todayWorkout = workouts.find((workout) => workout.diaSemana === dayName(now)) || null;
     const enrichedTodayWorkout = todayWorkout
       ? await workoutWithStartingWeights(email, todayWorkout)
@@ -851,7 +860,7 @@ async function buildWorkout(email: string, body: Record<string, unknown>) {
 }
 
 async function saveDiet(email: string, refeicoes: ReturnType<typeof normalizeDiet>, objetivo: string) {
-  const diet = { email, refeicoes, objetivo, geradoEm: new Date() };
+  const diet = { email, refeicoes: refeicoes.map((meal) => ({ ...meal, _id: new ObjectId() })), objetivo, geradoEm: new Date() };
   await (await getDb()).collection('diets').insertOne(diet);
   return diet;
 }
@@ -930,7 +939,7 @@ async function saveWorkouts(
         const workout = workouts[index];
         const inicio = eventDate(workout.diaSemana, workout.horario);
         const fim = new Date(new Date(inicio).getTime() + profile.duracaoTreino * 60 * 1000).toISOString();
-        const eventId = await createCalendarEvent({
+        const calendarTask = {
           titulo: `Treino de ${workout.nomeTreino}`,
           descricao: workout.exercicios.map((exercise) =>
             `${exercise.nome}: ${exercise.series} séries, ${exercise.repeticoes} repetições, descanso ${exercise.descanso}`
@@ -938,9 +947,10 @@ async function saveWorkouts(
           inicio,
           fim,
           calendarId: 'primary',
-        });
+        };
+        const { eventId, created } = await ensureCalendarEvent(calendarTask);
         if (eventId) {
-          calendarCreated++;
+          if (created) calendarCreated++;
           await db.collection('workouts').updateOne(
             { _id: inserted.insertedIds[index] },
             { $set: { calendarEventId: eventId, agendadoPara: new Date(inicio) } }
@@ -1115,6 +1125,21 @@ r.put('/workouts/:day', async (req, res, next) => {
   }
 });
 
+r.delete('/workouts/:day', async (req, res, next) => {
+  try {
+    const email = requestEmail(req, res);
+    if (!email) return;
+    const day = normalizeDay(req.params.day);
+    if (!day) { res.status(400).json({ error: 'dia_da_semana_inválido' }); return; }
+    const db = await getDb();
+    const workout = await db.collection('workouts').findOne({ email, diaSemana: day });
+    if (!workout) { res.status(204).end(); return; }
+    if (workout.calendarEventId) await deleteCalendarEvent(workout.calendarEventId, 'primary');
+    await db.collection('workouts').deleteOne({ _id: workout._id, email });
+    res.status(204).end();
+  } catch (error) { next(error); }
+});
+
 r.post('/water/quick-add', async (req, res, next) => {
   const ml = req.body?.ml;
   if (typeof ml !== 'number' || !Number.isInteger(ml) || ml < 1 || ml > 2000) {
@@ -1194,7 +1219,7 @@ async function mealTotals(email: string, today: string) {
     goal,
     completed: logs
       .filter((log) => log && typeof log.tipoRefeicao === 'string')
-      .map((log) => ({ tipoRefeicao: log.tipoRefeicao, horario: log.horario })),
+      .map((log) => ({ _id: String((log as any)._id), tipoRefeicao: log.tipoRefeicao, horario: log.horario })),
   };
 }
 
@@ -1258,11 +1283,63 @@ r.get('/meals/today', async (req, res, next) => {
   }
 });
 
+r.delete('/meals/log/:id', async (req, res, next) => {
+  if (!ObjectId.isValid(req.params.id)) { res.status(400).json({ error: 'id inválido' }); return; }
+  try {
+    const email = requestEmail(req, res);
+    if (!email) return;
+    const db = await getDb();
+    const result = await db.collection('meal_logs').deleteOne({ _id: new ObjectId(req.params.id), email });
+    if (!result.deletedCount) { res.status(404).json({ error: 'registro não encontrado' }); return; }
+    res.json(await mealTotals(email, dateKey(new Date())));
+  } catch (error) { next(error); }
+});
+
+r.patch('/diets/:id/meals/:mealId', async (req, res, next) => {
+  if (!ObjectId.isValid(req.params.id) || !ObjectId.isValid(req.params.mealId)) {
+    res.status(400).json({ error: 'id inválido' }); return;
+  }
+  const set: Record<string, unknown> = {};
+  if (req.body.nome !== undefined) {
+    const nome = typeof req.body.nome === 'string' ? req.body.nome.trim().slice(0, 80) : '';
+    if (!nome) { res.status(400).json({ error: 'nome inválido' }); return; }
+    set['refeicoes.$.nome'] = nome;
+  }
+  if (req.body.alimentos !== undefined) {
+    if (!Array.isArray(req.body.alimentos)) { res.status(400).json({ error: 'alimentos inválidos' }); return; }
+    set['refeicoes.$.alimentos'] = req.body.alimentos.map((food: unknown) => String(food).trim().slice(0, 120)).filter(Boolean).slice(0, 30);
+  }
+  try {
+    const email = requestEmail(req, res);
+    if (!email) return;
+    const diet = await (await getDb()).collection('diets').findOneAndUpdate(
+      { _id: new ObjectId(req.params.id), email, 'refeicoes._id': new ObjectId(req.params.mealId) },
+      { $set: { ...set, atualizadoEm: new Date() } }, { returnDocument: 'after' }
+    );
+    if (!diet) { res.status(404).json({ error: 'refeição não encontrada' }); return; }
+    res.json({ diet: sanitizeSavedDiet(diet) });
+  } catch (error) { next(error); }
+});
+
 r.post('/workout/start', async (req, res, next) => {
   const email = requestEmail(req, res);
   if (!email) return;
   try {
-    const session = await startWorkoutSession(email);
+    const rawWeight = req.body?.peso;
+    if (rawWeight !== undefined && (typeof rawWeight !== 'number' || !Number.isFinite(rawWeight) || rawWeight < 20 || rawWeight > 400)) {
+      res.status(400).json({ error: 'peso inv\u00e1lido' });
+      return;
+    }
+    const now = new Date();
+    if (typeof rawWeight === 'number') {
+      const db = await getDb();
+      await db.collection<any>('profile').updateOne({ email }, { $set: { peso: rawWeight, atualizadoEm: now }, $push: { pesoHistorico: { $each: [{ data: now, peso: rawWeight }] } }, $setOnInsert: { email, criadoEm: now } } as any, { upsert: true });
+      const key = dateKey(now);
+      const start = saoPauloDayStart(key);
+      const end = saoPauloDayStart(addDays(key, 1));
+      await db.collection('weight_logs').updateOne({ email, data: { $gte: start, $lt: end } }, { $set: { email, peso: rawWeight, data: now, origem: 'workout-start' } }, { upsert: true });
+    }
+    const session = await startWorkoutSession(email, now);
     if (!session) {
       res.status(404).json({ error: 'workout_not_available_today' });
       return;
@@ -1387,8 +1464,8 @@ r.post('/workout/swap', async (req, res, next) => {
 r.post('/water', async (req, res, next) => {
   try {
     const ml = req.body?.ml;
-    if (ml !== 200 && ml !== -200 && ml !== 250 && ml !== 500) {
-      res.status(400).json({ error: 'ml deve ser 200, -200, 250 ou 500' });
+    if (ml !== 200 && ml !== -200 && ml !== -250 && ml !== 250 && ml !== 500) {
+      res.status(400).json({ error: 'ml inválido' });
       return;
     }
     const email = requestEmail(req, res);
@@ -1404,7 +1481,7 @@ r.post('/water', async (req, res, next) => {
     const db = await getDb();
     if (ml < 0) {
       const latestIntake = await db.collection('water_logs')
-        .find({ email, data: { $gte: start, $lt: end }, ml: 200 })
+        .find({ email, data: { $gte: start, $lt: end }, ml: Math.abs(ml) })
         .sort({ data: -1 })
         .limit(1)
         .toArray();
@@ -1434,6 +1511,18 @@ r.get('/water', async (req, res, next) => {
   } catch (error) {
     next(error);
   }
+});
+
+r.delete('/water/:id', async (req, res, next) => {
+  if (!ObjectId.isValid(req.params.id)) { res.status(400).json({ error: 'id inválido' }); return; }
+  try {
+    const email = requestEmail(req, res);
+    if (!email) return;
+    const result = await (await getDb()).collection('water_logs').deleteOne({ _id: new ObjectId(req.params.id), email });
+    if (!result.deletedCount) { res.status(404).json({ error: 'registro não encontrado' }); return; }
+    const key = dateKey(new Date());
+    res.json({ waterToday: await sumWater(email, saoPauloDayStart(key), saoPauloDayStart(addDays(key, 1))) });
+  } catch (error) { next(error); }
 });
 
 r.post('/workout-logs', async (req, res, next) => {
@@ -1498,6 +1587,28 @@ r.post('/workout-logs', async (req, res, next) => {
   } catch (error) {
     next(error);
   }
+});
+
+let metricRotationRunning = false;
+export async function rotateWaterMetrics(): Promise<void> {
+  if (metricRotationRunning) return;
+  metricRotationRunning = true;
+  try {
+    const db = await getDb();
+    const cutoff = new Date(Date.now() - 15 * 86400000);
+    // O ciclo remove somente ingestões vencidas. Peso e cargas ficam em
+    // weight_logs/profile e workout_logs, portanto não participam da rotação.
+    await db.collection('water_logs').deleteMany({ data: { $lt: cutoff } });
+  } catch (error) { console.warn('[health] metric rotation skipped:', error instanceof Error ? error.message : String(error)); }
+  finally { metricRotationRunning = false; }
+}
+
+r.get('/weekly-report', async (req, res, next) => {
+  try {
+    const email = requestEmail(req, res);
+    if (!email) return;
+    res.json({ texto: await generateWeeklyReport(email) });
+  } catch (error) { next(error); }
 });
 
 export default r;

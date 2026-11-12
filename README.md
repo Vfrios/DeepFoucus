@@ -226,7 +226,7 @@ Crie o atalho **“LOSAI - Bom Dia”** (pode ser ativado automaticamente ao des
 2. **URL:** `https://deepfoucus.onrender.com/api/health/workout/start`
 3. **Método:** `POST`
 4. **Cabeçalhos:** `x-api-token: SEU_API_TOKEN`
-5. **Corpo:** JSON vazio (`{}`).
+5. **Corpo:** JSON com `peso` (N?mero), por exemplo `{ "peso": 75.5 }`. Se n?o tiver uma medi??o, envie `{}`.
 6. A resposta contém `{"sucesso":true,"mensagem":"Treino iniciado"}` e os dados da sessão em `workoutSession`.
 
 ---
@@ -324,3 +324,9 @@ O valor forçado permanece até a próxima chamada ao comando ou até finalizar 
 - Autenticação: as rotas protegidas do app exigem `Authorization: Bearer <JWT>`. O `API_TOKEN` inicia a autorização do proprietário em `/api/auth/google?token=...` e autentica o webhook de Atalhos via `x-api-token`.
 - Fotos/tabelas: edite `frontend/src/content.ts`. Novas páginas: `frontend/src/config.ts`.
 - Atualizações do app: o SW usa rede primeiro para a navegação; se algo ficar preso, aumente `CACHE` em `src/sw.ts`.
+
+### Ciclo de métricas e relatório semanal
+
+A rotina silenciosa do backend verifica diariamente registros de água com mais de 15 dias e reinicia o histórico de água por usuário. O perfil, o peso e os registros de treino permanecem salvos; por isso, a última carga registrada de cada exercício segue como carga inicial do próximo ciclo. Configure `OPENWEATHER_API_KEY` para incluir clima real no briefing.
+
+`GET /api/health/weekly-report` gera feedback com peso, dias de treino e hidratação dos últimos sete dias. No domingo após 21h (horário de Brasília), o servidor também grava o relatório em `weekly_reports`.

@@ -32,7 +32,7 @@ interface Props {
 }
 
 export default function PageMonthCalendar({ onBack }: Props) {
-  const { tasks, error, update, previewFromIA } = useTasks();
+  const { tasks, error, create, update, remove, previewFromIA } = useTasks();
   const [date, setDate] = useState(() => new Date());
   const { calendars, selectedIds } = useGoogleCalendars();
   const rangeStart = startOfMonth(date);
@@ -43,6 +43,7 @@ export default function PageMonthCalendar({ onBack }: Props) {
   );
   const [editing, setEditing] = useState<Task | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
+  const [modalStart, setModalStart] = useState<string | null>(null);
   const visibleTasks = useMemo(
     () => getCalendarTasks(tasks, googleEvents, calendars)
       .filter((task) => selectedIds.includes(task.calendarId || 'primary')),
@@ -52,6 +53,7 @@ export default function PageMonthCalendar({ onBack }: Props) {
 
   const editTask = (event: CalendarEvent) => {
     setEditing(event.resource);
+    setModalStart(null);
     setModalOpen(true);
   };
 
@@ -66,6 +68,7 @@ export default function PageMonthCalendar({ onBack }: Props) {
     calendarId: string;
   }) => {
     if (editing) await update(editing._id, payload);
+    else await create(payload);
   };
 
   return (
@@ -76,6 +79,7 @@ export default function PageMonthCalendar({ onBack }: Props) {
           <h2>{format(date, 'MMMM yyyy', { locale: ptBR })}</h2>
         </div>
         <div className="calendar-nav">
+          <button className="btn" type="button" onClick={() => { setEditing(null); setModalStart(new Date().toISOString()); setModalOpen(true); }}>Novo Item</button>
           <button className="btn ghost calendar-back" onClick={onBack}>
             <svg aria-hidden="true" viewBox="0 0 24 24" fill="none">
               <path d="m15 18-6-6 6-6M9 12h12" />
@@ -110,11 +114,13 @@ export default function PageMonthCalendar({ onBack }: Props) {
           endAccessor="end"
           titleAccessor="title"
           toolbar={false}
+          selectable
           components={{ event: MonthEvent }}
           onNavigate={setDate}
           onSelectEvent={(event) => {
-            if (!event.resource.externalCalendarEvent) editTask(event);
+            editTask(event);
           }}
+          onSelectSlot={(slot) => { setEditing(null); setModalStart(slot.start.toISOString()); setModalOpen(true); }}
           messages={calendarMessages}
           eventPropGetter={(event) => ({
             style: {
@@ -130,9 +136,11 @@ export default function PageMonthCalendar({ onBack }: Props) {
       <TaskModal
         open={modalOpen}
         inicial={editing}
+        initialStart={modalStart}
         onSuggest={previewFromIA}
         onClose={() => setModalOpen(false)}
         onSave={saveTask}
+        onDelete={editing ? () => remove(editing._id) : undefined}
       />
     </main>
   );

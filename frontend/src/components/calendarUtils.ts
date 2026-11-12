@@ -89,6 +89,7 @@ export function getCalendarTasks(
         calendarId: event.calendarId || primaryId,
         calendarBackgroundColor: event.color,
         externalCalendarEvent: true,
+        externalEventId: event.id.slice(event.calendarId.length + 1),
         allDay: event.allDay,
       };
     });

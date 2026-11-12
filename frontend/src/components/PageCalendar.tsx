@@ -39,6 +39,7 @@ const LABEL_TIPO: Record<Tipo, string> = {
   evento: 'Evento',
   estudo: 'Estudo',
   tarefa: 'Tarefa',
+  treino: 'Treino',
 };
 
 // ---------- componente ----------
