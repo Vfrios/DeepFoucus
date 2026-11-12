@@ -12,7 +12,8 @@ let connecting: Promise<Db> | null = null;
  *  - tasks.inicio                         → Página 1 (Hoje/Amanhã) e Página 2 (timeline)
  *  - tasks.tipo + tasks.inicio (composto) → filtros por tipo na agenda
  *  - notes.criadoEm                       → mural de notas (mais recentes primeiro)
- *  - shopping_list.comprado + criadoEm    → lista de compras
+ *  - shopping.status + criadoEm           → dispensa e carrinho
+ *  - recipes.criadoEm                     → receitas geradas
  *  - finance.data                         → filtro mensal e listagem de despesas
  *
  * A Promise é memoizada em `connecting`; se a conexão falhar, `connecting`
@@ -46,8 +47,9 @@ export function getDb(): Promise<Db> {
       // Notas (Página 5 — mural): listagem por mais recentes
       await d.collection('notes').createIndex({ criadoEm: -1 });
 
-      // Lista de compras: pendentes primeiro e itens mais novos antes
-      await d.collection('shopping_list').createIndex({ comprado: 1, criadoEm: -1 });
+      // ERP doméstico: itens por estado e receitas mais recentes primeiro
+      await d.collection('shopping').createIndex({ status: 1, criadoEm: -1 });
+      await d.collection('recipes').createIndex({ criadoEm: -1 });
 
       // Finanças: filtro por período e ordenação cronológica
       await d.collection('finance').createIndex({ data: -1 });
