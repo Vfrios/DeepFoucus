@@ -1,4 +1,4 @@
-import { expect, request, test } from '@playwright/test';
+import { expect, request, test, type Page } from '@playwright/test';
 import jwt from 'jsonwebtoken';
 import dotenv from 'dotenv';
 
@@ -75,6 +75,13 @@ async function removeItemFromBoth(item: string) {
   const remaining = await findInList(item);
   if (remaining.cart) await callApi('DELETE', `/${remaining.cart._id}`);
   if (remaining.pantry) await callApi('DELETE', `/${remaining.pantry._id}`);
+}
+
+async function openShoppingPage(page: Page) {
+  await page.goto('/');
+  await page.evaluate((token) => localStorage.setItem('wd:jwt', token), ownerToken());
+  await page.goto('/?view=web&page=shopping');
+  await expect(page.locator('.shopping-page')).toBeVisible();
 }
 
 test.describe.configure({ mode: 'serial' });
@@ -173,4 +180,109 @@ test('adicionar o mesmo item duas vezes cria um único registro', async () => {
   expect(records[0].quantidadeNoCarrinho).toBe(2);
 
   await removeItemFromBoth(name);
+});
+
+test('checkout mostra rascunhos pendentes e permite voltar à lista sem finalizar', async ({ page }) => {
+  const name = `Item checkout voltar ${Date.now()}`;
+  const added = await addItem(name, 'carrinho', '2');
+  const cartName = added.item || name;
+  const pendingName = `Item ainda não adicionado ${Date.now()}`;
+  let checkoutRequests = 0;
+
+  try {
+    await openShoppingPage(page);
+    page.on('request', (requestEvent) => {
+      if (requestEvent.url().endsWith('/api/shopping/checkout') && requestEvent.method() === 'POST') {
+        checkoutRequests += 1;
+      }
+    });
+    const listInput = page.getByLabel('Novo item do carrinho');
+    await listInput.fill(pendingName);
+    await page.getByRole('button', { name: 'Concluir compra' }).click();
+
+    const dialog = page.getByRole('dialog', { name: 'Revisar compra' });
+    await expect(dialog.getByText(cartName, { exact: true })).toBeVisible();
+    await expect(dialog.getByText('Qtd. 2')).toBeVisible();
+    await expect(dialog.getByText(pendingName, { exact: true })).toBeVisible();
+    await expect(dialog.getByRole('heading', { name: 'Itens ainda na lista (não confirmados)' })).toBeVisible();
+    await dialog.getByRole('button', { name: 'Voltar à lista de compras' }).click();
+    await expect(dialog).toBeHidden();
+    await expect(listInput).toBeFocused();
+    expect(checkoutRequests).toBe(0);
+  } finally {
+    await removeItemFromBoth(cartName);
+  }
+});
+
+test('sem pendências, confirmar executa checkout e atualiza a dispensa', async ({ page }) => {
+  const name = `Item checkout confirmar ${Date.now()}`;
+  const added = await addItem(name, 'carrinho', '2');
+  const cartName = added.item || name;
+
+  try {
+    await openShoppingPage(page);
+    await page.getByRole('button', { name: 'Concluir compra' }).click();
+
+    const dialog = page.getByRole('dialog', { name: 'Revisar compra' });
+    await expect(dialog.getByText(cartName, { exact: true })).toBeVisible();
+    await expect(dialog.getByRole('heading', { name: 'Itens ainda na lista (não confirmados)' })).toHaveCount(0);
+    await expect(dialog.getByRole('button', { name: 'Confirmar', exact: true })).toBeVisible();
+    await expect(dialog.getByRole('button', { name: 'Confirmar mesmo assim' })).toHaveCount(0);
+
+    const checkoutResponse = page.waitForResponse((response) =>
+      response.url().endsWith('/api/shopping/checkout') && response.request().method() === 'POST'
+    );
+    await dialog.getByRole('button', { name: 'Confirmar', exact: true }).click();
+    const result = await (await checkoutResponse).json();
+    expect(result.ok).toBe(true);
+    expect(result.movidos).toBeGreaterThanOrEqual(1);
+    await expect(dialog).toBeHidden();
+    await expect(page.getByRole('status')).toContainText(
+      `Compra concluída: ${result.movidos} ${result.movidos === 1 ? 'item adicionado' : 'itens adicionados'} à dispensa`
+    );
+
+    const after = await findInList(cartName);
+    expect(after.cart).toBeUndefined();
+    expect(after.pantry).toBeTruthy();
+    expect(after.pantry.quantidadeEmCasa).toBe(2);
+  } finally {
+    await removeItemFromBoth(cartName);
+  }
+});
+
+test('confirmar mesmo assim compra somente itens do carrinho', async ({ page }) => {
+  const name = `Item checkout parcial ${Date.now()}`;
+  const added = await addItem(name, 'carrinho', '3');
+  const cartName = added.item || name;
+  const pendingName = `Item pendente não enviado ${Date.now()}`;
+
+  try {
+    await openShoppingPage(page);
+    const listInput = page.getByLabel('Novo item do carrinho');
+    await listInput.fill(pendingName);
+    await page.getByRole('button', { name: 'Concluir compra' }).click();
+
+    const dialog = page.getByRole('dialog', { name: 'Revisar compra' });
+    await expect(dialog.getByText(pendingName, { exact: true })).toBeVisible();
+    const checkoutResponse = page.waitForResponse((response) =>
+      response.url().endsWith('/api/shopping/checkout') && response.request().method() === 'POST'
+    );
+    await dialog.getByRole('button', { name: 'Confirmar mesmo assim' }).click();
+    const result = await (await checkoutResponse).json();
+    expect(result.ok).toBe(true);
+    expect(result.movidos).toBeGreaterThanOrEqual(1);
+    await expect(dialog).toBeHidden();
+    await expect(page.getByRole('status')).toContainText(
+      `Compra concluída: ${result.movidos} ${result.movidos === 1 ? 'item adicionado' : 'itens adicionados'} à dispensa`
+    );
+
+    const after = await findInList(cartName);
+    expect(after.cart).toBeUndefined();
+    expect(after.pantry).toBeTruthy();
+    expect(after.pantry.quantidadeEmCasa).toBe(3);
+    expect(await findInList(pendingName).cart).toBeUndefined();
+    await expect(listInput).toHaveValue(pendingName);
+  } finally {
+    await removeItemFromBoth(cartName);
+  }
 });

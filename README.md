@@ -268,6 +268,7 @@ Adicionar ao Carrinho ─┘                      quantidadeNoCarrinho
 - Ao consumir o último estoque da dispensa, o item desaparece da dispensa, mas continua no carrinho se houver quantidade pendente.
 - Adicionar o mesmo produto novamente soma à quantidade do contexto correto e consolida registros duplicados legados em um único documento.
 - No **Checkout**, as quantidades do carrinho são somadas ao estoque da casa e o carrinho é zerado. Se já existir estoque separado, as quantidades são consolidadas sem duplicar o item.
+- **Concluir compra** abre uma pré-confirmação com os itens e quantidades confirmados no carrinho. Um item ainda digitado no formulário, mas não adicionado, aparece como pendente; é possível voltar à lista ou confirmar somente o carrinho. O checkout só é enviado após confirmação explícita, e a tela mostra um toast de sucesso ao atualizar as listas.
 - Ao gerar uma receita, os ingredientes disponíveis são conferidos somente na dispensa e descontados do estoque. Ingredientes faltantes são adicionados ao carrinho; itens já existentes no carrinho têm sua quantidade somada.
 
 ### Testes do módulo de Compras
@@ -278,13 +279,15 @@ Os testes E2E usam a API Express real em `http://localhost:3001` e o MongoDB con
 npm run test:e2e -- tests/e2e/shopping.spec.ts
 ```
 
-O arquivo cobre simultaneidade entre dispensa e carrinho, consumo até zero, checkout, geração de receita e duplicados.
+O arquivo cobre simultaneidade entre dispensa e carrinho, consumo até zero, revisão e confirmação do checkout, geração de receita e duplicados.
 
 ---
 
 ## 10. Dashboard financeiro
 
 A tela **Finanças** no modo parede mostra os gastos do mês atual, totais por responsável e categoria, e atualiza em tempo real. Os valores ficam ocultos até tocar em **Mostrar Valores**. **Exportar Excel** baixa todos os lançamentos com uma tabela de despesas e totais por responsável.
+
+Ao lançar uma despesa pela tela, a descrição do estabelecimento é enviada ao backend após uma pausa de 500 ms. O endpoint `POST /api/finance/categorize` primeiro reutiliza categorias e sinônimos existentes (por exemplo, picolé/sorvete/açaí → **Sorveteria**, supermercado → **Mercado**) e, se necessário, consulta Groq, Gemini ou OpenRouter. Categorias novas são salvas com nome normalizado; o usuário pode confirmar a sugestão ou substituí-la manualmente. Se a IA não estiver disponível, **Outros** continua selecionado e o lançamento pode ser salvo normalmente. As categorias comuns são criadas automaticamente na inicialização do MongoDB, com índice único no nome normalizado.
 
 Para registrar um gasto com Atalhos, use **Obter Conteúdo do URL** com `POST` para `https://deepfoucus.onrender.com/api/finance/add`, corpo JSON e cabeçalho `x-api-token` com o `API_TOKEN` privado do Render:
 
@@ -300,7 +303,7 @@ Para registrar um gasto com Atalhos, use **Obter Conteúdo do URL** com `POST` p
 }
 ```
 
-Quando `categoria` estiver vazia ou for `Outros`, o backend tenta inferi-la com a IA configurada. A listagem, exclusão e exportação financeira exigem JWT com perfil `owner` ou `finance`. O `POST /api/finance/add` aceita esses mesmos perfis ou o `API_TOKEN` usado pela integração existente com Atalhos.
+O endpoint `POST /api/finance/categorize` aceita `{ "descricao": "picolé", "estabelecimento": "opcional" }` e retorna `{ "categoria", "confianca", "existente", "categoriaId?" }`. Quando `categoria` estiver vazia ou for `Outros`, `POST /api/finance/add` também tenta categorizá-la para clientes legados, mas usa **Outros** caso a IA falhe. A tela envia `categoriaFinal: true` para preservar exatamente a escolha exibida, inclusive uma correção manual para **Outros**. A listagem, exclusão e exportação financeira exigem JWT com perfil `owner` ou `finance`. Os endpoints `POST /api/finance/add` e `POST /api/finance/categorize` aceitam esses mesmos perfis ou o `API_TOKEN` usado pela integração existente com Atalhos.
 
 ## 11. Saúde
 

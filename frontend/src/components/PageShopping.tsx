@@ -1,7 +1,8 @@
-import { FormEvent, useCallback, useEffect, useState } from 'react';
+import { FormEvent, useCallback, useEffect, useRef, useState } from 'react';
 import { useAuth } from '../AuthContext';
 import { api } from '../lib/api';
 import { subscribeRealtime } from '../lib/realtime';
+import { checkoutConfirmationMode, reviewShoppingCheckout } from '../lib/shoppingCheckout';
 
 type ShoppingTab = 'carrinho' | 'dispensa' | 'receitas';
 type ShoppingStatus = Exclude<ShoppingTab, 'receitas'>;
@@ -95,6 +96,7 @@ export default function PageShopping() {
   const [pantryInlineQuantities, setPantryInlineQuantities] = useState<Record<string, string>>({});
   const [pendingCartAdd, setPendingCartAdd] = useState<PendingCartAdd | null>(null);
   const [confirmCheckoutOpen, setConfirmCheckoutOpen] = useState(false);
+  const shoppingListFormRef = useRef<HTMLFormElement | null>(null);
 
   const load = useCallback(async () => {
     try { setLists(await api<ShoppingLists>('/shopping/list')); setError(''); }
@@ -243,16 +245,32 @@ export default function PageShopping() {
     return { emEstoque, comprado, total: emEstoque + comprado };
   })();
 
+  const checkoutReview = reviewShoppingCheckout(
+    newItems.carrinho.trim()
+      ? [{ item: newItems.carrinho.trim(), quantidade: quantities.carrinho }]
+      : [],
+    lists.carrinho
+  );
+  const checkoutMode = checkoutConfirmationMode(checkoutReview.pendentes);
+
   const checkout = async () => {
-    if (!lists.carrinho.length || checkingOut) return;
-    setConfirmCheckoutOpen(false);
+    if (!checkoutReview.confirmados.length || checkingOut) return;
     setCheckingOut(true); setError('');
     try {
       const result = await api<{ movidos: number }>('/shopping/checkout', { method: 'POST' });
       await load();
-      setToast(`Sucesso! ${result.movidos} ${result.movidos === 1 ? 'item foi para a dispensa' : 'itens foram para a dispensa'}.`);
+      setConfirmCheckoutOpen(false);
+      setToast(`Compra concluída: ${result.movidos} ${result.movidos === 1 ? 'item adicionado' : 'itens adicionados'} à dispensa.`);
     } catch (cause) { setError(cause instanceof Error ? cause.message : 'Não foi possível confirmar a compra.'); }
     finally { setCheckingOut(false); }
+  };
+
+  const returnToShoppingList = () => {
+    setConfirmCheckoutOpen(false);
+    window.requestAnimationFrame(() => {
+      shoppingListFormRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      shoppingListFormRef.current?.querySelector<HTMLInputElement>('input')?.focus();
+    });
   };
 
   const generateRecipe = async (event: FormEvent) => {
@@ -385,7 +403,7 @@ export default function PageShopping() {
     const saving = savingStatus === status;
     const menuOpen = openQtyMenu === status;
     return (
-      <form className="shopping-add" onSubmit={(event) => void addItem(event, status)}>
+      <form ref={status === 'carrinho' ? shoppingListFormRef : undefined} className="shopping-add" onSubmit={(event) => void addItem(event, status)}>
         <input
           aria-label={`Novo item do ${destination}`}
           value={newItems[status]}
@@ -462,9 +480,9 @@ export default function PageShopping() {
         <div className="shopping-section-title"><div><h3>Lista de compras</h3><p>Itens aqui ainda não contam como disponíveis.</p></div></div>
         {renderAddForm('carrinho')}
         {renderList(lists.carrinho, 'Seu carrinho está vazio.')}
-        <button className="btn shopping-checkout" type="button" disabled={!lists.carrinho.length || checkingOut} onClick={() => setConfirmCheckoutOpen(true)}>
+        <button className="btn shopping-checkout" type="button" disabled={!checkoutReview.confirmados.length || checkingOut} onClick={() => setConfirmCheckoutOpen(true)}>
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12 4 4L19 6" /></svg>
-          {checkingOut ? 'Confirmando compra...' : 'Confirmar Compra (Checkout)'}
+          {checkingOut ? 'Confirmando compra...' : 'Concluir compra'}
         </button>
       </section>}
 
@@ -525,17 +543,50 @@ export default function PageShopping() {
       {confirmCheckoutOpen && (
         <div className="shopping-modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="shopping-checkout-modal-title">
           <div className="shopping-modal">
-            <h3 id="shopping-checkout-modal-title">Confirmar Compra</h3>
+            <h3 id="shopping-checkout-modal-title">Revisar compra</h3>
+            <section className="shopping-checkout-review" aria-label="Itens confirmados no carrinho">
+              <h4>Itens confirmados no carrinho</h4>
+              <ul className="shopping-checkout-review-list">
+                {checkoutReview.confirmados.map((item, index) => (
+                  <li key={`${item.nome}-${index}`}><span>{item.nome}</span><strong>Qtd. {item.quantidade}</strong></li>
+                ))}
+              </ul>
+            </section>
+            {checkoutReview.pendentes.length > 0 && (
+              <section className="shopping-checkout-pending" aria-label="Itens ainda na lista não confirmados">
+                <h4>Itens ainda na lista (não confirmados)</h4>
+                <ul className="shopping-checkout-review-list">
+                  {checkoutReview.pendentes.map((item, index) => (
+                    <li key={`${item.nome}-${index}`}><span>{item.nome}</span><strong>Qtd. {item.quantidade}</strong></li>
+                  ))}
+                </ul>
+                <p>Esses itens não serão adicionados à dispensa nesta compra.</p>
+              </section>
+            )}
             <p>
               {checkoutSummary.total} {checkoutSummary.total === 1 ? 'item vai' : 'itens vão'} para a sua casa ({checkoutSummary.emEstoque} em estoque + {checkoutSummary.comprado} {checkoutSummary.comprado === 1 ? 'comprado' : 'comprados'}). Confirmar?
             </p>
+            {error && <p className="shopping-error" role="alert">{error}</p>}
             <div className="shopping-modal-actions">
-              <button type="button" className="btn ghost" onClick={() => setConfirmCheckoutOpen(false)}>
-                Cancelar
-              </button>
-              <button type="button" className="btn" disabled={checkingOut} onClick={() => void checkout()}>
-                {checkingOut ? 'Confirmando...' : 'Confirmar'}
-              </button>
+              {checkoutMode === 'warn' ? (
+                <>
+                  <button type="button" className="btn ghost" disabled={checkingOut} onClick={returnToShoppingList}>
+                    Voltar à lista de compras
+                  </button>
+                  <button type="button" className="btn" disabled={checkingOut} onClick={() => void checkout()}>
+                    {checkingOut ? 'Confirmando...' : 'Confirmar mesmo assim'}
+                  </button>
+                </>
+              ) : (
+                <>
+                  <button type="button" className="btn ghost" disabled={checkingOut} onClick={() => setConfirmCheckoutOpen(false)}>
+                    Cancelar
+                  </button>
+                  <button type="button" className="btn" disabled={checkingOut} onClick={() => void checkout()}>
+                    {checkingOut ? 'Confirmando...' : 'Confirmar'}
+                  </button>
+                </>
+              )}
             </div>
           </div>
         </div>

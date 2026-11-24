@@ -1,4 +1,5 @@
 import { MongoClient, Db } from 'mongodb';
+import { DEFAULT_CATEGORIES, normalizeCategoryName } from './financeCategories';
 
 let db: Db | null = null;
 let connecting: Promise<Db> | null = null;
@@ -15,6 +16,7 @@ let connecting: Promise<Db> | null = null;
  *  - shopping.status + criadoEm           → dispensa e carrinho
  *  - recipes.criadoEm                     → receitas geradas
  *  - finance.data                         → filtro mensal e listagem de despesas
+ *  - categories.nomeNormalizado           → nome único e lookup de categorias
  *
  * A Promise é memoizada em `connecting`; se a conexão falhar, `connecting`
  * é resetado para `null` para permitir nova tentativa no próximo request.
@@ -53,6 +55,38 @@ export function getDb(): Promise<Db> {
 
       // Finanças: filtro por período e ordenação cronológica
       await d.collection('finance').createIndex({ data: -1 });
+
+      // Migração das categorias para lookup normalizado e idempotente.
+      const categories = d.collection('categories');
+      const legacyCategories = await categories.find({ nomeNormalizado: { $exists: false } }).toArray();
+      for (const category of legacyCategories) {
+        if (typeof category.nome !== 'string') continue;
+        await categories.updateOne(
+          { _id: category._id, nomeNormalizado: { $exists: false } },
+          { $set: { nomeNormalizado: normalizeCategoryName(category.nome) } }
+        );
+      }
+      await categories.createIndex(
+        { nomeNormalizado: 1 },
+        { unique: true, partialFilterExpression: { nomeNormalizado: { $type: 'string' } } }
+      );
+      const now = new Date();
+      for (const category of DEFAULT_CATEGORIES) {
+        const nomeNormalizado = normalizeCategoryName(category.nome);
+        await categories.updateOne(
+          { nomeNormalizado },
+          {
+            $setOnInsert: {
+              ...category,
+              nomeNormalizado,
+              criadoPor: 'user',
+              criadoEm: now,
+              atualizadoEm: now,
+            },
+          },
+          { upsert: true }
+        );
+      }
 
       // Saúde: dados e históricos isolados por usuário
       await d.collection('profile').createIndex({ email: 1 }, { unique: true, sparse: true });

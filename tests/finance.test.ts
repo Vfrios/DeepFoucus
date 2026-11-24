@@ -8,6 +8,51 @@ import {
   parseIsoDate,
   summarize,
 } from '../backend/src/routes/finance';
+import {
+  DEFAULT_CATEGORIES,
+  findSimilarCategory,
+  normalizeCategoryName,
+  suggestExpenseCategory,
+} from '../backend/src/lib/financeCategories';
+
+test('normalizes accents, whitespace and simple Portuguese plurals', () => {
+  assert.equal(normalizeCategoryName('  FARMÁCIAS  '), 'farmacia');
+  assert.equal(normalizeCategoryName('Sorvetes'), 'sorvete');
+  assert.equal(normalizeCategoryName('refeições'), 'refeicao');
+});
+
+test('matches category names and synonyms exactly or within a description', () => {
+  assert.equal(findSimilarCategory('Mercado', DEFAULT_CATEGORIES)?.nome, 'Mercado');
+  assert.equal(findSimilarCategory('supermercado', DEFAULT_CATEGORIES)?.nome, 'Mercado');
+  assert.equal(findSimilarCategory('picolé na praça', DEFAULT_CATEGORIES)?.nome, 'Sorveteria');
+  assert.equal(findSimilarCategory('drogaria central', DEFAULT_CATEGORIES)?.nome, 'Farmácia');
+});
+
+test('suggests a normalized new category and falls back when AI fails', async () => {
+  const aiSuggestion = await suggestExpenseCategory(
+    'loja de fogos',
+    DEFAULT_CATEGORIES,
+    async () => ({ categoria: 'loja de fogos', confianca: 0.91 })
+  );
+  assert.deepEqual(aiSuggestion, {
+    categoria: 'Loja de Fogos',
+    confianca: 0.91,
+    existente: false,
+    fonte: 'ia',
+  });
+
+  const fallback = await suggestExpenseCategory(
+    'loja desconhecida',
+    DEFAULT_CATEGORIES,
+    async () => { throw new Error('provider unavailable'); }
+  );
+  assert.deepEqual(fallback, {
+    categoria: 'Outros',
+    confianca: 0,
+    existente: true,
+    fonte: 'fallback',
+  });
+});
 
 test('parses an ISO 8601 timestamp with its explicit timezone', () => {
   assert.equal(parseIsoDate('2026-11-10T13:30:00-03:00')?.toISOString(), '2026-11-10T16:30:00.000Z');

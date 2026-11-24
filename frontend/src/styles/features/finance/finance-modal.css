@@ -3,6 +3,67 @@
   width: min(92vw, 520px);
 }
 
+.finance-category-suggestion {
+  display: flex;
+  min-height: 28px;
+  align-items: center;
+  gap: 8px;
+  margin-top: -8px;
+  color: var(--mute);
+  font-size: .78rem;
+}
+
+.finance-category-chip,
+.finance-category-fallback {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  padding: 3px 9px;
+  border: 1px solid color-mix(in srgb, var(--accent) 25%, transparent);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--accent) 9%, transparent);
+  color: var(--accent);
+}
+
+.finance-category-fallback {
+  border-color: color-mix(in srgb, var(--mute) 25%, transparent);
+  background: color-mix(in srgb, var(--mute) 9%, transparent);
+  color: var(--mute);
+}
+
+.finance-category-confirm {
+  padding: 3px 6px;
+  border: 0;
+  background: transparent;
+  color: var(--accent);
+  font: inherit;
+  cursor: pointer;
+}
+
+.finance-category-confirm:disabled {
+  color: var(--mute);
+  cursor: default;
+}
+
+.finance-category-loading {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.finance-category-spinner {
+  width: 12px;
+  height: 12px;
+  border: 2px solid color-mix(in srgb, var(--accent) 25%, transparent);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: finance-category-spin .7s linear infinite;
+}
+
+@keyframes finance-category-spin {
+  to { transform: rotate(360deg); }
+}
+
 .shopping-emoji svg {
   width: 22px;
   height: 22px;

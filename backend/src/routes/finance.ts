@@ -1,7 +1,7 @@
 import { NextFunction, Request, Response, Router } from 'express';
 import ExcelJS from 'exceljs';
-import { Collection, ObjectId } from 'mongodb';
-import { callAI } from '../lib/ai';
+import { Collection, MongoServerError, ObjectId } from 'mongodb';
+import { FinanceCategory, findSimilarCategory, normalizeCategoryName, suggestExpenseCategory } from '../lib/financeCategories';
 import { getDb } from '../lib/mongo';
 import { notifyAndroid } from '../lib/realtime';
 import { apiTokenAuth } from '../middleware/apiToken';
@@ -28,6 +28,8 @@ interface FinanceSummary {
 const r = Router();
 const collection = async (): Promise<Collection<Expense>> =>
   (await getDb()).collection<Expense>('finance');
+const categoryCollection = async (): Promise<Collection<FinanceCategory>> =>
+  (await getDb()).collection<FinanceCategory>('categories');
 const exportOrigins = new Set(['iOS-Vitor', 'iOS-Sophia']);
 const financeRole = requireRole(['owner', 'finance']);
 
@@ -132,17 +134,53 @@ export function buildExpensePatch(body: Record<string, unknown>):
   return Object.keys(set).length ? { set } : { error: 'nenhum campo para atualizar' };
 }
 
-async function categorize(estabelecimento: string): Promise<string> {
-  const result = await callAI(
-    'Categorize the expense based only on the establishment name. Return JSON {"categoria":"..."} with a concise category in Brazilian Portuguese. If unclear, use "Outros".',
-    estabelecimento,
-    { temperature: 0, maxTokens: 80 }
-  );
-  const category = (result as { categoria?: unknown })?.categoria;
-  if (typeof category !== 'string' || !category.trim() || category.trim().length > 80) {
-    throw new Error('invalid_expense_category_from_ai');
+interface CategoryResult {
+  categoria: string;
+  confianca: number;
+  existente: boolean;
+  categoriaId?: string;
+}
+
+async function categorizeExpense(description: string): Promise<CategoryResult> {
+  const categories = await (await categoryCollection()).find().toArray();
+  const suggestion = await suggestExpenseCategory(description, categories);
+  let selected = findSimilarCategory(suggestion.categoria, categories);
+
+  if (!selected && !suggestion.existente) {
+    const nomeNormalizado = normalizeCategoryName(suggestion.categoria);
+    const now = new Date();
+    try {
+      const result = await (await categoryCollection()).insertOne({
+        nome: suggestion.categoria,
+        nomeNormalizado,
+        sinonimos: [],
+        criadoPor: 'ia',
+        criadoEm: now,
+        atualizadoEm: now,
+      });
+      return {
+        categoria: suggestion.categoria,
+        confianca: suggestion.confianca,
+        existente: false,
+        categoriaId: String(result.insertedId),
+      };
+    } catch (error) {
+      if (!(error instanceof MongoServerError) || error.code !== 11000) throw error;
+      const duplicate = await (await categoryCollection()).findOne({ nomeNormalizado });
+      if (!duplicate) throw error;
+      selected = duplicate;
+    }
   }
-  return category.trim();
+
+  if (!selected) {
+    selected = categories.find((category) => normalizeCategoryName(category.nome) === 'outro');
+  }
+  return {
+    categoria: selected?.nome ?? 'Outros',
+    confianca: suggestion.confianca,
+    existente: true,
+    ...(selected?._id ? { categoriaId: String(selected._id) } : {}),
+  };
 }
 
 function money(value: number): number {
@@ -211,6 +249,36 @@ export function createFinanceWorkbook(expenses: Expense[]): ExcelJS.Workbook {
   return workbook;
 }
 
+r.post('/categorize', financeWriteAuth, async (req, res, next) => {
+  const body = req.body as { descricao?: unknown; estabelecimento?: unknown } | undefined;
+  const descricao = typeof body?.descricao === 'string' ? body.descricao.trim() : '';
+  const estabelecimento = typeof body?.estabelecimento === 'string' ? body.estabelecimento.trim() : '';
+  if (
+    !descricao ||
+    descricao.length > 500 ||
+    estabelecimento.length > 200 ||
+    (body?.descricao !== undefined && typeof body.descricao !== 'string') ||
+    (body?.estabelecimento !== undefined && typeof body.estabelecimento !== 'string')
+  ) {
+    res.status(400).json({ error: 'descricao ou estabelecimento inválido' });
+    return;
+  }
+
+  try {
+    const fullDescription = [descricao, estabelecimento]
+      .filter(Boolean)
+      .filter((value, index, values) => values.findIndex((entry) => entry.toLocaleLowerCase('pt-BR') === value.toLocaleLowerCase('pt-BR')) === index)
+      .join(' - ');
+    const result = await categorizeExpense(fullDescription);
+    if (result.confianca === 0) {
+      console.warn('[finance] category inference unavailable; using fallback category');
+    }
+    res.json(result);
+  } catch (error) {
+    next(error);
+  }
+});
+
 r.post('/add', financeWriteAuth, async (req, res, next) => {
   const body = req.body;
   const amount = parseAmount(body?.valor);
@@ -238,18 +306,17 @@ r.post('/add', financeWriteAuth, async (req, res, next) => {
     res.status(400).json({ error: 'categoria inválida' });
     return;
   }
+  if (body?.categoriaFinal !== undefined && typeof body.categoriaFinal !== 'boolean') {
+    res.status(400).json({ error: 'categoriaFinal inválida' });
+    return;
+  }
 
   try {
     const estabelecimento = body.estabelecimento.trim();
     let categoria = typeof body.categoria === 'string' ? body.categoria.trim() : '';
-    if (!categoria || categoria.toLocaleLowerCase('pt-BR') === 'outros') {
-      try {
-        categoria = await categorize(estabelecimento);
-      } catch (error) {
-        console.error('[finance] category inference failed:', error instanceof Error ? error.message : String(error));
-        res.status(502).json({ error: 'ai_unavailable' });
-        return;
-      }
+    if ((!categoria || categoria.toLocaleLowerCase('pt-BR') === 'outros') && body.categoriaFinal !== true) {
+      const suggestion = await categorizeExpense(estabelecimento);
+      categoria = suggestion.categoria;
     }
 
     const expense: Expense = {

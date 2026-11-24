@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import { api, getToken } from '../lib/api';
 import { subscribeRealtime } from '../lib/realtime';
 
@@ -20,6 +20,13 @@ interface FinancePayload {
     porResponsavel: Record<string, number>;
     porCategoria: Record<string, number>;
   };
+}
+
+interface CategorySuggestion {
+  categoria: string;
+  confianca: number;
+  existente: boolean;
+  categoriaId?: string;
 }
 
 type ExpenseFilter = 'all' | 'vitor' | 'sophia';
@@ -48,6 +55,12 @@ export default function PageFinance() {
   const [expenseModalOpen, setExpenseModalOpen] = useState(false);
   const [expenseForm, setExpenseForm] = useState({ valor: '', estabelecimento: '', categoria: 'Outros', responsavel: 'Vitor' });
   const [savingExpense, setSavingExpense] = useState(false);
+  const [categorySuggestion, setCategorySuggestion] = useState<CategorySuggestion | null>(null);
+  const [categoryLoading, setCategoryLoading] = useState(false);
+  const [categoryTouched, setCategoryTouched] = useState(false);
+  const [suggestionConfirmed, setSuggestionConfirmed] = useState(false);
+  const categoryTouchedRef = useRef(false);
+  const categoryRequestId = useRef(0);
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -67,6 +80,44 @@ export default function PageFinance() {
       if (action === 'RELOAD_FINANCE') void loadData();
     });
   }, [loadData]);
+
+  useEffect(() => {
+    const requestId = ++categoryRequestId.current;
+    const estabelecimento = expenseForm.estabelecimento.trim();
+    if (!expenseModalOpen || editingExpense || !estabelecimento) {
+      setCategoryLoading(false);
+      setCategorySuggestion(null);
+      return;
+    }
+
+    setCategorySuggestion(null);
+    setSuggestionConfirmed(false);
+    const timer = window.setTimeout(async () => {
+      setCategoryLoading(true);
+      try {
+        const suggestion = await api<CategorySuggestion>('/finance/categorize', {
+          method: 'POST',
+          body: JSON.stringify({ descricao: estabelecimento, estabelecimento }),
+        });
+        if (requestId !== categoryRequestId.current) return;
+        setCategorySuggestion(suggestion);
+        if (!categoryTouchedRef.current) {
+          setExpenseForm((form) => ({ ...form, categoria: suggestion.categoria }));
+        }
+      } catch {
+        if (requestId !== categoryRequestId.current) return;
+        const fallback = { categoria: 'Outros', confianca: 0, existente: true };
+        setCategorySuggestion(fallback);
+        if (!categoryTouchedRef.current) {
+          setExpenseForm((form) => ({ ...form, categoria: fallback.categoria }));
+        }
+      } finally {
+        if (requestId === categoryRequestId.current) setCategoryLoading(false);
+      }
+    }, 500);
+
+    return () => window.clearTimeout(timer);
+  }, [editingExpense, expenseForm.estabelecimento, expenseModalOpen]);
 
   const categoryOptions = useMemo(
     () => [...new Set(payload?.gastos.map((expense) => expense.categoria) ?? [])]
@@ -163,8 +214,25 @@ export default function PageFinance() {
 
   const openExpenseModal = (expense?: Expense) => {
     setEditingExpense(expense || null);
+    categoryTouchedRef.current = false;
+    setCategoryTouched(false);
+    setCategorySuggestion(null);
+    setSuggestionConfirmed(false);
     setExpenseForm(expense ? { valor: String(expense.valor).replace('.', ','), estabelecimento: expense.estabelecimento, categoria: expense.categoria, responsavel: expense.responsavel } : { valor: '', estabelecimento: '', categoria: 'Outros', responsavel: 'Vitor' });
     setExpenseModalOpen(true);
+  };
+  const changeCategory = (categoria: string) => {
+    categoryTouchedRef.current = true;
+    setCategoryTouched(true);
+    setSuggestionConfirmed(false);
+    setExpenseForm((form) => ({ ...form, categoria }));
+  };
+  const useCategorySuggestion = () => {
+    if (!categorySuggestion) return;
+    categoryTouchedRef.current = false;
+    setCategoryTouched(false);
+    setExpenseForm((form) => ({ ...form, categoria: categorySuggestion.categoria }));
+    setSuggestionConfirmed(true);
   };
   const saveExpense = async (event: FormEvent) => {
     event.preventDefault();
@@ -172,7 +240,10 @@ export default function PageFinance() {
     try {
       const body = { ...expenseForm, data: editingExpense?.data || new Date().toISOString(), local: editingExpense?.local || '', origem: editingExpense?.origem || (expenseForm.responsavel.toLocaleLowerCase('pt-BR') === 'sophia' ? origins.sophia : origins.vitor) };
       if (editingExpense) await api<Expense>(`/finance/${editingExpense._id}`, { method: 'PATCH', body: JSON.stringify(body) });
-      else await api('/finance/add', { method: 'POST', body: JSON.stringify(body) });
+      else await api('/finance/add', {
+        method: 'POST',
+        body: JSON.stringify({ ...body, categoriaFinal: true }),
+      });
       setExpenseModalOpen(false); await loadData();
     } catch (cause) { setError(cause instanceof Error ? cause.message : 'Não foi possível salvar o gasto.'); }
     finally { setSavingExpense(false); }
@@ -381,7 +452,7 @@ export default function PageFinance() {
           </section>
         </>
       )}
-      {expenseModalOpen && <div className="modal-backdrop" role="dialog" aria-modal="true" onMouseDown={(event) => { if (event.target === event.currentTarget && !savingExpense) setExpenseModalOpen(false); }}><form className="modal finance-expense-modal" onSubmit={saveExpense}><header className="modal-head"><h3>{editingExpense ? 'Editar gasto' : 'Novo gasto'}</h3><button className="modal-close" type="button" aria-label="Fechar" onClick={() => setExpenseModalOpen(false)}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18" /></svg></button></header><label className="field"><span>Valor</span><input inputMode="decimal" value={expenseForm.valor} required placeholder="0,00" onChange={(event) => setExpenseForm((form) => ({ ...form, valor: event.target.value }))} /></label><label className="field"><span>Estabelecimento</span><input value={expenseForm.estabelecimento} required maxLength={200} onChange={(event) => setExpenseForm((form) => ({ ...form, estabelecimento: event.target.value }))} /></label><label className="field"><span>Categoria</span><input value={expenseForm.categoria} required maxLength={80} onChange={(event) => setExpenseForm((form) => ({ ...form, categoria: event.target.value }))} /></label><label className="field"><span>Responsável</span><select value={expenseForm.responsavel} onChange={(event) => setExpenseForm((form) => ({ ...form, responsavel: event.target.value }))}><option>Vitor</option><option>Sophia</option></select></label><footer className="modal-foot"><button className="btn ghost" type="button" onClick={() => setExpenseModalOpen(false)}>Cancelar</button><button className="btn" type="submit" disabled={savingExpense}>{savingExpense ? 'Salvando…' : 'Salvar'}</button></footer></form></div>}
+      {expenseModalOpen && <div className="modal-backdrop" role="dialog" aria-modal="true" onMouseDown={(event) => { if (event.target === event.currentTarget && !savingExpense) setExpenseModalOpen(false); }}><form className="modal finance-expense-modal" onSubmit={saveExpense}><header className="modal-head"><h3>{editingExpense ? 'Editar gasto' : 'Novo gasto'}</h3><button className="modal-close" type="button" aria-label="Fechar" onClick={() => setExpenseModalOpen(false)}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18" /></svg></button></header><label className="field"><span>Valor</span><input inputMode="decimal" value={expenseForm.valor} required placeholder="0,00" onChange={(event) => setExpenseForm((form) => ({ ...form, valor: event.target.value }))} /></label><label className="field"><span>Estabelecimento</span><input value={expenseForm.estabelecimento} required maxLength={200} onChange={(event) => setExpenseForm((form) => ({ ...form, estabelecimento: event.target.value }))} /></label><label className="field"><span>Categoria</span><input value={expenseForm.categoria} required maxLength={80} onChange={(event) => changeCategory(event.target.value)} /></label>{!editingExpense && <div className="finance-category-suggestion" aria-live="polite">{categoryLoading ? <span className="finance-category-loading"><span className="finance-category-spinner" aria-hidden="true" /> Categorizando…</span> : categorySuggestion && <><span className={categorySuggestion.confianca === 0 ? 'finance-category-fallback' : 'finance-category-chip'}>{categorySuggestion.confianca === 0 ? 'IA indisponível · Outros' : 'Sugerido pela IA'}</span><button className="finance-category-confirm" type="button" disabled={suggestionConfirmed} onClick={useCategorySuggestion}>{categoryTouched ? 'Usar sugestão' : suggestionConfirmed ? 'Confirmado' : 'Confirmar'}</button></>}</div>}<label className="field"><span>Responsável</span><select value={expenseForm.responsavel} onChange={(event) => setExpenseForm((form) => ({ ...form, responsavel: event.target.value }))}><option>Vitor</option><option>Sophia</option></select></label><footer className="modal-foot"><button className="btn ghost" type="button" onClick={() => setExpenseModalOpen(false)}>Cancelar</button><button className="btn" type="submit" disabled={savingExpense}>{savingExpense ? 'Salvando…' : 'Salvar'}</button></footer></form></div>}
     </main>
   );
 }
