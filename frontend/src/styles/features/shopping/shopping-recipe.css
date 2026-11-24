@@ -1,4 +1,29 @@
 
+section.shopping-recipes {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.recipe-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 24px;
+  flex-wrap: wrap;
+  flex-shrink: 0;
+}
+
+.recipe-header .shopping-section-title {
+  margin-bottom: 0;
+}
+
+.shopping-recipe-search {
+  flex: 1;
+  max-width: 500px;
+}
+
 .shopping-recipe-search label {
   display: block;
   margin-bottom: 10px;
@@ -6,21 +31,60 @@
 }
 
 .shopping-recipe-search>div {
-  display: grid;
-  grid-template-columns: 1fr auto;
-  gap: 10px;
+  display: flex;
+  gap: 8px;
 }
 
 .shopping-recipe-search input {
+  flex: 1;
   min-width: 0;
+  padding: 10px 14px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  outline: none;
+  background: var(--panel);
+  color: var(--paper);
+  font: inherit;
+  transition: border-color .2s ease, box-shadow .2s ease, background .2s ease;
+}
+
+.shopping-recipe-search input::placeholder {
+  color: var(--mute);
+  opacity: .9;
+}
+
+.shopping-recipe-search input:hover {
+  border-color: rgba(255, 255, 255, .18);
+}
+
+.shopping-recipe-search input:focus {
+  border-color: var(--accent);
+  background: rgba(255, 255, 255, .055);
+  box-shadow: 0 0 0 3px rgba(134, 215, 192, .13);
 }
 
 .recipe-card {
-  margin-top: 20px;
-  overflow: hidden;
+  margin-top: 0;
+  margin-bottom: 16px;
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
   border: 1px solid rgba(134, 215, 192, .22);
   border-radius: 20px;
   background: rgba(5, 14, 12, .38);
+}
+
+@media (max-width: 768px) {
+  .recipe-header {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .shopping-recipe-search {
+    width: 100%;
+    max-width: 100%;
+  }
 }
 
 .recipe-card>header {

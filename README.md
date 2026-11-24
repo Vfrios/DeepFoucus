@@ -232,21 +232,57 @@ Crie o atalho **“LOSAI - Bom Dia”** (pode ser ativado automaticamente ao des
 ---
 
 ### 6. Atalho do iPhone: Adicionar Compra
-1. Adicione a ação **Obter Conteúdo do URL**.
-2. **URL:** `https://deepfoucus.onrender.com/api/shopping/add`
-3. **Método:** `POST`
-4. **Cabeçalhos:** `x-api-token: SEU_API_TOKEN`
-5. **Corpo da Solicitação:** `JSON`
+1. Adicione a ação **Perguntar por Entrada** (*Texto*) com o prompt: `"O que comprar?"` (salve ou use como `Item`).
+2. Adicione a ação **Perguntar por Entrada** (*Texto*) com o prompt: `"Quantidade? (Deixe em branco para 1)"`.
+3. Adicione uma ação **Se (If)**:
+   - *Se* a entrada da quantidade **não tiver qualquer valor** (estiver vazia) → defina uma variável/texto com `"1"`.
+   - *Caso contrário* → use o valor digitado na pergunta de quantidade.
+4. Adicione a ação **Obter Conteúdo do URL**.
+5. **URL:** `https://deepfoucus.onrender.com/api/shopping/add`
+6. **Método:** `POST`
+7. **Cabeçalhos:** `x-api-token: SEU_API_TOKEN`
+8. **Corpo da Solicitação:** `JSON`
 ```json
 {
-  "item": "Leite"
+  "item": "Leite",
+  "quantidade": "2",
+  "status": "carrinho"
 }
 ```
-6. A resposta contém `{"sucesso":true,"mensagem":"Item adicionado"}`.
+9. A resposta contém `{"sucesso":true,"mensagem":"Item adicionado"}` (se `quantidade` for enviada em branco ou omitida, o servidor também assume `"1"` por padrão).
 
 ---
 
-## 9. Dashboard financeiro
+## 9. Compras e Dispensa
+
+O módulo de Compras mantém dois contextos independentes para o mesmo item:
+
+```text
+Adicionar à Dispensa ──┐
+                       ├── mesmo registro ── quantidadeEmCasa
+Adicionar ao Carrinho ─┘                      quantidadeNoCarrinho
+```
+
+- Um item pode aparecer simultaneamente na **Dispensa** e no **Carrinho**.
+- Ajustar a quantidade em casa não altera a quantidade do carrinho, e vice-versa.
+- Ao consumir o último estoque da dispensa, o item desaparece da dispensa, mas continua no carrinho se houver quantidade pendente.
+- Adicionar o mesmo produto novamente soma à quantidade do contexto correto e consolida registros duplicados legados em um único documento.
+- No **Checkout**, as quantidades do carrinho são somadas ao estoque da casa e o carrinho é zerado. Se já existir estoque separado, as quantidades são consolidadas sem duplicar o item.
+- Ao gerar uma receita, os ingredientes disponíveis são conferidos somente na dispensa e descontados do estoque. Ingredientes faltantes são adicionados ao carrinho; itens já existentes no carrinho têm sua quantidade somada.
+
+### Testes do módulo de Compras
+
+Os testes E2E usam a API Express real em `http://localhost:3001` e o MongoDB configurado no ambiente:
+
+```bash
+npm run test:e2e -- tests/e2e/shopping.spec.ts
+```
+
+O arquivo cobre simultaneidade entre dispensa e carrinho, consumo até zero, checkout, geração de receita e duplicados.
+
+---
+
+## 10. Dashboard financeiro
 
 A tela **Finanças** no modo parede mostra os gastos do mês atual, totais por responsável e categoria, e atualiza em tempo real. Os valores ficam ocultos até tocar em **Mostrar Valores**. **Exportar Excel** baixa todos os lançamentos com uma tabela de despesas e totais por responsável.
 
@@ -266,7 +302,7 @@ Para registrar um gasto com Atalhos, use **Obter Conteúdo do URL** com `POST` p
 
 Quando `categoria` estiver vazia ou for `Outros`, o backend tenta inferi-la com a IA configurada. A listagem, exclusão e exportação financeira exigem JWT com perfil `owner` ou `finance`. O `POST /api/finance/add` aceita esses mesmos perfis ou o `API_TOKEN` usado pela integração existente com Atalhos.
 
-## 10. Saúde
+## 11. Saúde
 
 A página **Saúde** reúne perfil, treino e hidratação, nutrição e dashboard. O perfil e os registros
 são privados por conta autenticada. Salvar e gerar rotina solicita à IA uma dieta e um treino; os

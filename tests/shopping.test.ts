@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { validateRecipe } from '../backend/src/lib/shopping';
+import { isItemInDispensa, validateRecipe } from '../backend/src/lib/shopping';
 
 test('validates and normalizes a recipe in the strict JSON contract', () => {
   const recipe = validateRecipe({
@@ -32,3 +32,15 @@ test('rejects an ingredient appearing as both available and missing', () => {
     instrucoes: ['Misture.'],
   }, 'Limonada'), /recipe_invalid_ingredient_conflict/);
 });
+
+test('does not keep a zero-quantity pantry item visible', () => {
+  assert.equal(isItemInDispensa({
+    item: 'Leite',
+    quantidade: '0',
+    status: 'dispensa',
+    quantidadeEmCasa: 0,
+    naDispensa: true,
+    criadoEm: new Date(),
+  }), false);
+});
+

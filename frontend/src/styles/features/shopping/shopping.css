@@ -1,10 +1,19 @@
-/* Compras: layout fit-to-screen com scroll isolado apenas na lista de itens */
+/* Compras: layout fit-to-screen com scroll isolado apenas na lista de itens (máx 6 itens visíveis) */
+
+.dock-page-shopping,
+.shell-web .dock-page-shopping,
+.shell-mobile .dock-page-shopping {
+  height: 100dvh;
+  max-height: 100dvh;
+  overflow: hidden !important;
+}
 
 .shopping-page {
   height: 100%;
+  max-height: 100%;
   display: flex;
   flex-direction: column;
-  overflow: hidden;
+  overflow: hidden !important;
   max-width: 900px;
   width: 100%;
   margin: 0 auto;
@@ -23,14 +32,21 @@
   flex-direction: column;
   flex: 1;
   min-height: 0;
-  overflow: hidden;
+  overflow: hidden !important;
   padding-bottom: 0;
 }
 
-/* Na aba de receitas não há ul.shopping-list, então o card gerado pode rolar internamente */
+/* Na aba de receitas o .recipe-card rola internamente */
 .shopping-page > .shopping-panel.shopping-recipes {
+  overflow: hidden !important;
+  padding-bottom: 16px;
+}
+
+.shopping-page > .shopping-panel.shopping-recipes .recipe-card {
+  flex: 1 1 auto;
+  min-height: 0;
   overflow-y: auto;
-  padding-bottom: 22px;
+  overflow-x: hidden;
 }
 
 .shopping-section-title,
@@ -44,17 +60,53 @@
 .shopping-list {
   display: flex;
   flex-direction: column;
-  flex: 1;
+  flex: 1 1 0;
   min-height: 0;
-  max-height: none;
-  overflow-y: auto;
+  max-height: calc(6 * 56px + 5 * 8px + 8px);
+  overflow-y: auto !important;
+  overflow-x: hidden;
   margin-bottom: 0;
   padding-bottom: 8px;
   padding-right: 4px;
 }
 
 .shopping-list > li {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
   flex-shrink: 0;
+}
+
+.shopping-list .task-text {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  flex-wrap: nowrap;
+  gap: 8px;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.qty-inline-edit {
+  width: 48px;
+  min-width: 40px;
+  padding: 2px 4px;
+  text-align: center;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  color: var(--mute);
+  font: inherit;
+  font-size: 0.82rem;
+  font-weight: 600;
+  flex-shrink: 0;
+  outline: none;
+}
+
+.qty-inline-edit:hover,
+.qty-inline-edit:focus {
+  border-color: var(--line);
+  color: var(--paper);
 }
 
 .shopping-empty {
@@ -62,24 +114,9 @@
   min-height: 0;
 }
 
-/* Mobile e Guest: fluxo contínuo, o documento rola normalmente */
-.shell-mobile .shopping-page,
-.guest-shopping-shell .shopping-page {
-  height: auto;
-  overflow: visible;
-}
-
-.shell-mobile .shopping-page > .shopping-panel,
-.guest-shopping-shell .shopping-page > .shopping-panel {
-  flex: none;
-  overflow: visible;
-  padding-bottom: 22px;
-}
-
-.shell-mobile .shopping-page .shopping-list,
-.shell-mobile .shopping-list,
-.guest-shopping-shell .shopping-page .shopping-list,
-.guest-shopping-shell .shopping-list {
-  flex: none;
-  overflow: visible;
+/* Guest shell: também trava o scroll externo e mantém o scroll apenas na lista */
+.guest-shopping-shell {
+  height: 100dvh;
+  max-height: 100dvh;
+  overflow: hidden !important;
 }

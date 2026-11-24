@@ -95,22 +95,75 @@
   font-size: .85rem;
 }
 
+.shopping-list li.shopping-item,
+.shopping-list li {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+}
+
 .shopping-list .task-text {
   display: flex;
   flex-direction: row;
   align-items: center;
+  flex-wrap: nowrap;
   gap: 8px;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.shopping-item-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .shopping-list .task-text small,
+.shopping-qty-badge,
 .task-text small {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
   font-size: 0.75rem;
   background: rgba(255, 255, 255, 0.1);
-  padding: 2px 6px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  padding: 2px 8px;
   border-radius: 6px;
   color: var(--mute);
   white-space: nowrap;
-  font-weight: 500;
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+.qty-inline-edit {
+  width: 48px;
+  min-width: 40px;
+  padding: 2px 4px;
+  text-align: center;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  color: var(--mute);
+  font: inherit;
+  font-size: 0.82rem;
+  font-weight: 600;
+  flex-shrink: 0;
+  outline: none;
+  cursor: text;
+  transition: border-color .18s ease, background-color .18s ease, color .18s ease;
+}
+
+.qty-inline-edit:hover {
+  border-color: var(--line);
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--paper);
+}
+
+.qty-inline-edit:focus {
+  border-color: var(--line);
+  background: var(--panel);
+  color: var(--paper);
+  box-shadow: 0 0 0 2px rgba(134, 215, 192, .18);
 }
 
 .shopping-empty {

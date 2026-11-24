@@ -10,12 +10,14 @@
     "node": ">=20"
   },
   "scripts": {
-    "dev": "concurrently -n api,web -c cyan,magenta \"pnpm --filter @wall/backend dev\" \"pnpm --filter @wall/frontend dev\"",
+    "dev": "concurrently -n api,web -c cyan,magenta \"npm -w backend run dev\" \"npm -w frontend run dev\"",
     "build": "npm -w frontend run build && npm -w backend run build",
     "test": "npm -w backend run test",
+    "test:e2e": "playwright test",
     "start": "node backend/dist/index.js"
   },
   "devDependencies": {
+    "@playwright/test": "^1.65.1",
     "concurrently": "^8.2.2",
     "wait-on": "^9.5.1"
   }

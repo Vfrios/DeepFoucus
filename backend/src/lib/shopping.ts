@@ -1,10 +1,11 @@
-import { ObjectId } from 'mongodb';
+import { Collection, ObjectId } from 'mongodb';
 import { callAI } from './ai';
 import { getItemEmoji } from './icons';
 import { getDb } from './mongo';
 import { notifyAndroid } from './realtime';
 
 export type ShoppingStatus = 'dispensa' | 'carrinho';
+export type ShoppingAdjustContext = 'dispensa' | 'carrinho';
 
 export interface ShoppingItem {
   _id?: ObjectId;
@@ -12,7 +13,107 @@ export interface ShoppingItem {
   emoji?: string | null;
   quantidade: string;
   status: ShoppingStatus;
+  quantidadeEmCasa?: number;
+  quantidadeNoCarrinho?: number;
+  naDispensa?: boolean;
   criadoEm: Date;
+}
+
+export function parseQuantityNumber(value: unknown, fallback = 1): number {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return Math.max(0, Math.round(value));
+  }
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    if (!trimmed) return fallback;
+    const match = trimmed.match(/^(\d+)/);
+    if (match) {
+      const parsed = Number.parseInt(match[1], 10);
+      if (Number.isFinite(parsed)) return Math.max(0, parsed);
+    }
+  }
+  return fallback;
+}
+
+export function getQuantidadeEmCasa(item: ShoppingItem): number {
+  if (typeof item.quantidadeEmCasa === 'number' && Number.isFinite(item.quantidadeEmCasa)) {
+    return Math.max(0, Math.round(item.quantidadeEmCasa));
+  }
+  if (item.status === 'dispensa') {
+    return parseQuantityNumber(item.quantidade, 1);
+  }
+  return 0;
+}
+
+export function getQuantidadeNoCarrinho(item: ShoppingItem): number {
+  if (typeof item.quantidadeNoCarrinho === 'number' && Number.isFinite(item.quantidadeNoCarrinho)) {
+    return Math.max(0, Math.round(item.quantidadeNoCarrinho));
+  }
+  if (item.status === 'carrinho') {
+    return parseQuantityNumber(item.quantidade, 1);
+  }
+  return 0;
+}
+
+export function isItemInDispensa(item: ShoppingItem): boolean {
+  if (typeof item.quantidadeEmCasa === 'number') {
+    return item.quantidadeEmCasa > 0;
+  }
+  if (item.naDispensa === true) return parseQuantityNumber(item.quantidade, 1) > 0;
+  if (item.status === 'dispensa') return parseQuantityNumber(item.quantidade, 1) > 0;
+  return false;
+}
+
+export function isItemInCarrinho(item: ShoppingItem): boolean {
+  if (typeof item.quantidadeNoCarrinho === 'number') {
+    return item.quantidadeNoCarrinho > 0;
+  }
+  return item.status === 'carrinho';
+}
+
+export function ingredientKey(item: string): string {
+  return item.normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().toLocaleLowerCase('pt-BR');
+}
+
+export async function consolidateDuplicateShoppingItems(collection: Collection<ShoppingItem>): Promise<void> {
+  const items = await collection.find().toArray();
+  const groups = new Map<string, ShoppingItem[]>();
+  for (const item of items) {
+    const key = ingredientKey(item.item);
+    const group = groups.get(key) || [];
+    group.push(item);
+    groups.set(key, group);
+  }
+
+  for (const group of groups.values()) {
+    if (group.length < 2) continue;
+    const canonical = group
+      .slice()
+      .sort((a, b) => String(a._id).localeCompare(String(b._id)))[0];
+    if (!canonical._id) continue;
+
+    const quantidadeEmCasa = group.reduce((total, item) => total + getQuantidadeEmCasa(item), 0);
+    const quantidadeNoCarrinho = group.reduce((total, item) => total + getQuantidadeNoCarrinho(item), 0);
+    const naDispensa = quantidadeEmCasa > 0;
+    const status: ShoppingStatus = quantidadeNoCarrinho > 0 ? 'carrinho' : 'dispensa';
+    await collection.updateOne(
+      { _id: canonical._id },
+      {
+        $set: {
+          item: canonical.item,
+          emoji: canonical.emoji || getItemEmoji(canonical.item),
+          quantidadeEmCasa,
+          quantidadeNoCarrinho,
+          naDispensa,
+          status,
+          quantidade: String(status === 'carrinho' ? (quantidadeNoCarrinho || quantidadeEmCasa || 1) : (quantidadeEmCasa || 1)),
+        },
+      }
+    );
+    await collection.deleteMany({
+      _id: { $in: group.filter((item) => item._id && !item._id.equals(canonical._id)).map((item) => item._id as ObjectId) },
+    });
+  }
 }
 
 export interface RecipeIngredient { item: string; quantidade: string }
@@ -45,8 +146,57 @@ export async function normalizeShoppingItem(input: string): Promise<string> {
 
 export async function addShoppingItem(input: string, status: ShoppingStatus = 'carrinho', quantidade = '1'): Promise<ShoppingItem> {
   const item = await normalizeShoppingItem(input);
-  const document: ShoppingItem = { item, emoji: getItemEmoji(item), quantidade: quantidade.trim().slice(0, 80) || '1', status, criadoEm: new Date() };
-  const result = await (await getDb()).collection<ShoppingItem>('shopping').insertOne(document);
+  const cleanQty = quantidade.trim().slice(0, 80) || '1';
+  const numericQty = parseQuantityNumber(cleanQty, 1);
+  const collection = (await getDb()).collection<ShoppingItem>('shopping');
+  await consolidateDuplicateShoppingItems(collection);
+  const existingItems = await collection.find().toArray();
+  const key = ingredientKey(item);
+  const existing = existingItems.find((entry) => ingredientKey(entry.item) === key);
+
+  if (existing && existing._id) {
+    const emCasa = getQuantidadeEmCasa(existing);
+    const noCarrinho = getQuantidadeNoCarrinho(existing);
+    const inDispensa = isItemInDispensa(existing);
+
+    const nextEmCasa = status === 'dispensa' ? emCasa + numericQty : emCasa;
+    const nextNoCarrinho = status === 'carrinho' ? noCarrinho + numericQty : noCarrinho;
+    const nextNaDispensa = status === 'dispensa' ? true : inDispensa;
+    const nextStatus: ShoppingStatus = status === 'carrinho' ? 'carrinho' : (nextNoCarrinho > 0 ? 'carrinho' : 'dispensa');
+    const nextQuantidade = status === 'carrinho'
+      ? (noCarrinho > 0 ? String(nextNoCarrinho) : cleanQty)
+      : String(nextEmCasa);
+
+    const updated = await collection.findOneAndUpdate(
+      { _id: existing._id },
+      {
+        $set: {
+          item: existing.item || item,
+          emoji: existing.emoji || getItemEmoji(item),
+          quantidade: nextQuantidade,
+          status: nextStatus,
+          quantidadeEmCasa: nextEmCasa,
+          quantidadeNoCarrinho: nextNoCarrinho,
+          naDispensa: nextNaDispensa,
+        },
+      },
+      { returnDocument: 'after' }
+    );
+    notifyAndroid('RELOAD_SHOPPING');
+    if (updated) return updated;
+  }
+
+  const document: ShoppingItem = {
+    item,
+    emoji: getItemEmoji(item),
+    quantidade: cleanQty,
+    status,
+    quantidadeEmCasa: status === 'dispensa' ? numericQty : 0,
+    quantidadeNoCarrinho: status === 'carrinho' ? numericQty : 0,
+    naDispensa: status === 'dispensa',
+    criadoEm: new Date(),
+  };
+  const result = await collection.insertOne(document);
   document._id = result.insertedId;
   notifyAndroid('RELOAD_SHOPPING');
   return document;
@@ -68,10 +218,6 @@ function cleanIngredientList(value: unknown): RecipeIngredient[] {
   const cleaned = value.map(cleanIngredient).filter((item): item is RecipeIngredient => item !== null);
   if (cleaned.length !== value.length) throw new Error('recipe_invalid_ingredients');
   return cleaned;
-}
-
-function ingredientKey(item: string): string {
-  return item.normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().toLocaleLowerCase('pt-BR');
 }
 
 export function validateRecipe(value: unknown, prato: string): Omit<Recipe, '_id' | 'criadoEm'> {
