@@ -14,6 +14,11 @@ export function roleForEmail(email: string | null | undefined): Role | null {
   return null;
 }
 
+export function isPrimaryOwnerEmail(email: string, configuredEmail = process.env.EMAIL_VITOR): boolean {
+  const normalizedConfiguredEmail = configuredEmail?.trim().toLowerCase();
+  return Boolean(normalizedConfiguredEmail) && email.trim().toLowerCase() === normalizedConfiguredEmail;
+}
+
 function matchesConfiguredEmail(email: string, configuredEmail: string | undefined): boolean {
   const normalizedConfiguredEmail = configuredEmail?.trim().toLowerCase();
   return Boolean(normalizedConfiguredEmail) && email === normalizedConfiguredEmail;

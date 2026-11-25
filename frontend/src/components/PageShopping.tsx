@@ -32,14 +32,14 @@ interface PendingCartAdd {
   quantidade: string;
   emCasa: number;
 }
-interface DevicePairing {
-  code: string;
-  expiresAt: string;
-}
 interface ReceiptDraft {
   nome: string;
   quantidade: string;
   selecionado: boolean;
+}
+interface ShoppingToast {
+  message: string;
+  tone: 'success' | 'error';
 }
 
 const emptyLists: ShoppingLists = { dispensa: [], carrinho: [] };
@@ -75,6 +75,96 @@ function getNoCarrinho(item: ShoppingItem): number {
   return item.status === 'carrinho' ? parseNumericQty(item.quantidade, 1) : 0;
 }
 
+function findShoppingItem(lists: ShoppingLists, key: string, id?: string): ShoppingItem | undefined {
+  return [...lists.dispensa, ...lists.carrinho].find((item) =>
+    (id !== undefined && item._id === id) || normalizeItemKey(item.item) === key
+  );
+}
+
+function setShoppingItemViews(lists: ShoppingLists, key: string, item: ShoppingItem): ShoppingLists {
+  const emCasa = getEmCasa(item);
+  const noCarrinho = getNoCarrinho(item);
+  const updateView = (entries: ShoppingItem[], status: ShoppingStatus, include: boolean) => {
+    const index = entries.findIndex((entry) =>
+      entry._id === item._id || normalizeItemKey(entry.item) === key
+    );
+    const next = entries.filter((entry) =>
+      entry._id !== item._id && normalizeItemKey(entry.item) !== key
+    );
+    if (!include) return next;
+
+    const view: ShoppingItem = {
+      ...item,
+      status,
+      quantidade: status === 'dispensa'
+        ? String(emCasa)
+        : parseNumericQty(item.quantidade, 1) === noCarrinho
+          ? item.quantidade
+          : String(noCarrinho || 1),
+    };
+    next.splice(index < 0 ? 0 : Math.min(index, next.length), 0, view);
+    return next;
+  };
+
+  return {
+    dispensa: updateView(lists.dispensa, 'dispensa', emCasa > 0),
+    carrinho: updateView(lists.carrinho, 'carrinho', noCarrinho > 0),
+  };
+}
+
+function applyQuantityDelta(
+  lists: ShoppingLists,
+  key: string,
+  delta: number,
+  status: ShoppingStatus
+): ShoppingLists {
+  const item = findShoppingItem(lists, key);
+  if (!item) return lists;
+
+  const emCasa = status === 'dispensa'
+    ? Math.max(0, getEmCasa(item) + delta)
+    : getEmCasa(item);
+  const noCarrinho = status === 'carrinho'
+    ? Math.max(0, getNoCarrinho(item) + delta)
+    : getNoCarrinho(item);
+
+  return setShoppingItemViews(lists, key, {
+    ...item,
+    quantidade: status === 'dispensa' ? String(emCasa) : String(noCarrinho || emCasa || 1),
+    quantidadeEmCasa: emCasa,
+    quantidadeNoCarrinho: noCarrinho,
+  });
+}
+
+function setCartQuantity(lists: ShoppingLists, key: string, quantity: string): ShoppingLists {
+  const item = findShoppingItem(lists, key);
+  if (!item) return lists;
+
+  return setShoppingItemViews(lists, key, {
+    ...item,
+    quantidade: quantity,
+    quantidadeNoCarrinho: parseNumericQty(quantity, 1),
+  });
+}
+
+function reconcileShoppingItem(
+  lists: ShoppingLists,
+  key: string,
+  saved: ShoppingItem,
+  preservePendingChanges: boolean
+): ShoppingLists {
+  const current = findShoppingItem(lists, key, saved._id);
+  if (preservePendingChanges && !current) return lists;
+
+  return setShoppingItemViews(lists, key, {
+    ...saved,
+    item: preservePendingChanges && current ? current.item : saved.item,
+    quantidade: preservePendingChanges && current ? current.quantidade : saved.quantidade,
+    quantidadeEmCasa: preservePendingChanges && current ? getEmCasa(current) : getEmCasa(saved),
+    quantidadeNoCarrinho: preservePendingChanges && current ? getNoCarrinho(current) : getNoCarrinho(saved),
+  });
+}
+
 function ItemIcon() {
   return <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m4 8 8-4 8 4-8 4-8-4Zm0 0v9l8 4 8-4V8M12 12v9" /></svg>;
 }
@@ -91,14 +181,11 @@ function CameraIcon() {
   return <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M4 7h3l1.5-2h7L17 7h3v12H4z" /><circle cx="12" cy="13" r="3.5" /></svg>;
 }
 
-function PairIcon() {
-  return <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><rect x="7" y="3" width="10" height="18" rx="2" /><path d="M10 17h4" /><path d="m9 9 2 2 4-4" /></svg>;
-}
-
 export default function PageShopping() {
   const { role } = useAuth();
   const [tab, setTab] = useState<ShoppingTab>('carrinho');
   const [lists, setLists] = useState<ShoppingLists>(emptyLists);
+  const listsRef = useRef<ShoppingLists>(emptyLists);
   const [newItems, setNewItems] = useState<Record<ShoppingStatus, string>>({ carrinho: '', dispensa: '' });
   const [quantities, setQuantities] = useState<Record<ShoppingStatus, string>>({ carrinho: '1', dispensa: '1' });
   const [openQtyMenu, setOpenQtyMenu] = useState<ShoppingStatus | null>(null);
@@ -106,41 +193,85 @@ export default function PageShopping() {
   const [dish, setDish] = useState('');
   const [recipe, setRecipe] = useState<RecipeResult | null>(null);
   const [error, setError] = useState('');
-  const [savingStatus, setSavingStatus] = useState<ShoppingStatus | null>(null);
   const [checkingOut, setCheckingOut] = useState(false);
+  const [pendingLocalWrites, setPendingLocalWrites] = useState(0);
   const [generating, setGenerating] = useState(false);
-  const [toast, setToast] = useState('');
-  const [adjustingId, setAdjustingId] = useState<string | null>(null);
+  const [toast, setToast] = useState<ShoppingToast | null>(null);
   const [pantryInlineQuantities, setPantryInlineQuantities] = useState<Record<string, string>>({});
   const [pendingCartAdd, setPendingCartAdd] = useState<PendingCartAdd | null>(null);
   const [confirmCheckoutOpen, setConfirmCheckoutOpen] = useState(false);
   const shoppingListFormRef = useRef<HTMLFormElement | null>(null);
   const receiptInputRef = useRef<HTMLInputElement | null>(null);
-  const [devicePairing, setDevicePairing] = useState<DevicePairing | null>(null);
-  const [startingPairing, setStartingPairing] = useState(false);
   const [receiptOpen, setReceiptOpen] = useState(false);
   const [readingReceipt, setReadingReceipt] = useState(false);
   const [receiptProgress, setReceiptProgress] = useState(0);
   const [receiptError, setReceiptError] = useState('');
   const [receiptItems, setReceiptItems] = useState<ReceiptDraft[]>([]);
   const [addingReceiptItems, setAddingReceiptItems] = useState(false);
+  const mutationQueuesRef = useRef(new Map<string, Promise<void>>());
+  const pendingMutationsRef = useRef(0);
+  const pendingByKeyRef = useRef(new Map<string, number>());
+  const reloadAfterMutationsRef = useRef(false);
+  const tempToRealIdsRef = useRef(new Map<string, string>());
+  const tempIdSequenceRef = useRef(0);
 
-  const load = useCallback(async () => {
-    try { setLists(await api<ShoppingLists>('/shopping/list')); setError(''); }
-    catch (cause) { setError(cause instanceof Error ? cause.message : 'Não foi possível carregar os itens.'); }
+  const updateLists = useCallback((update: (current: ShoppingLists) => ShoppingLists) => {
+    const next = update(listsRef.current);
+    listsRef.current = next;
+    setLists(next);
   }, []);
 
-  const startDevicePairing = async () => {
-    if (startingPairing) return;
-    setStartingPairing(true);
-    setError('');
-    try {
-      setDevicePairing(await api<DevicePairing>('/auth/device-pairing/start', { method: 'POST' }));
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : 'Não foi possível gerar o código de pareamento.');
-    } finally {
-      setStartingPairing(false);
+  const showToast = (message: string, tone: ShoppingToast['tone'] = 'success') => {
+    setToast({ message, tone });
+  };
+
+  const load = useCallback(async () => {
+    if (pendingMutationsRef.current > 0) {
+      reloadAfterMutationsRef.current = true;
+      return;
     }
+
+    try {
+      const loaded = await api<ShoppingLists>('/shopping/list');
+      if (pendingMutationsRef.current > 0) {
+        reloadAfterMutationsRef.current = true;
+        return;
+      }
+      updateLists(() => loaded);
+      setError('');
+    }
+    catch (cause) { setError(cause instanceof Error ? cause.message : 'Não foi possível carregar os itens.'); }
+  }, [updateLists]);
+
+  const queueMutation = (key: string, mutation: () => Promise<void>) => {
+    pendingMutationsRef.current += 1;
+    setPendingLocalWrites((current) => current + 1);
+    pendingByKeyRef.current.set(key, (pendingByKeyRef.current.get(key) ?? 0) + 1);
+    const previous = mutationQueuesRef.current.get(key) ?? Promise.resolve();
+    const run = async () => {
+      try {
+        await mutation();
+      } catch (cause) {
+        console.error('[shopping] optimistic mutation failed:', cause);
+        showToast('Não foi possível salvar a alteração. Tente novamente.', 'error');
+      } finally {
+        pendingMutationsRef.current -= 1;
+        setPendingLocalWrites((current) => Math.max(0, current - 1));
+        const pendingForKey = (pendingByKeyRef.current.get(key) ?? 1) - 1;
+        if (pendingForKey > 0) pendingByKeyRef.current.set(key, pendingForKey);
+        else pendingByKeyRef.current.delete(key);
+
+        if (pendingMutationsRef.current === 0 && reloadAfterMutationsRef.current) {
+          reloadAfterMutationsRef.current = false;
+          void load();
+        }
+      }
+    };
+    const queued = previous.then(run, run);
+    mutationQueuesRef.current.set(key, queued);
+    void queued.then(() => {
+      if (mutationQueuesRef.current.get(key) === queued) mutationQueuesRef.current.delete(key);
+    });
   };
 
   const readReceipt = async (event: ChangeEvent<HTMLInputElement>) => {
@@ -209,7 +340,7 @@ export default function PageShopping() {
       await load();
       setTab('dispensa');
       setReceiptOpen(false);
-      setToast(`${result.adicionados} ${result.adicionados === 1 ? 'item adicionado' : 'itens adicionados'} à dispensa.`);
+      showToast(`${result.adicionados} ${result.adicionados === 1 ? 'item adicionado' : 'itens adicionados'} à dispensa.`);
     } catch (cause) {
       setReceiptError(cause instanceof Error ? cause.message : 'Não foi possível adicionar os itens à dispensa.');
     } finally {
@@ -224,28 +355,66 @@ export default function PageShopping() {
 
   useEffect(() => {
     if (!toast) return;
-    const timer = window.setTimeout(() => setToast(''), 3500);
+    const timer = window.setTimeout(() => setToast(null), 3500);
     return () => window.clearTimeout(timer);
   }, [toast]);
 
-  const submitAddItem = async (status: ShoppingStatus, text: string, quantidade: string) => {
-    if (!text || savingStatus) return;
-    setSavingStatus(status); setError('');
-    try {
-      await api<ShoppingItem>('/shopping/add', { method: 'POST', body: JSON.stringify({ item: text, status, quantidade }) });
-      setNewItems((current) => ({ ...current, [status]: '' }));
-      setQuantities((current) => ({ ...current, [status]: '1' }));
-      await load();
-      setToast('Item adicionado!');
-    } catch (cause) { setError(cause instanceof Error ? cause.message : 'Não foi possível adicionar o item.'); }
-    finally { setSavingStatus(null); }
+  const submitAddItem = (status: ShoppingStatus, text: string, quantidade: string) => {
+    const itemName = text.trim();
+    if (!itemName) return;
+
+    const key = normalizeItemKey(itemName);
+    const amount = parseNumericQty(quantidade, 1);
+    const existing = findShoppingItem(listsRef.current, key);
+    const tempId = existing?._id ?? `temp-${Date.now()}-${++tempIdSequenceRef.current}`;
+    const baseItem: ShoppingItem = existing ?? {
+      _id: tempId,
+      item: itemName,
+      quantidade,
+      status,
+      criadoEm: new Date().toISOString(),
+    };
+    const emCasa = getEmCasa(baseItem);
+    const noCarrinho = getNoCarrinho(baseItem);
+    const nextEmCasa = status === 'dispensa' ? emCasa + amount : emCasa;
+    const nextNoCarrinho = status === 'carrinho' ? noCarrinho + amount : noCarrinho;
+    const optimisticItem: ShoppingItem = {
+      ...baseItem,
+      status,
+      quantidade: status === 'dispensa'
+        ? String(nextEmCasa)
+        : noCarrinho > 0 ? String(nextNoCarrinho) : quantidade,
+      quantidadeEmCasa: nextEmCasa,
+      quantidadeNoCarrinho: nextNoCarrinho,
+    };
+
+    setError('');
+    updateLists((current) => setShoppingItemViews(current, key, optimisticItem));
+    setNewItems((current) => ({ ...current, [status]: '' }));
+    setQuantities((current) => ({ ...current, [status]: '1' }));
+
+    queueMutation(key, async () => {
+      try {
+        const saved = await api<ShoppingItem>('/shopping/add', {
+          method: 'POST',
+          body: JSON.stringify({ item: itemName, status, quantidade }),
+        });
+        if (tempId.startsWith('temp-')) tempToRealIdsRef.current.set(tempId, saved._id);
+        updateLists((current) =>
+          reconcileShoppingItem(current, key, saved, (pendingByKeyRef.current.get(key) ?? 1) > 1)
+        );
+      } catch {
+        updateLists((current) => applyQuantityDelta(current, key, -amount, status));
+        showToast('Não foi possível adicionar o item. Tente novamente.', 'error');
+      }
+    });
   };
 
   const addItem = async (event: FormEvent, status: ShoppingStatus) => {
     event.preventDefault();
     const text = newItems[status].trim();
     const quantidade = (quantities[status] || '1').trim() || '1';
-    if (!text || savingStatus) return;
+    if (!text) return;
 
     if (status === 'carrinho') {
       const normalizedInput = normalizeItemKey(text);
@@ -272,52 +441,92 @@ export default function PageShopping() {
     await submitAddItem('carrinho', item, quantidade);
   };
 
-  const adjustQuantity = async (item: ShoppingItem, delta: number, contexto: ShoppingStatus) => {
-    if (adjustingId === item._id) return;
+  const adjustQuantity = (item: ShoppingItem, delta: number, contexto: ShoppingStatus) => {
+    const key = normalizeItemKey(item.item);
+    const before = findShoppingItem(listsRef.current, key, item._id) ?? item;
     setError('');
-    const currentEmCasa = getEmCasa(item);
-    const nextEmCasa = contexto === 'dispensa' ? Math.max(0, currentEmCasa + delta) : currentEmCasa;
+    updateLists((current) => applyQuantityDelta(current, key, delta, contexto));
 
-    setLists((current) => ({
+    queueMutation(key, async () => {
+      const itemId = item._id.startsWith('temp-') ? tempToRealIdsRef.current.get(item._id) : item._id;
+      if (!itemId) {
+        updateLists((current) => {
+          if (findShoppingItem(current, key)) return applyQuantityDelta(current, key, -delta, contexto);
+          return current;
+        });
+        return;
+      }
+
+      try {
+        const saved = await api<ShoppingItem>('/shopping/adjust', {
+          method: 'PATCH',
+          body: JSON.stringify({ itemId, delta, contexto }),
+        });
+        updateLists((current) =>
+          reconcileShoppingItem(current, key, saved, (pendingByKeyRef.current.get(key) ?? 1) > 1)
+        );
+      } catch {
+        updateLists((current) => {
+          if (findShoppingItem(current, key, itemId)) return applyQuantityDelta(current, key, -delta, contexto);
+          return setShoppingItemViews(current, key, { ...before, _id: itemId });
+        });
+        showToast('Não foi possível ajustar a quantidade. Tente novamente.', 'error');
+      }
+    });
+  };
+
+  const deleteItem = (item: ShoppingItem, contexto?: ShoppingStatus) => {
+    const targetList = contexto ?? item.status;
+    const key = normalizeItemKey(item.item);
+    const previousItems = listsRef.current[targetList];
+    const previousIndex = previousItems.findIndex((entry) => entry._id === item._id);
+    const previousItem = previousItems[previousIndex] ?? item;
+    setError('');
+    updateLists((current) => ({
       ...current,
-      dispensa: current.dispensa.map((entry) =>
-        entry._id === item._id
-          ? { ...entry, quantidadeEmCasa: nextEmCasa, quantidade: String(nextEmCasa) }
-          : entry
-      ),
-      carrinho: current.carrinho.map((entry) =>
-        entry._id === item._id
-          ? { ...entry, quantidadeEmCasa: nextEmCasa }
-          : entry
-      ),
+      [targetList]: current[targetList].filter((entry) => entry._id !== item._id),
     }));
 
-    setAdjustingId(item._id);
-    try {
-      await api<ShoppingItem>('/shopping/adjust', {
-        method: 'PATCH',
-        body: JSON.stringify({ itemId: item._id, delta, contexto }),
-      });
-      await load();
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : 'Não foi possível ajustar a quantidade.');
-      await load();
-    } finally {
-      setAdjustingId(null);
-    }
+    queueMutation(key, async () => {
+      const itemId = item._id.startsWith('temp-') ? tempToRealIdsRef.current.get(item._id) : item._id;
+      if (!itemId) return;
+      try {
+        const query = contexto ? `?contexto=${contexto}` : '';
+        await api<void>(`/shopping/${itemId}${query}`, { method: 'DELETE' });
+        if (!listsRef.current.dispensa.some((entry) => normalizeItemKey(entry.item) === key)
+          && !listsRef.current.carrinho.some((entry) => normalizeItemKey(entry.item) === key)) {
+          tempToRealIdsRef.current.delete(item._id);
+        }
+      } catch {
+        updateLists((current) => {
+          const alreadyPresent = current[targetList].some((entry) =>
+            entry._id === itemId || normalizeItemKey(entry.item) === key
+          );
+          if (alreadyPresent) return current;
+
+          const otherList = targetList === 'dispensa' ? 'carrinho' : 'dispensa';
+          const otherItem = current[otherList].find((entry) =>
+            entry._id === itemId || normalizeItemKey(entry.item) === key
+          );
+          const restored: ShoppingItem = {
+            ...previousItem,
+            _id: itemId,
+            ...(otherItem ? {
+              quantidadeEmCasa: getEmCasa(otherItem),
+              quantidadeNoCarrinho: getNoCarrinho(otherItem),
+            } : {}),
+            status: targetList,
+          };
+          const next = [...current[targetList]];
+          next.splice(Math.max(0, Math.min(previousIndex, next.length)), 0, restored);
+          return { ...current, [targetList]: next };
+        });
+        showToast('Não foi possível excluir o item. Tente novamente.', 'error');
+      }
+    });
   };
 
-  const deleteItem = async (item: ShoppingItem, contexto?: ShoppingStatus) => {
-    setError('');
-    const targetList = contexto ?? item.status;
-    try {
-      const query = contexto ? `?contexto=${contexto}` : '';
-      await api<void>(`/shopping/${item._id}${query}`, { method: 'DELETE' });
-      setLists((current) => ({ ...current, [targetList]: current[targetList].filter((entry) => entry._id !== item._id) }));
-    } catch (cause) { setError(cause instanceof Error ? cause.message : 'Não foi possível excluir o item.'); }
-  };
-
-  const saveInlineQuantity = async (item: ShoppingItem) => {
+  const saveInlineQuantity = (item: ShoppingItem) => {
     const rawDraft = inlineQuantities[item._id];
     if (rawDraft === undefined) return;
     const nextQty = rawDraft.trim() || '1';
@@ -328,20 +537,40 @@ export default function PageShopping() {
       return copy;
     });
     if (nextQty === currentQty) return;
+    const key = normalizeItemKey(item.item);
+    const before = findShoppingItem(listsRef.current, key, item._id) ?? item;
     setError('');
-    setLists((current) => ({
-      ...current,
-      [item.status]: current[item.status].map((entry) => entry._id === item._id ? { ...entry, quantidade: nextQty, quantidadeNoCarrinho: parseNumericQty(nextQty, 1) } : entry),
-    }));
-    try {
-      await api<ShoppingItem>(`/shopping/${item._id}`, {
-        method: 'PATCH',
-        body: JSON.stringify({ quantidade: nextQty }),
-      });
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : 'Não foi possível atualizar a quantidade.');
-      await load();
-    }
+    updateLists((current) => setCartQuantity(current, key, nextQty));
+
+    queueMutation(key, async () => {
+      const itemId = item._id.startsWith('temp-') ? tempToRealIdsRef.current.get(item._id) : item._id;
+      if (!itemId) {
+        updateLists((current) =>
+          findShoppingItem(current, key) ? setCartQuantity(current, key, currentQty) : current
+        );
+        return;
+      }
+
+      try {
+        const saved = await api<ShoppingItem>(`/shopping/${itemId}`, {
+          method: 'PATCH',
+          body: JSON.stringify({ quantidade: nextQty }),
+        });
+        updateLists((current) =>
+          reconcileShoppingItem(current, key, saved, (pendingByKeyRef.current.get(key) ?? 1) > 1)
+        );
+      } catch {
+        updateLists((current) => {
+          const cartItem = current.carrinho.find((entry) =>
+            entry._id === itemId || normalizeItemKey(entry.item) === key
+          );
+          if (cartItem && cartItem.quantidade === nextQty) return setCartQuantity(current, key, currentQty);
+          if (!cartItem) return setShoppingItemViews(current, key, { ...before, _id: itemId });
+          return current;
+        });
+        showToast('Não foi possível atualizar a quantidade. Tente novamente.', 'error');
+      }
+    });
   };
 
   const checkoutSummary = (() => {
@@ -366,15 +595,16 @@ export default function PageShopping() {
     lists.carrinho
   );
   const checkoutMode = checkoutConfirmationMode(checkoutReview.pendentes);
+  const hasPendingShoppingWrites = pendingLocalWrites > 0;
 
   const checkout = async () => {
-    if (!checkoutReview.confirmados.length || checkingOut) return;
+    if (!checkoutReview.confirmados.length || checkingOut || hasPendingShoppingWrites) return;
     setCheckingOut(true); setError('');
     try {
       const result = await api<{ movidos: number }>('/shopping/checkout', { method: 'POST' });
       await load();
       setConfirmCheckoutOpen(false);
-      setToast(`Compra concluída: ${result.movidos} ${result.movidos === 1 ? 'item adicionado' : 'itens adicionados'} à dispensa.`);
+      showToast(`Compra concluída: ${result.movidos} ${result.movidos === 1 ? 'item adicionado' : 'itens adicionados'} à dispensa.`);
     } catch (cause) { setError(cause instanceof Error ? cause.message : 'Não foi possível confirmar a compra.'); }
     finally { setCheckingOut(false); }
   };
@@ -404,7 +634,7 @@ export default function PageShopping() {
       {items.map((item) => {
         const displayQty = inlineQuantities[item._id] !== undefined ? inlineQuantities[item._id] : (item.quantidade || '1');
         return (
-          <li key={item._id} className="shopping-item">
+          <li key={item._id} className="shopping-item" data-shopping-item-id={item._id}>
             <span className="shopping-emoji" aria-hidden="true">{item.emoji || '📦'}</span>
             <span className="task-text">
               <span className="shopping-item-name">{item.item}</span>
@@ -458,7 +688,7 @@ export default function PageShopping() {
           ? pantryInlineQuantities[item._id]
           : String(emCasa);
         return (
-          <li key={item._id} className={`shopping-item${emCasa === 0 ? ' is-empty-stock' : ''}`}>
+          <li key={item._id} className={`shopping-item${emCasa === 0 ? ' is-empty-stock' : ''}`} data-shopping-item-id={item._id}>
             <span className="shopping-emoji" aria-hidden="true">{item.emoji || '📦'}</span>
             <span className="task-text pantry-task-text">
               <span className="shopping-item-name">{item.item}</span>
@@ -466,7 +696,7 @@ export default function PageShopping() {
                 <button
                   type="button"
                   className="pantry-qty-btn"
-                  disabled={emCasa <= 0 || adjustingId === item._id}
+                  disabled={emCasa <= 0}
                   onClick={() => void adjustQuantity(item, -1, 'dispensa')}
                   aria-label={`Diminuir quantidade de ${item.item}`}
                   title="Registrar consumo (-1)"
@@ -496,7 +726,6 @@ export default function PageShopping() {
                 <button
                   type="button"
                   className="pantry-qty-btn"
-                  disabled={adjustingId === item._id}
                   onClick={() => void adjustQuantity(item, 1, 'dispensa')}
                   aria-label={`Aumentar quantidade de ${item.item}`}
                   title="Adicionar ao estoque (+1)"
@@ -514,7 +743,6 @@ export default function PageShopping() {
 
   const renderAddForm = (status: ShoppingStatus) => {
     const destination = status === 'carrinho' ? 'carrinho' : 'dispensa';
-    const saving = savingStatus === status;
     const menuOpen = openQtyMenu === status;
     return (
       <form ref={status === 'carrinho' ? shoppingListFormRef : undefined} className="shopping-add" onSubmit={(event) => void addItem(event, status)}>
@@ -567,9 +795,9 @@ export default function PageShopping() {
             </ul>
           )}
         </div>
-        <button className="btn shopping-add-button" type="submit" disabled={!!savingStatus || !newItems[status].trim()}>
+        <button className="btn shopping-add-button" type="submit" disabled={!newItems[status].trim()}>
           <AddIcon />
-          {saving ? 'Adicionando...' : 'Adicionar'}
+          Adicionar
         </button>
       </form>
     );
@@ -577,7 +805,12 @@ export default function PageShopping() {
 
   return (
     <main className={`shopping-page${role === 'guest' ? ' guest-shopping-page' : ''}`}>
-      {toast && <div className="shopping-toast" role="status"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12 4 4L19 6" /></svg>{toast}</div>}
+      {toast && (
+        <div className={`shopping-toast${toast.tone === 'error' ? ' is-error' : ''}`} role={toast.tone === 'error' ? 'alert' : 'status'}>
+          {toast.tone === 'success' && <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12 4 4L19 6" /></svg>}
+          {toast.message}
+        </div>
+      )}
       <input
         ref={receiptInputRef}
         className="shopping-receipt-input"
@@ -588,12 +821,6 @@ export default function PageShopping() {
       />
       <div className="shopping-heading">
         <div><span className="shopping-kicker">ERP doméstico</span><h2 className="page-title">Compras & Dispensa</h2></div>
-        {role === 'owner' && (
-          <button className="btn ghost shopping-pair-button" type="button" disabled={startingPairing} onClick={() => void startDevicePairing()}>
-            <PairIcon />
-            {startingPairing ? 'Gerando...' : 'Conectar celular'}
-          </button>
-        )}
       </div>
       <nav className="shopping-tabs" aria-label="Seções de compras">
         {(['carrinho', 'dispensa', 'receitas'] as ShoppingTab[]).map((name) => (
@@ -610,7 +837,7 @@ export default function PageShopping() {
         <div className="shopping-section-title"><div><h3>Lista de compras</h3><p>Itens aqui ainda não contam como disponíveis.</p></div></div>
         {renderAddForm('carrinho')}
         {renderList(lists.carrinho, 'Seu carrinho está vazio.')}
-        <button className="btn shopping-checkout" type="button" disabled={!checkoutReview.confirmados.length || checkingOut} onClick={() => setConfirmCheckoutOpen(true)}>
+        <button className="btn shopping-checkout" type="button" disabled={!checkoutReview.confirmados.length || checkingOut || hasPendingShoppingWrites} onClick={() => setConfirmCheckoutOpen(true)}>
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12 4 4L19 6" /></svg>
           {checkingOut ? 'Confirmando compra...' : 'Concluir compra'}
         </button>
@@ -671,22 +898,6 @@ export default function PageShopping() {
               <button type="button" className="btn" onClick={() => void confirmPendingCartAdd()}>
                 Comprar mais
               </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {devicePairing && (
-        <div className="shopping-modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="device-pairing-title">
-          <div className="shopping-modal shopping-pairing-modal">
-            <h3 id="device-pairing-title">Conectar celular</h3>
-            <p>Abra o Dashboard no celular usando o IP local do computador e digite este código na tela de login. Ele concede acesso de proprietário por até 30 dias.</p>
-            <strong className="shopping-pairing-code" aria-label="Código de pareamento">
-              {devicePairing.code.match(/.{1,4}/g)?.join('-')}
-            </strong>
-            <p>O código expira às {new Date(devicePairing.expiresAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })} e só pode ser usado uma vez.</p>
-            <div className="shopping-modal-actions">
-              <button type="button" className="btn" onClick={() => setDevicePairing(null)}>Entendi</button>
             </div>
           </div>
         </div>

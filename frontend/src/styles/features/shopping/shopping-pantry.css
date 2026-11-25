@@ -650,3 +650,89 @@
   margin-top: 4px;
 }
 
+@media (max-width: 768px) {
+  .shell-mobile .dock-page-shopping {
+    height: auto !important;
+    max-height: none;
+    overflow: visible !important;
+  }
+
+  .shell-mobile .dock-page-shopping > .shopping-page {
+    height: auto;
+    max-height: none;
+    overflow: visible !important;
+  }
+
+  .shell-mobile .dock-page-shopping .shopping-panel:not(.shopping-recipes) {
+    flex: 0 0 auto;
+    min-height: auto;
+    overflow: visible !important;
+  }
+
+  .shell-mobile .dock-page-shopping .shopping-list {
+    flex: 0 0 auto;
+    min-height: 56px;
+    max-height: calc(6 * 56px + 5 * 8px + 8px);
+    overflow-y: auto !important;
+  }
+
+  .shell-web .dock-page-shopping {
+    height: 100dvh;
+    max-height: none;
+    overflow-x: hidden !important;
+    overflow-y: auto !important;
+  }
+
+  .shell-web .dock-page-shopping > .shopping-page {
+    height: auto;
+    max-height: none;
+    overflow: visible !important;
+  }
+
+  .shell-web .dock-page-shopping .shopping-panel:not(.shopping-recipes) {
+    flex: 0 0 auto;
+    min-height: auto;
+    overflow: visible !important;
+  }
+
+  .shell-web .dock-page-shopping .shopping-list {
+    flex: 0 0 auto;
+    min-height: 56px;
+    max-height: calc(6 * 56px + 5 * 8px + 8px);
+    overflow-y: auto !important;
+  }
+}
+
+@media (max-width: 768px) and (max-height: 700px) {
+  .shopping-tabs {
+    margin-block: 6px;
+  }
+
+  .shell-mobile .dock-page-shopping .shopping-panel:not(.shopping-recipes),
+  .shell-web .dock-page-shopping .shopping-panel:not(.shopping-recipes) {
+    padding-top: 12px;
+  }
+
+  .shopping-section-title {
+    margin-bottom: 6px;
+  }
+
+  .shopping-pantry-title {
+    gap: 8px;
+  }
+
+  .shopping-receipt-button,
+  .shopping-add-button {
+    min-height: 40px;
+  }
+
+  .shopping-add {
+    gap: 8px;
+    margin: 4px 0 8px;
+  }
+
+  .shopping-add input {
+    padding-block: 8px;
+  }
+}
+

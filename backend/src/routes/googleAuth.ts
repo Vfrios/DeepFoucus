@@ -4,8 +4,9 @@ import { authUrl, checkState, saveCode, isConnected, getProfile, getProfileFromC
 import { safeEqual } from '../middleware/auth';
 import { jwtAuth } from '../middleware/jwtAuth';
 import { requireRole } from '../middleware/requireRole';
-import { roleForEmail } from '../lib/roles';
+import { isPrimaryOwnerEmail, roleForEmail } from '../lib/roles';
 import { getDb } from '../lib/mongo';
+import { requirePrimaryOwnerEmail } from '../middleware/requirePrimaryOwnerEmail';
 import {
   createDevicePairingCode,
   hashDevicePairingCode,
@@ -24,7 +25,7 @@ type DevicePairingDocument = {
   expiresAt: Date;
 };
 
-r.post('/device-pairing/start', jwtAuth, requireRole(['owner']), async (req, res, next) => {
+r.post('/device-pairing/start', jwtAuth, requireRole(['owner']), requirePrimaryOwnerEmail, async (req, res, next) => {
   try {
     if (!req.user) {
       res.status(401).json({ error: 'unauthorized' });
@@ -158,6 +159,21 @@ r.get('/status', jwtAuth, async (_req, res) => {
   } catch {
     res.status(500).json({ error: 'db_error' });
   }
+});
+
+// Only report whether this authenticated session belongs to the configured primary owner.
+r.get('/permissions', jwtAuth, (req, res) => {
+  if (!req.user) {
+    res.status(401).json({ error: 'unauthorized' });
+    return;
+  }
+
+  const configuredEmail = process.env.EMAIL_VITOR;
+  res.json({
+    isPrimaryOwner: configuredEmail === undefined
+      ? req.user.role === 'owner'
+      : isPrimaryOwnerEmail(req.user.email, configuredEmail),
+  });
 });
 
 // GET /api/auth/me -> { email, name, picture }

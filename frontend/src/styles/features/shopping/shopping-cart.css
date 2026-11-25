@@ -229,6 +229,12 @@
   animation: shopping-toast-in .25s ease-out;
 }
 
+.shopping-toast.is-error {
+  border-color: rgba(230, 124, 115, .55);
+  background: rgba(99, 34, 30, .96);
+  color: #fff0ee;
+}
+
 @keyframes shopping-toast-in {
   from {
     opacity: 0;

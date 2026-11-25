@@ -29,9 +29,9 @@ function b64ToUint8(b64: string) {
 
 /** Permissão -> SW -> subscribe -> envia subscription ao backend. Devolve mensagem para a UI. */
 export async function enablePush(): Promise<string> {
-  // No iOS o push só existe para PWA instalada na Tela de Início (iOS 16.4+)
+  // Alguns dispositivos só permitem push quando o app está instalado na tela inicial.
   if (isIOS() && !isStandalone()) {
-    return 'No iPhone/iPad: abra no Safari → Compartilhar → Adicionar à Tela de Início, abra o app instalado e ative de lá (iOS 16.4+).';
+    return 'Instale o app na tela inicial para ativar notificações.';
   }
   if (!('serviceWorker' in navigator) || !('PushManager' in window)) return 'Este navegador não suporta notificações push.';
   if (!import.meta.env.PROD) return 'O Service Worker só roda no build de produção (npm run build && npm start).';

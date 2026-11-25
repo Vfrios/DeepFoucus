@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { enablePush, isIOS, isPushEnabled, isStandalone, sendTestPush } from '../lib/push';
+import { enablePush, isPushEnabled, sendTestPush } from '../lib/push';
 
 export default function PushButton() {
   const [msg, setMsg] = useState('');
@@ -49,9 +49,6 @@ export default function PushButton() {
           </button>
         )}
       </div>
-      {isIOS() && !isStandalone() && (
-        <p className="hint">iPhone/iPad (iOS 16.4+): instale primeiro em Safari → Compartilhar → Adicionar à Tela de Início e abra o ícone criado. Sem isso o push não funciona.</p>
-      )}
       {msg && <p className="hint">{msg}</p>}
     </div>
   );

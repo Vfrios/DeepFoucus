@@ -1,9 +1,10 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useProfile } from '../hooks/useProfile';
 import DeviceOverride from './DeviceOverride';
 import PushButton from './PushButton';
 import type { PageDef } from '../config';
-import { clearToken } from '../lib/api';
+import { api, clearToken } from '../lib/api';
+import { useAuth } from '../AuthContext';
 
 interface Props {
   open: boolean;
@@ -14,11 +15,20 @@ interface Props {
 }
 
 const REPO_URL = 'https://github.com/vitorfrios/DeepFoucus';
-const VERSION = 'v1.0.0';
+const VERSION = typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : 'v1.0.0';
+
+interface DevicePairing {
+  code: string;
+  expiresAt: string;
+}
 
 export default function Sidebar({ open, onClose, pages, currentIndex, onNavigate }: Props) {
   const { profile, loading } = useProfile();
+  const { isPrimaryOwner } = useAuth();
   const panelRef = useRef<HTMLElement | null>(null);
+  const [devicePairing, setDevicePairing] = useState<DevicePairing | null>(null);
+  const [startingPairing, setStartingPairing] = useState(false);
+  const [pairingError, setPairingError] = useState('');
 
   // Fecha com Esc
   useEffect(() => {
@@ -45,12 +55,27 @@ export default function Sidebar({ open, onClose, pages, currentIndex, onNavigate
     onClose();
   };
 
+  const startDevicePairing = async () => {
+    if (startingPairing) return;
+    setStartingPairing(true);
+    setPairingError('');
+    try {
+      setDevicePairing(await api<DevicePairing>('/auth/device-pairing/start', { method: 'POST' }));
+      onClose();
+    } catch (cause) {
+      setPairingError(cause instanceof Error ? cause.message : 'Não foi possível gerar o código de pareamento.');
+    } finally {
+      setStartingPairing(false);
+    }
+  };
+
   const initials = (profile.name || profile.email || '?')
     .trim()
     .slice(0, 1)
     .toUpperCase();
 
   return (
+    <>
     <div
       className={`sidebar-backdrop${open ? ' is-open' : ''}`}
       onClick={onClose}
@@ -106,6 +131,19 @@ export default function Sidebar({ open, onClose, pages, currentIndex, onNavigate
         <div className="sidebar-section">
           <h3 className="sidebar-title">Preferências</h3>
           <DeviceOverride />
+          {isPrimaryOwner && (
+            <div className="sidebar-pairing">
+              <button
+                className="btn ghost sidebar-pairing-button"
+                type="button"
+                disabled={startingPairing}
+                onClick={() => void startDevicePairing()}
+              >
+                {startingPairing ? 'Gerando...' : 'Conectar celular'}
+              </button>
+              {pairingError && <p className="sidebar-pairing-error" role="alert">{pairingError}</p>}
+            </div>
+          )}
           <div className="sidebar-push">
             <PushButton />
           </div>
@@ -131,5 +169,21 @@ export default function Sidebar({ open, onClose, pages, currentIndex, onNavigate
         </footer>
       </aside>
     </div>
+      {devicePairing && (
+        <div className="shopping-modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="device-pairing-title">
+          <div className="shopping-modal shopping-pairing-modal">
+            <h3 id="device-pairing-title">Conectar celular</h3>
+            <p>Abra o Dashboard no celular usando o IP local do computador e digite este código na tela de login. Ele concede acesso de proprietário por até 30 dias.</p>
+            <strong className="shopping-pairing-code" aria-label="Código de pareamento">
+              {devicePairing.code.match(/.{1,4}/g)?.join('-')}
+            </strong>
+            <p>O código expira às {new Date(devicePairing.expiresAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })} e só pode ser usado uma vez.</p>
+            <div className="shopping-modal-actions">
+              <button type="button" className="btn" onClick={() => setDevicePairing(null)}>Entendi</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
   );
 }

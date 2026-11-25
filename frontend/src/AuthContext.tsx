@@ -1,6 +1,6 @@
 import { createContext, ReactNode, useContext, useEffect, useMemo, useState } from 'react';
 import { jwtDecode } from 'jwt-decode';
-import { clearToken, getToken } from './lib/api';
+import { api, clearToken, getToken } from './lib/api';
 
 export type UserRole = 'owner' | 'finance' | 'guest';
 
@@ -10,6 +10,7 @@ interface TokenPayload {
 
 interface AuthContextValue {
   role: UserRole | null;
+  isPrimaryOwner: boolean;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -31,6 +32,7 @@ function readRole(token: string): UserRole | null {
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [role, setRole] = useState<UserRole | null>(() => readRole(getToken()));
+  const [isPrimaryOwner, setIsPrimaryOwner] = useState(false);
 
   useEffect(() => {
     const token = getToken();
@@ -39,12 +41,33 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const onUnauthorized = () => {
       clearToken();
       setRole(null);
+      setIsPrimaryOwner(false);
     };
     window.addEventListener('wd:unauthorized', onUnauthorized);
     return () => window.removeEventListener('wd:unauthorized', onUnauthorized);
   }, []);
 
-  const value = useMemo(() => ({ role }), [role]);
+  useEffect(() => {
+    if (role !== 'owner') {
+      setIsPrimaryOwner(false);
+      return;
+    }
+
+    let active = true;
+    api<{ isPrimaryOwner: boolean }>('/auth/permissions')
+      .then(({ isPrimaryOwner: primaryOwner }) => {
+        if (active) setIsPrimaryOwner(primaryOwner);
+      })
+      .catch((cause) => {
+        if (!active) return;
+        setIsPrimaryOwner(false);
+        console.warn('[auth] não foi possível verificar o proprietário principal:', cause);
+      });
+
+    return () => { active = false; };
+  }, [role]);
+
+  const value = useMemo(() => ({ role, isPrimaryOwner }), [role, isPrimaryOwner]);
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
 
