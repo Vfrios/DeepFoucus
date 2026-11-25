@@ -18,14 +18,14 @@ Rotas extras além do esboço original: `backend/src/routes/googleAuth.ts` (OAut
 ## 1. Setup local
 
 ```bash
-npm install
+pnpm install
 cp .env     # preencha os valores (seções abaixo)
-npm run dev              # API :3001; Vite :5173 inicia após a checagem de saúde da API (proxy /api)
+pnpm run dev              # API :3001; Vite :5173 inicia após a checagem de saúde da API (proxy /api)
 ```
 
 Abra `http://localhost:5173` e entre com a conta Google autorizada.
 
-> Service Worker e push só funcionam no build de produção: `npm run build && NODE_ENV=production npm start` e abra `http://localhost:3001`. (Push em dispositivos reais exige HTTPS — use o deploy no Render.)
+> Service Worker e push só funcionam no build de produção: `pnpm run build && NODE_ENV=production pnpm start` e abra `http://localhost:3001`. (Push em dispositivos reais exige HTTPS — use o deploy no Render.)
 
 Na primeira configuração local, inicie o fluxo de autorização administrativa uma vez em
 `http://localhost:3001/api/auth/google?token=SEU_API_TOKEN`. Isso registra a conta Google que poderá
@@ -80,9 +80,9 @@ Ative as notificações em cada dispositivo/navegador; a assinatura de cada um �
 6. Autorize a conta proprietária em `https://SEU-APP.onrender.com/api/auth/google?token=SEU_API_TOKEN`, substituindo pelo `API_TOKEN` visível em *Environment*. Repita essa autorização quando os escopos solicitados pelo app mudarem. A tela pública de login emite sessões somente para os endereços configurados em `EMAIL_VITOR`, `EMAIL_SOPHIA` e `EMAIL_MAE`; esse login não substitui as credenciais Google do calendário.
 7. Depois do deploy, confirme que as políticas públicas estão acessíveis em `/privacy.html` e `/terms.html`; informe esses endereços na configuração de publicação do Google.
 
-Build: `npm ci --include=dev && npm run build` · Start: `node backend/dist/index.js`. O Express serve `/api/*` e o `frontend/dist`.
+Build: `pnpm install --frozen-lockfile && pnpm run build` · Start: `pnpm start`. O Express serve `/api/*` e o `frontend/dist`.
 
-O projeto usa npm e mantém somente `package-lock.json`. Em **Settings → Build & Deploy** do Render, configure o Build Command como `npm ci --include=dev && npm run build`; uma configuração antiga do painel pode sobrescrever `render.yaml`. Não use `pnpm install --frozen-lockfile` sem um `pnpm-lock.yaml`.
+O projeto usa pnpm, com a versão fixada em `package.json`, e mantém `pnpm-lock.yaml` e `pnpm-workspace.yaml`. O Render deve instalar com `pnpm install --frozen-lockfile` antes do build.
 
 > No plano free o serviço hiberna após inatividade. Com o app aberto, a verificação periódica do frontend acorda o serviço; com o app fechado, lembretes totalmente autônomos ainda exigem um plano sem hibernação ou um ping externo.
 
@@ -280,7 +280,7 @@ Adicionar ao Carrinho ─┘                      quantidadeNoCarrinho
 Os testes E2E usam a API Express real em `http://localhost:3001` e o MongoDB configurado no ambiente:
 
 ```bash
-npm run test:e2e -- tests/e2e/shopping.spec.ts
+pnpm run test:e2e -- tests/e2e/shopping.spec.ts
 ```
 
 O arquivo cobre simultaneidade entre dispensa e carrinho, consumo até zero, revisão e confirmação do checkout, geração de receita e duplicados.

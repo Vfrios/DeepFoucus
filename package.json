@@ -2,17 +2,14 @@
   "name": "wall-dashboard",
   "private": true,
   "version": "1.0.0",
-  "workspaces": [
-    "frontend",
-    "backend"
-  ],
+  "packageManager": "pnpm@12.5.1",
   "engines": {
     "node": ">=20"
   },
   "scripts": {
-    "dev": "concurrently -n api,web -c cyan,magenta \"npm -w backend run dev\" \"wait-on http://localhost:3001/healthz && npm -w frontend run dev\"",
-    "build": "npm -w frontend run build && npm -w backend run build",
-    "test": "npm -w backend run test",
+    "dev": "concurrently -n api,web -c cyan,magenta \"pnpm --filter @wall/backend run dev\" \"wait-on http://localhost:3001/healthz && pnpm --filter @wall/frontend run dev\"",
+    "build": "pnpm --filter @wall/frontend run build && pnpm --filter @wall/backend run build",
+    "test": "pnpm --filter @wall/backend run test",
     "test:e2e": "playwright test",
     "start": "node backend/dist/index.js"
   },
