@@ -52,6 +52,7 @@ export function getDb(): Promise<Db> {
       // ERP doméstico: itens por estado e receitas mais recentes primeiro
       await d.collection('shopping').createIndex({ status: 1, criadoEm: -1 });
       await d.collection('recipes').createIndex({ criadoEm: -1 });
+      await d.collection('device_pairings').createIndex({ expiresAt: 1 }, { expireAfterSeconds: 0 });
 
       // Finanças: filtro por período e ordenação cronológica
       await d.collection('finance').createIndex({ data: -1 });

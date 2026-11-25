@@ -86,6 +86,31 @@ async function openShoppingPage(page: Page) {
 
 test.describe.configure({ mode: 'serial' });
 
+test('pareia um celular e mostra a captura de nota na dispensa', async ({ page, browser }) => {
+  await openShoppingPage(page);
+  await page.getByRole('button', { name: 'Conectar celular' }).click();
+  const pairingCode = await page.locator('.shopping-pairing-code').textContent();
+  expect(pairingCode).toBeTruthy();
+
+  const mobileContext = await browser.newContext({
+    viewport: { width: 390, height: 844 },
+    isMobile: true,
+    hasTouch: true,
+  });
+  try {
+    const mobilePage = await mobileContext.newPage();
+    await mobilePage.goto('/');
+    await mobilePage.getByLabel('Já gerou um código no computador?').fill(pairingCode || '');
+    await mobilePage.getByRole('button', { name: 'Conectar' }).click();
+    await expect(mobilePage.locator('.shopping-page')).toBeVisible();
+    await mobilePage.getByRole('button', { name: /Dispensa/ }).click();
+    await expect(mobilePage.getByRole('button', { name: 'Escanear nota' })).toBeVisible();
+    await expect(mobilePage.locator('input[type="file"]')).toHaveAttribute('capture', 'environment');
+  } finally {
+    await mobileContext.close();
+  }
+});
+
 test('dispensa e carrinho existem simultaneamente com quantidades independentes', async () => {
   const name = 'Leite E2E Simultaneo';
   await removeItemFromBoth(name);
@@ -201,8 +226,9 @@ test('checkout mostra rascunhos pendentes e permite voltar à lista sem finaliza
     await page.getByRole('button', { name: 'Concluir compra' }).click();
 
     const dialog = page.getByRole('dialog', { name: 'Revisar compra' });
-    await expect(dialog.getByText(cartName, { exact: true })).toBeVisible();
-    await expect(dialog.getByText('Qtd. 2')).toBeVisible();
+    const confirmedRow = dialog.getByRole('listitem').filter({ hasText: cartName });
+    await expect(confirmedRow.getByText(cartName, { exact: true })).toBeVisible();
+    await expect(confirmedRow.getByText('Qtd. 2')).toBeVisible();
     await expect(dialog.getByText(pendingName, { exact: true })).toBeVisible();
     await expect(dialog.getByRole('heading', { name: 'Itens ainda na lista (não confirmados)' })).toBeVisible();
     await dialog.getByRole('button', { name: 'Voltar à lista de compras' }).click();

@@ -1,8 +1,9 @@
-import { FormEvent, useCallback, useEffect, useRef, useState } from 'react';
+import { ChangeEvent, FormEvent, useCallback, useEffect, useRef, useState } from 'react';
 import { useAuth } from '../AuthContext';
 import { api } from '../lib/api';
 import { subscribeRealtime } from '../lib/realtime';
 import { checkoutConfirmationMode, reviewShoppingCheckout } from '../lib/shoppingCheckout';
+import { parseReceiptCandidates } from '../lib/receiptOcr';
 
 type ShoppingTab = 'carrinho' | 'dispensa' | 'receitas';
 type ShoppingStatus = Exclude<ShoppingTab, 'receitas'>;
@@ -30,6 +31,15 @@ interface PendingCartAdd {
   item: string;
   quantidade: string;
   emCasa: number;
+}
+interface DevicePairing {
+  code: string;
+  expiresAt: string;
+}
+interface ReceiptDraft {
+  nome: string;
+  quantidade: string;
+  selecionado: boolean;
 }
 
 const emptyLists: ShoppingLists = { dispensa: [], carrinho: [] };
@@ -77,6 +87,14 @@ function AddIcon() {
   return <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>;
 }
 
+function CameraIcon() {
+  return <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M4 7h3l1.5-2h7L17 7h3v12H4z" /><circle cx="12" cy="13" r="3.5" /></svg>;
+}
+
+function PairIcon() {
+  return <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><rect x="7" y="3" width="10" height="18" rx="2" /><path d="M10 17h4" /><path d="m9 9 2 2 4-4" /></svg>;
+}
+
 export default function PageShopping() {
   const { role } = useAuth();
   const [tab, setTab] = useState<ShoppingTab>('carrinho');
@@ -97,11 +115,107 @@ export default function PageShopping() {
   const [pendingCartAdd, setPendingCartAdd] = useState<PendingCartAdd | null>(null);
   const [confirmCheckoutOpen, setConfirmCheckoutOpen] = useState(false);
   const shoppingListFormRef = useRef<HTMLFormElement | null>(null);
+  const receiptInputRef = useRef<HTMLInputElement | null>(null);
+  const [devicePairing, setDevicePairing] = useState<DevicePairing | null>(null);
+  const [startingPairing, setStartingPairing] = useState(false);
+  const [receiptOpen, setReceiptOpen] = useState(false);
+  const [readingReceipt, setReadingReceipt] = useState(false);
+  const [receiptProgress, setReceiptProgress] = useState(0);
+  const [receiptError, setReceiptError] = useState('');
+  const [receiptItems, setReceiptItems] = useState<ReceiptDraft[]>([]);
+  const [addingReceiptItems, setAddingReceiptItems] = useState(false);
 
   const load = useCallback(async () => {
     try { setLists(await api<ShoppingLists>('/shopping/list')); setError(''); }
     catch (cause) { setError(cause instanceof Error ? cause.message : 'Não foi possível carregar os itens.'); }
   }, []);
+
+  const startDevicePairing = async () => {
+    if (startingPairing) return;
+    setStartingPairing(true);
+    setError('');
+    try {
+      setDevicePairing(await api<DevicePairing>('/auth/device-pairing/start', { method: 'POST' }));
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Não foi possível gerar o código de pareamento.');
+    } finally {
+      setStartingPairing(false);
+    }
+  };
+
+  const readReceipt = async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.currentTarget.files?.[0];
+    event.currentTarget.value = '';
+    if (!file) return;
+    if (!file.type.startsWith('image/')) {
+      setError('Selecione uma imagem da nota fiscal.');
+      return;
+    }
+    if (file.size > 12 * 1024 * 1024) {
+      setError('A imagem deve ter no máximo 12 MB.');
+      return;
+    }
+
+    setError('');
+    setReceiptError('');
+    setReceiptItems([]);
+    setReceiptProgress(0);
+    setReceiptOpen(true);
+    setReadingReceipt(true);
+    const imageUrl = URL.createObjectURL(file);
+    try {
+      const { createWorker } = await import('tesseract.js');
+      const worker = await createWorker('por', 1, {
+        logger: (message) => {
+          if (message.status === 'recognizing text') {
+            setReceiptProgress(Math.round(message.progress * 100));
+          }
+        },
+      });
+      try {
+        const { data } = await worker.recognize(imageUrl);
+        const candidates = parseReceiptCandidates(data.text);
+        setReceiptItems(candidates.map((nome) => ({ nome, quantidade: '1', selecionado: true })));
+        if (!candidates.length) setReceiptError('Não encontrei itens na imagem. Tente uma foto mais nítida e bem iluminada.');
+      } finally {
+        try {
+          await worker.terminate();
+        } catch (cause) {
+          console.warn('[shopping] receipt OCR worker cleanup failed:', cause);
+        }
+      }
+    } catch (cause) {
+      console.error('[shopping] receipt OCR failed:', cause);
+      setReceiptError('Não foi possível ler a imagem. Verifique a conexão para carregar o OCR em português e tente novamente.');
+    } finally {
+      URL.revokeObjectURL(imageUrl);
+      setReadingReceipt(false);
+    }
+  };
+
+  const addReceiptItems = async () => {
+    const selected = receiptItems
+      .filter((item) => item.selecionado && item.nome.trim())
+      .map((item) => ({ item: item.nome.trim(), quantidade: item.quantidade.trim() || '1' }));
+    if (!selected.length || addingReceiptItems) return;
+
+    setAddingReceiptItems(true);
+    setReceiptError('');
+    try {
+      const result = await api<{ adicionados: number }>('/shopping/pantry/import', {
+        method: 'POST',
+        body: JSON.stringify({ itens: selected }),
+      });
+      await load();
+      setTab('dispensa');
+      setReceiptOpen(false);
+      setToast(`${result.adicionados} ${result.adicionados === 1 ? 'item adicionado' : 'itens adicionados'} à dispensa.`);
+    } catch (cause) {
+      setReceiptError(cause instanceof Error ? cause.message : 'Não foi possível adicionar os itens à dispensa.');
+    } finally {
+      setAddingReceiptItems(false);
+    }
+  };
 
   useEffect(() => {
     void load();
@@ -464,7 +578,23 @@ export default function PageShopping() {
   return (
     <main className={`shopping-page${role === 'guest' ? ' guest-shopping-page' : ''}`}>
       {toast && <div className="shopping-toast" role="status"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12 4 4L19 6" /></svg>{toast}</div>}
-      <div className="shopping-heading"><div><span className="shopping-kicker">ERP doméstico</span><h2 className="page-title">Compras & Dispensa</h2></div></div>
+      <input
+        ref={receiptInputRef}
+        className="shopping-receipt-input"
+        type="file"
+        accept="image/*"
+        capture="environment"
+        onChange={(event) => void readReceipt(event)}
+      />
+      <div className="shopping-heading">
+        <div><span className="shopping-kicker">ERP doméstico</span><h2 className="page-title">Compras & Dispensa</h2></div>
+        {role === 'owner' && (
+          <button className="btn ghost shopping-pair-button" type="button" disabled={startingPairing} onClick={() => void startDevicePairing()}>
+            <PairIcon />
+            {startingPairing ? 'Gerando...' : 'Conectar celular'}
+          </button>
+        )}
+      </div>
       <nav className="shopping-tabs" aria-label="Seções de compras">
         {(['carrinho', 'dispensa', 'receitas'] as ShoppingTab[]).map((name) => (
           <button key={name} type="button" className={tab === name ? 'active' : ''} onClick={() => setTab(name)}>
@@ -487,7 +617,13 @@ export default function PageShopping() {
       </section>}
 
       {tab === 'dispensa' && <section className="shopping-panel">
-        <div className="shopping-section-title"><div><h3>Na sua casa</h3><p>Somente estes itens serão considerados ao criar receitas.</p></div></div>
+        <div className="shopping-section-title shopping-pantry-title">
+          <div><h3>Na sua casa</h3><p>Somente estes itens serão considerados ao criar receitas.</p></div>
+          <button className="btn ghost shopping-receipt-button" type="button" onClick={() => receiptInputRef.current?.click()}>
+            <CameraIcon />
+            Escanear nota
+          </button>
+        </div>
         {renderAddForm('dispensa')}
         {renderPantryList(lists.dispensa, 'Sua dispensa está vazia.')}
       </section>}
@@ -534,6 +670,89 @@ export default function PageShopping() {
               </button>
               <button type="button" className="btn" onClick={() => void confirmPendingCartAdd()}>
                 Comprar mais
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {devicePairing && (
+        <div className="shopping-modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="device-pairing-title">
+          <div className="shopping-modal shopping-pairing-modal">
+            <h3 id="device-pairing-title">Conectar celular</h3>
+            <p>Abra o Dashboard no celular usando o IP local do computador e digite este código na tela de login. Ele concede acesso de proprietário por até 30 dias.</p>
+            <strong className="shopping-pairing-code" aria-label="Código de pareamento">
+              {devicePairing.code.match(/.{1,4}/g)?.join('-')}
+            </strong>
+            <p>O código expira às {new Date(devicePairing.expiresAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })} e só pode ser usado uma vez.</p>
+            <div className="shopping-modal-actions">
+              <button type="button" className="btn" onClick={() => setDevicePairing(null)}>Entendi</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {receiptOpen && (
+        <div className="shopping-modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="shopping-receipt-title">
+          <div className="shopping-modal shopping-receipt-modal">
+            <h3 id="shopping-receipt-title">Escanear nota fiscal</h3>
+            <p>A leitura é feita neste dispositivo. Revise os nomes e quantidades antes de adicionar à dispensa.</p>
+            {readingReceipt ? (
+              <p className="shopping-receipt-progress" role="status">
+                Lendo a nota em português... {receiptProgress}%
+              </p>
+            ) : receiptItems.length > 0 && (
+              <>
+                <p>Até {receiptItems.length} itens reconhecidos nesta leitura. Desmarque cabeçalhos e valores que não sejam produtos.</p>
+                <ul className="shopping-receipt-items">
+                  {receiptItems.map((item, index) => (
+                    <li key={`${item.nome}-${index}`}>
+                      <input
+                        type="checkbox"
+                        checked={item.selecionado}
+                        aria-label={`Incluir ${item.nome}`}
+                        onChange={(event) => setReceiptItems((current) => current.map((entry, itemIndex) =>
+                          itemIndex === index ? { ...entry, selecionado: event.target.checked } : entry
+                        ))}
+                      />
+                      <input
+                        type="text"
+                        value={item.nome}
+                        maxLength={100}
+                        aria-label={`Nome do produto ${index + 1}`}
+                        onChange={(event) => setReceiptItems((current) => current.map((entry, itemIndex) =>
+                          itemIndex === index ? { ...entry, nome: event.target.value } : entry
+                        ))}
+                      />
+                      <input
+                        type="text"
+                        inputMode="numeric"
+                        value={item.quantidade}
+                        maxLength={6}
+                        aria-label={`Quantidade de ${item.nome}`}
+                        onChange={(event) => setReceiptItems((current) => current.map((entry, itemIndex) =>
+                          itemIndex === index
+                            ? { ...entry, quantidade: event.target.value.replace(/[^\d]/g, '') }
+                            : entry
+                        ))}
+                      />
+                    </li>
+                  ))}
+                </ul>
+              </>
+            )}
+            {receiptError && <p className="shopping-error" role="alert">{receiptError}</p>}
+            <div className="shopping-modal-actions">
+              <button type="button" className="btn ghost" disabled={readingReceipt || addingReceiptItems} onClick={() => setReceiptOpen(false)}>
+                {receiptItems.length ? 'Cancelar' : 'Fechar'}
+              </button>
+              <button
+                type="button"
+                className="btn"
+                disabled={readingReceipt || addingReceiptItems || !receiptItems.some((item) => item.selecionado && item.nome.trim())}
+                onClick={() => void addReceiptItems()}
+              >
+                {addingReceiptItems ? 'Adicionando...' : 'Adicionar à dispensa'}
               </button>
             </div>
           </div>

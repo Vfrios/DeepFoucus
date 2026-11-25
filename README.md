@@ -270,6 +270,8 @@ Adicionar ao Carrinho ─┘                      quantidadeNoCarrinho
 - No **Checkout**, as quantidades do carrinho são somadas ao estoque da casa e o carrinho é zerado. Se já existir estoque separado, as quantidades são consolidadas sem duplicar o item.
 - **Concluir compra** abre uma pré-confirmação com os itens e quantidades confirmados no carrinho. Um item ainda digitado no formulário, mas não adicionado, aparece como pendente; é possível voltar à lista ou confirmar somente o carrinho. O checkout só é enviado após confirmação explícita, e a tela mostra um toast de sucesso ao atualizar as listas.
 - Ao gerar uma receita, os ingredientes disponíveis são conferidos somente na dispensa e descontados do estoque. Ingredientes faltantes são adicionados ao carrinho; itens já existentes no carrinho têm sua quantidade somada.
+- Para conectar um celular na mesma rede sem callback OAuth por IP, o proprietário autenticado gera **Conectar celular** na tela de Compras. O código de uso único expira em 5 minutos; digite-o na tela de login do celular após abrir o endereço LAN do Dashboard. O dispositivo recebe uma sessão de proprietário válida por 30 dias.
+- Em **Dispensa**, **Escanear nota** abre a câmera no celular ou o seletor de imagens no computador. O OCR em português é executado localmente no navegador; na primeira utilização, o modelo de idioma precisa ser baixado. Revise/desmarque os produtos reconhecidos e confirme para adicioná-los à dispensa. A foto não é enviada ao backend; somente os nomes e quantidades confirmados são enviados por `POST /api/shopping/pantry/import` (até 30 itens por leitura).
 
 ### Testes do módulo de Compras
 
@@ -369,3 +371,7 @@ O valor forçado permanece até a próxima chamada ao comando ou até finalizar 
 A rotina silenciosa do backend verifica diariamente registros de água com mais de 15 dias e reinicia o histórico de água por usuário. O perfil, o peso e os registros de treino permanecem salvos; por isso, a última carga registrada de cada exercício segue como carga inicial do próximo ciclo. Configure `OPENWEATHER_API_KEY` para incluir clima real no briefing.
 
 `GET /api/health/weekly-report` gera feedback com peso, dias de treino e hidratação dos últimos sete dias. No domingo após 21h (horário de Brasília), o servidor também grava o relatório em `weekly_reports`.
+
+### Segurança de credenciais
+
+Nunca inclua chaves de API, client secrets OAuth, tokens JWT/refresh ou tokens de conexão de provedores em commits, issues, logs ou capturas de tela. Mantenha valores locais em `.env` (já ignorado pelo Git) e segredos de produção no gerenciador de variáveis do serviço. Se um segredo for versionado, trate-o como exposto: revogue/rotacione no provedor e verifique o histórico; apagar o arquivo em um commit posterior não apaga cópias dos commits anteriores.

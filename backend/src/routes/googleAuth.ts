@@ -3,9 +3,88 @@ import jwt from 'jsonwebtoken';
 import { authUrl, checkState, saveCode, isConnected, getProfile, getProfileFromCode } from '../lib/google';
 import { safeEqual } from '../middleware/auth';
 import { jwtAuth } from '../middleware/jwtAuth';
+import { requireRole } from '../middleware/requireRole';
 import { roleForEmail } from '../lib/roles';
+import { getDb } from '../lib/mongo';
+import {
+  createDevicePairingCode,
+  hashDevicePairingCode,
+  normalizeDevicePairingCode,
+} from '../lib/devicePairing';
 
 const r = Router();
+const PAIRING_CODE_TTL_MS = 5 * 60 * 1000;
+type DevicePairingDocument = {
+  _id: string;
+  email: string;
+  name: string | null;
+  picture: string | null;
+  role: 'owner';
+  criadoEm: Date;
+  expiresAt: Date;
+};
+
+r.post('/device-pairing/start', jwtAuth, requireRole(['owner']), async (req, res, next) => {
+  try {
+    if (!req.user) {
+      res.status(401).json({ error: 'unauthorized' });
+      return;
+    }
+
+    const code = createDevicePairingCode();
+    const now = new Date();
+    const expiresAt = new Date(now.getTime() + PAIRING_CODE_TTL_MS);
+    await (await getDb()).collection<DevicePairingDocument>('device_pairings').insertOne({
+      _id: hashDevicePairingCode(code),
+      email: req.user.email,
+      name: req.user.name,
+      picture: req.user.picture,
+      role: 'owner',
+      criadoEm: now,
+      expiresAt,
+    });
+    res.json({ code, expiresAt: expiresAt.toISOString() });
+  } catch (error) {
+    next(error);
+  }
+});
+
+r.post('/device-pairing/consume', async (req, res, next) => {
+  const code = normalizeDevicePairingCode(req.body?.code);
+  if (!code) {
+    res.status(400).send('Código de pareamento inválido ou expirado.');
+    return;
+  }
+
+  try {
+    const secret = process.env.JWT_SECRET;
+    if (!secret) {
+      res.status(500).send('JWT_SECRET não configurado.');
+      return;
+    }
+    const collection = (await getDb()).collection<DevicePairingDocument>('device_pairings');
+    const filter = { _id: hashDevicePairingCode(code), expiresAt: { $gt: new Date() } };
+    const pairing = await collection.findOne(filter);
+    if (!pairing) {
+      res.status(400).send('Código de pareamento inválido ou expirado.');
+      return;
+    }
+    const consumed = await collection.deleteOne(filter);
+    if (!consumed.deletedCount) {
+      res.status(400).send('Código de pareamento inválido ou expirado.');
+      return;
+    }
+
+    const token = jwt.sign(
+      { email: pairing.email, name: pairing.name, picture: pairing.picture, role: pairing.role },
+      secret,
+      { algorithm: 'HS256', expiresIn: '30d', subject: pairing.email }
+    );
+    res.json({ token });
+  } catch (error) {
+    next(error);
+  }
+});
 
 // Passo 1 (fluxo feito UMA vez, no navegador): /api/auth/google?token=<API_TOKEN>
 r.get('/google', (req, res) => {

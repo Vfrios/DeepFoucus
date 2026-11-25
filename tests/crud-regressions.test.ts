@@ -30,7 +30,7 @@ test('creates and removes an item from a daily plan', () => {
   assert.ok(items);
   assert.equal(items.length, 1);
   assert.equal(items[0].texto, 'Estudar cálculo');
-  assert.ok(items[0]._id instanceof ObjectId);
+  assert.ok(ObjectId.isValid(String(items[0]._id)));
 
   const remaining = removeDailyPlanItem(items, items[0]._id);
   assert.deepEqual(remaining, []);

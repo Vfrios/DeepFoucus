@@ -131,6 +131,37 @@ r.get('/list', async (_req, res, next) => {
   } catch (error) { next(error); }
 });
 
+r.post('/pantry/import', async (req, res, next) => {
+  const rawItems = req.body?.itens;
+  if (!Array.isArray(rawItems) || rawItems.length < 1 || rawItems.length > 30) {
+    res.status(400).json({ error: 'invalid_receipt_items' });
+    return;
+  }
+
+  const items = rawItems.map((raw: unknown) => {
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+    const item = raw as Record<string, unknown>;
+    const name = typeof item.item === 'string' ? item.item.trim() : '';
+    const quantity = typeof item.quantidade === 'string' ? item.quantidade.trim() : '';
+    if (!name || name.length > 200 || !/^\d{1,6}$/.test(quantity) || Number(quantity) < 1) return null;
+    return { name, quantity };
+  });
+  if (items.some((item) => item === null)) {
+    res.status(400).json({ error: 'invalid_receipt_items' });
+    return;
+  }
+
+  try {
+    for (const item of items) {
+      if (!item) continue;
+      await addShoppingItem(item.name, 'dispensa', item.quantity, { normalize: false });
+    }
+    res.json({ adicionados: items.length });
+  } catch (error) {
+    next(error);
+  }
+});
+
 r.post('/fix-emojis', async (_req, res, next) => {
   try {
     const atualizados = await repairMissingEmojis();

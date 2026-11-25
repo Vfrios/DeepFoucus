@@ -290,6 +290,40 @@
   transform: translateY(-1px);
 }
 
+.device-pairing-form {
+  display: grid;
+  gap: 8px;
+  margin-top: 20px;
+  text-align: left;
+}
+
+.device-pairing-form label {
+  color: var(--mute);
+  font-size: .85rem;
+}
+
+.device-pairing-form > div {
+  display: flex;
+  gap: 8px;
+}
+
+.device-pairing-form input {
+  min-width: 0;
+  flex: 1;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--ink);
+  color: var(--paper);
+  font: inherit;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+}
+
+.device-pairing-form .login-error {
+  margin: 0;
+}
+
 .login-error {
   padding: 10px 12px;
   background: rgba(230, 124, 115, 0.12);

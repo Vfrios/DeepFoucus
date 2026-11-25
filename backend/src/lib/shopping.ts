@@ -144,8 +144,14 @@ export async function normalizeShoppingItem(input: string): Promise<string> {
   return item.trim().replace(/\s+/g, ' ');
 }
 
-export async function addShoppingItem(input: string, status: ShoppingStatus = 'carrinho', quantidade = '1'): Promise<ShoppingItem> {
-  const item = await normalizeShoppingItem(input);
+export async function addShoppingItem(
+  input: string,
+  status: ShoppingStatus = 'carrinho',
+  quantidade = '1',
+  options: { normalize?: boolean } = {}
+): Promise<ShoppingItem> {
+  const item = options.normalize === false ? input.trim() : await normalizeShoppingItem(input);
+  if (!item || item.length > 200) throw new Error('invalid_shopping_item');
   const cleanQty = quantidade.trim().slice(0, 80) || '1';
   const numericQty = parseQuantityNumber(cleanQty, 1);
   const collection = (await getDb()).collection<ShoppingItem>('shopping');

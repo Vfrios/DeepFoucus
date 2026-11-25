@@ -1,17 +1,42 @@
-import { useEffect } from 'react';
+import { FormEvent, useEffect, useState } from 'react';
 import { useDevice } from './device/useDevice';
 import MobileShell from './shells/MobileShell';
 import WebShell from './shells/WebShell';
 import { KioskPrompt } from './components/DeviceOverride';
 import PageShopping from './components/PageShopping';
 import { useAuth } from './AuthContext';
-import { api } from './lib/api';
+import { api, setToken } from './lib/api';
 
 interface Props {
   loginResult: 'success' | 'error' | null;
 }
 
 function LoginScreen({ loginResult }: Props) {
+  const [pairingCode, setPairingCode] = useState('');
+  const [pairingError, setPairingError] = useState('');
+  const [pairingBusy, setPairingBusy] = useState(false);
+
+  const submitPairingCode = async (event: FormEvent) => {
+    event.preventDefault();
+    if (pairingBusy || !pairingCode.trim()) return;
+    setPairingBusy(true);
+    setPairingError('');
+    try {
+      const result = await api<{ token: string }>('/auth/device-pairing/consume', {
+        method: 'POST',
+        body: JSON.stringify({ code: pairingCode }),
+      });
+      setToken(result.token);
+      const url = new URL(location.href);
+      url.searchParams.set('page', 'shopping');
+      window.location.assign(url.toString());
+    } catch (error) {
+      setPairingError(error instanceof Error ? error.message : 'Não foi possível conectar este dispositivo.');
+    } finally {
+      setPairingBusy(false);
+    }
+  };
+
   return (
     <main className="login-page">
       <section className="login-card">
@@ -35,6 +60,23 @@ function LoginScreen({ loginResult }: Props) {
           </svg>
           <span>Entrar com o Google</span>
         </a>
+        <form className="device-pairing-form" onSubmit={(event) => void submitPairingCode(event)}>
+          <label htmlFor="device-pairing-code">Já gerou um código no computador?</label>
+          <div>
+            <input
+              id="device-pairing-code"
+              value={pairingCode}
+              onChange={(event) => setPairingCode(event.target.value.toUpperCase())}
+              placeholder="XXXX-XXXX-XXXX"
+              autoComplete="one-time-code"
+              maxLength={14}
+            />
+            <button type="submit" className="btn" disabled={pairingBusy || !pairingCode.trim()}>
+              {pairingBusy ? 'Conectando...' : 'Conectar'}
+            </button>
+          </div>
+          {pairingError && <p className="login-error" role="alert">{pairingError}</p>}
+        </form>
         <p className="login-legal">
           Ao continuar, você concorda com os <a href="/terms.html">Termos de Serviço</a> e reconhece a{' '}
           <a href="/privacy.html">Política de Privacidade</a>.
