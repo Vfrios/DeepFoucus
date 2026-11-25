@@ -135,22 +135,46 @@ export async function callAI(
 }
 
 /**
- * Chamada com imagem (visão) e fallback em cascata entre os provedores que aceitam imagem.
- * A imagem é enviada como data URL apenas na requisição; nada é gravado.
+ * Chamada com imagem (visão) usando TODOS os provedores cadastrados no .env, com "hedge":
+ * começa pelo mais rápido (Groq); se não responder em HEDGE_MS (ou falhar), dispara o próximo
+ * sem cancelar o anterior. A primeira resposta válida vence e as demais são abortadas.
+ * A imagem vai como data URL só na requisição; nada é gravado.
  */
+const VISION_HEDGE_MS = 5_000;
+const VISION_TIMEOUT_MS = 25_000;
+
 export async function callVisionAI(
   systemPrompt: string,
   userPrompt: string,
   imageDataUrl: string,
   opts: { temperature?: number; maxTokens?: number } = {}
 ): Promise<unknown> {
-  let ultimoErro = '';
+  const candidates = provedores()
+    .filter((p) => p.apiKey && (p.nome !== 'Groq' || Boolean(process.env.GROQ_VISION_MODEL)))
+    .map((p) => {
+      if (p.nome === 'Groq') {
+        return {
+          ...p,
+          model: process.env.GROQ_VISION_MODEL!,
+          reasoningEffort: undefined,
+        };
+      }
+      if (p.nome === 'Gemini') {
+        // Pouco "raciocínio": leitura de nota é extração, e o raciocínio consome os tokens da resposta
+        return { ...p, reasoningEffort: 'low' as const };
+      }
+      if (p.nome === 'OpenRouter' && process.env.OPENROUTER_VISION_MODEL) {
+        return { ...p, model: process.env.OPENROUTER_VISION_MODEL };
+      }
+      return p;
+    });
 
-  for (const p of provedores()) {
-    if (!p.apiKey || p.nome === 'Groq') continue; // modelo do Groq configurado não aceita imagem
-    try {
-      const client = new OpenAI({ apiKey: p.apiKey, baseURL: p.baseURL, timeout: 25_000, maxRetries: 0 });
-      const response = await client.chat.completions.create({
+  if (!candidates.length) throw new Error('Nenhum provedor de IA com visão está configurado.');
+
+  const run = async (p: Provedor, signal: AbortSignal): Promise<unknown> => {
+    const client = new OpenAI({ apiKey: p.apiKey, baseURL: p.baseURL, timeout: VISION_TIMEOUT_MS, maxRetries: 0 });
+    const response = await client.chat.completions.create(
+      {
         model: p.model,
         messages: [
           { role: 'system', content: systemPrompt },
@@ -165,20 +189,59 @@ export async function callVisionAI(
         temperature: opts.temperature ?? 0,
         max_tokens: opts.maxTokens,
         response_format: { type: 'json_object' },
-      });
-      return JSON.parse(response.choices[0]?.message?.content || '');
-    } catch (err: any) {
-      const msg = err?.message ? String(err.message).slice(0, 120) : 'erro_desconhecido';
-      console.warn(`[IA] ${p.nome} (visão) falhou: ${msg}`);
-      ultimoErro = msg;
-    }
-  }
+        ...(p.reasoningEffort ? { reasoning_effort: p.reasoningEffort } : {}),
+      },
+      { signal }
+    );
+    return JSON.parse(response.choices[0]?.message?.content || '');
+  };
 
-  throw new Error(
-    ultimoErro
-      ? `Nenhum provedor de visão respondeu. Último erro: ${ultimoErro}`
-      : 'Nenhum provedor de IA com visão está configurado.'
-  );
+  return new Promise<unknown>((resolve, reject) => {
+    const controllers: AbortController[] = [];
+    const timers: ReturnType<typeof setTimeout>[] = [];
+    let settled = false;
+    let launched = 0;
+    let failed = 0;
+    let lastError = '';
+
+    const finish = (done: () => void) => {
+      settled = true;
+      timers.forEach(clearTimeout);
+      controllers.forEach((c) => c.abort());
+      done();
+    };
+
+    const launch = () => {
+      if (settled || launched >= candidates.length) return;
+      const p = candidates[launched];
+      launched += 1;
+      const controller = new AbortController();
+      controllers.push(controller);
+
+      run(p, controller.signal).then(
+        (result) => {
+          if (!settled) finish(() => resolve(result));
+        },
+        (err: any) => {
+          if (settled) return;
+          const msg = err?.message ? String(err.message).slice(0, 120) : 'erro_desconhecido';
+          console.warn(`[IA] ${p.nome} (visão) falhou: ${msg}`);
+          lastError = msg;
+          failed += 1;
+          timers.forEach(clearTimeout); // evita disparar o próximo duas vezes (falha + hedge)
+          timers.length = 0;
+          if (launched < candidates.length) launch();
+          else if (failed >= candidates.length) {
+            finish(() => reject(new Error(`Nenhum provedor de visão respondeu. Último erro: ${lastError}`)));
+          }
+        }
+      );
+
+      if (launched < candidates.length) timers.push(setTimeout(launch, VISION_HEDGE_MS));
+    };
+
+    launch();
+  });
 }
 
 // ---------- Normalização de datas ----------

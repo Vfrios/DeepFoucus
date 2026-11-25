@@ -148,7 +148,7 @@ r.post('/receipt-scan', async (req, res) => {
 
 r.post('/pantry/import', async (req, res, next) => {
   const rawItems = req.body?.itens;
-  if (!Array.isArray(rawItems) || rawItems.length < 1 || rawItems.length > 30) {
+  if (!Array.isArray(rawItems) || rawItems.length < 1 || rawItems.length > 40) {
     res.status(400).json({ error: 'invalid_receipt_items' });
     return;
   }

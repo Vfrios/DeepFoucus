@@ -7,6 +7,20 @@ function normalizeText(value: string): string {
 
 const NON_PRODUCT_LINE = /\b(cnpj|cpf|nfc.?e|danfe|consumidor|subtotal|total|desconto|pagamento|dinheiro|pix|cartao|troco|valor|chave|protocolo|cupom|operador|cliente|atendimento|obrigado|volte sempre|item)\b/;
 
+/** Remove, repetidamente, "0,586 kg x 59,90", "8 LT x 4,18" e preços/totais no fim da linha. */
+function stripTrailingPricing(value: string): string {
+  let line = value.trim();
+  let previous: string;
+  do {
+    previous = line;
+    line = line
+      .replace(/\s+\d+(?:[.,]\d+)?\s*(?:kg|g|un|lt|l|ml|pc|pct|pt|bj|cx)?\s*[xX]\s*\d{1,4}[.,]\d{2}\s*$/i, '')
+      .replace(/\s+\d{1,4}[.,]\d{2}\s*$/, '')
+      .trim();
+  } while (line !== previous);
+  return line;
+}
+
 export function parseReceiptCandidates(text: string): string[] {
   const candidates: string[] = [];
   const seen = new Set<string>();
@@ -18,10 +32,7 @@ export function parseReceiptCandidates(text: string): string[] {
     // Ruído de OCR (ex.: "ha?") costuma ter menos de 3 letras de verdade
     if ((line.match(/\p{L}/gu) || []).length < 3) continue;
 
-    line = line
-      .replace(/^\d{4,}\s+/, '')
-      .replace(/\s+(?:\d{1,3}\s*[xX]\s*)?\d{1,4}[,.]\d{2}\s*$/, '')
-      .trim();
+    line = stripTrailingPricing(line.replace(/^\d{4,}\s+/, ''));
     if (line.length < 3 || /^[\d\s.,:/-]+$/.test(line)) continue;
 
     const key = normalizeText(line);

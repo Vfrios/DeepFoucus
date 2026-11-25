@@ -301,18 +301,19 @@ export default function PageShopping() {
     let timeoutId: ReturnType<typeof setTimeout> | undefined;
     let activeWorker: { terminate: () => Promise<unknown> } | null = null;
     let cancelled = false;
+    let ocrDelayId: ReturnType<typeof setTimeout> | undefined;
 
     try {
       const known = [...lists.dispensa, ...lists.carrinho].map((entry) => entry.item);
       setReceiptStatusText('Lendo com IA e OCR...');
 
       // 1) IA de visão (backend): lê letra de mão bem melhor. A foto reduzida só vive em memória.
-      const aiTask = (async (): Promise<string[]> => {
+      const aiTask = (async (): Promise<Array<{ nome: string; quantidade: string }>> => {
         const controller = new AbortController();
         const abortId = setTimeout(() => controller.abort(), 28000);
         try {
           const image = await receiptToJpegDataUrl(imageUrl);
-          const result = await api<{ itens: string[] }>('/shopping/receipt-scan', {
+          const result = await api<{ itens: Array<{ nome: string; quantidade: string }> }>('/shopping/receipt-scan', {
             method: 'POST',
             body: JSON.stringify({ image }),
             signal: controller.signal,
@@ -327,7 +328,7 @@ export default function PageShopping() {
       })();
 
       // 2) OCR local (Tesseract) em paralelo: é a reserva se a IA falhar.
-      const ocrTask = (async (): Promise<string[]> => {
+      const runOcr = (): Promise<string[]> => (async (): Promise<string[]> => {
         const base = await prepareReceiptCanvas(imageUrl);
         const { createWorker, PSM } = await import('tesseract.js');
         const worker = await createWorker('por', 1, {
@@ -367,11 +368,20 @@ export default function PageShopping() {
         return [] as string[];
       });
 
-      const readAll = async (): Promise<string[]> => {
+      // O OCR local só começa se a IA falhar ou demorar (poupa CPU e bateria do celular)
+      let ocrPromise: Promise<string[]> | null = null;
+      const startOcr = (): Promise<string[]> => {
+        if (!ocrPromise) ocrPromise = runOcr();
+        return ocrPromise;
+      };
+      ocrDelayId = setTimeout(() => { void startOcr(); }, 9000);
+
+      const readAll = async (): Promise<Array<{ nome: string; quantidade: string }>> => {
         const aiItems = await aiTask;
-        if (aiItems.length) return snapToKnownProducts(aiItems, known);
+        if (aiItems.length) return aiItems;
         setReceiptStatusText('Lendo com OCR local...');
-        return snapToKnownProducts(await ocrTask, known);
+        const found = snapToKnownProducts(await startOcr(), known);
+        return found.map((nome) => ({ nome, quantidade: '1' }));
       };
 
       const timeoutPromise = new Promise<never>((_, reject) => {
@@ -381,7 +391,7 @@ export default function PageShopping() {
       });
 
       const candidates = await Promise.race([readAll(), timeoutPromise]);
-      setReceiptItems(candidates.map((nome) => ({ nome, quantidade: '1', selecionado: true })));
+      setReceiptItems(candidates.map((item) => ({ ...item, selecionado: true })));
       if (!candidates.length) {
         setReceiptError('Nenhum item identificado. Tire uma foto mais nítida, mais próxima e bem iluminada.');
       }
@@ -395,6 +405,7 @@ export default function PageShopping() {
       }
     } finally {
       cancelled = true;
+      if (ocrDelayId) clearTimeout(ocrDelayId);
       if (timeoutId) clearTimeout(timeoutId);
       try {
         await (activeWorker as { terminate: () => Promise<unknown> } | null)?.terminate();
@@ -989,7 +1000,7 @@ export default function PageShopping() {
         <div className="shopping-modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="shopping-receipt-title">
           <div className="shopping-modal shopping-receipt-modal">
             <h3 id="shopping-receipt-title">Escanear nota fiscal</h3>
-            <p>A leitura é feita neste dispositivo. Revise os nomes e quantidades antes de adicionar à dispensa.</p>
+            <p>A foto é lida por IA, com o OCR do aparelho como reserva, e não é salva. Revise os nomes e quantidades antes de adicionar à dispensa.</p>
             {readingReceipt ? (
               <p className="shopping-receipt-progress" role="status">
                 {receiptStatusText} {receiptProgress}%
