@@ -413,22 +413,33 @@
 }
 
 .shopping-list .task-text.pantry-task-text {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: 12px;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.shopping-list .task-text.pantry-task-text .shopping-item-name {
+  flex: 1 1 auto;
+  min-width: 0;
+  white-space: normal;
+  word-break: normal;
+  overflow-wrap: break-word;
+  line-height: 1.35;
 }
 
 .pantry-qty-controller {
   display: inline-flex;
   align-items: center;
-  justify-self: center;
   gap: 6px;
   padding: 3px 4px;
   border-radius: 999px;
   background: rgba(8, 14, 18, 0.55);
   border: 1px solid rgba(255, 255, 255, 0.08);
   flex-shrink: 0;
+  margin-left: auto;
 }
 
 .pantry-qty-btn {

@@ -131,17 +131,21 @@ export class ShoppingNormalizationError extends Error {
 }
 
 export async function normalizeShoppingItem(input: string): Promise<string> {
-  let result: unknown;
+  const fallback = input.trim().replace(/\s+/g, ' ');
   try {
-    result = await callAI(
-      'Normalize the supplied grocery product name in Brazilian Portuguese. Preserve its meaning and quantity. Return only JSON in the form {"item":"Product Name"} with natural title capitalization.',
+    const result = await callAI(
+      'Normalize the supplied grocery product name in Brazilian Portuguese. Preserve its meaning and quantity. Return only a JSON object like {"item":"Product Name"} with natural title capitalization.',
       input,
       { temperature: 0, maxTokens: 100 }
     );
-  } catch { throw new ShoppingNormalizationError(); }
-  const item = (result as { item?: unknown })?.item;
-  if (typeof item !== 'string' || !item.trim() || item.trim().length > 200) throw new Error('invalid_shopping_item_from_ai');
-  return item.trim().replace(/\s+/g, ' ');
+    const item = (result as { item?: unknown })?.item;
+    if (typeof item === 'string' && item.trim() && item.trim().length <= 200) {
+      return item.trim().replace(/\s+/g, ' ');
+    }
+  } catch (error) {
+    console.warn('[shopping] Falha ao normalizar nome do item com IA, usando texto original:', error instanceof Error ? error.message : error);
+  }
+  return fallback;
 }
 
 export async function addShoppingItem(
