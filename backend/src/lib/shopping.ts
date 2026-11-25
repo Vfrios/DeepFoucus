@@ -152,7 +152,7 @@ export async function addShoppingItem(
   input: string,
   status: ShoppingStatus = 'carrinho',
   quantidade = '1',
-  options: { normalize?: boolean } = {}
+  options: { normalize?: boolean; clearCart?: boolean } = {}
 ): Promise<ShoppingItem> {
   const item = options.normalize === false ? input.trim() : await normalizeShoppingItem(input);
   if (!item || item.length > 200) throw new Error('invalid_shopping_item');
@@ -170,10 +170,10 @@ export async function addShoppingItem(
     const inDispensa = isItemInDispensa(existing);
 
     const nextEmCasa = status === 'dispensa' ? emCasa + numericQty : emCasa;
-    const nextNoCarrinho = status === 'carrinho' ? noCarrinho + numericQty : noCarrinho;
+    const nextNoCarrinho = options.clearCart ? 0 : (status === 'carrinho' ? noCarrinho + numericQty : noCarrinho);
     const nextNaDispensa = status === 'dispensa' ? true : inDispensa;
-    const nextStatus: ShoppingStatus = status === 'carrinho' ? 'carrinho' : (nextNoCarrinho > 0 ? 'carrinho' : 'dispensa');
-    const nextQuantidade = status === 'carrinho'
+    const nextStatus: ShoppingStatus = nextNoCarrinho > 0 ? 'carrinho' : 'dispensa';
+    const nextQuantidade = nextStatus === 'carrinho'
       ? (noCarrinho > 0 ? String(nextNoCarrinho) : cleanQty)
       : String(nextEmCasa);
 

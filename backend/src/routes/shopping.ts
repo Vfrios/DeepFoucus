@@ -169,7 +169,7 @@ r.post('/pantry/import', async (req, res, next) => {
   try {
     for (const item of items) {
       if (!item) continue;
-      await addShoppingItem(item.name, 'dispensa', item.quantity, { normalize: false });
+      await addShoppingItem(item.name, 'dispensa', item.quantity, { normalize: false, clearCart: true });
     }
     res.json({ adicionados: items.length });
   } catch (error) {
