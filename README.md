@@ -375,3 +375,35 @@ A rotina silenciosa do backend verifica diariamente registros de água com mais 
 ### Segurança de credenciais
 
 Nunca inclua chaves de API, client secrets OAuth, tokens JWT/refresh ou tokens de conexão de provedores em commits, issues, logs ou capturas de tela. Mantenha valores locais em `.env` (já ignorado pelo Git) e segredos de produção no gerenciador de variáveis do serviço. Se um segredo for versionado, trate-o como exposto: revogue/rotacione no provedor e verifique o histórico; apagar o arquivo em um commit posterior não apaga cópias dos commits anteriores.
+
+### Deduplicar categorias financeiras
+
+Antes de iniciar uma versão em um banco que possa conter categorias legadas duplicadas, pare o backend e confira se `MONGODB_URI` e `MONGODB_DB` apontam para o ambiente desejado. A execução padrão é somente leitura:
+
+```bash
+npm -w backend run categories:dedupe
+```
+
+Revise a quantidade de grupos e documentos duplicados. Para consolidá-los, execute explicitamente com `--apply`:
+
+```bash
+npm -w backend run categories:dedupe -- --apply
+```
+
+O script mantém o documento mais antigo de cada nome normalizado, mescla sinônimos e remove os duplicados. Ele se conecta diretamente ao MongoDB para rodar antes da inicialização do backend, que cria o índice único de categorias.
+
+### Testes manuais e pendências conhecidas
+
+Smoke visual responsivo executado com dados de teste isolados e API simulada:
+
+- **Compras:** 40 itens validados em 1280×800 e 1024×600; a lista rola internamente e o botão de checkout permanece acessível.
+- **Saúde:** Perfil, Academia & Água e Nutrição percorridos nas duas resoluções. A aba de treino foi testada com 10 exercícios: a rolagem externa alcança o conteúdo excedente e a lista de exercícios também rola internamente. A nutrição foi testada com 9 refeições e sua lista rola sem clipping; o Perfil coube nas duas resoluções.
+- O smoke encontrou clipping vertical na aba Academia & Água em telas desktop menores; a área agora permite rolagem quando o conteúdo excede a altura disponível.
+- Repetir a conferência visual após mudanças relevantes de layout e em dispositivos físicos.
+
+Pendências conhecidas:
+
+- O OCR ainda não foi validado com fotos reais; testar captura e reconhecimento em iOS e Android.
+- O pareamento de celular ainda não tem rate-limit; considerar adicioná-lo.
+- Os E2E de Compras usam a API e o banco configurados no ambiente e podem deixar registros se o cleanup falhar.
+- O build do Vite avisa que o chunk principal ultrapassa 500 kB; considerar code-splitting futuramente.

@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "tsx watch src/index.ts",
     "build": "tsc -p tsconfig.json",
+    "categories:dedupe": "tsx src/scripts/dedupeCategories.ts",
     "test": "tsx --test --test-reporter=tap ../tests/*.test.ts",
     "start": "node dist/index.js"
   },

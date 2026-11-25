@@ -1,7 +1,8 @@
-/* Remove somente o scroll externo da aba Academia e Água. */
+/* Mantém a rolagem da aba quando o conteúdo excede a altura disponível. */
 @media (min-width: 901px) {
   .health-tab-body.is-gym {
-    overflow: hidden !important;
+    overflow-x: hidden !important;
+    overflow-y: auto !important;
   }
 
   .health-tab-body.is-gym > .health-content-grid {
