@@ -6,7 +6,7 @@ services:
     plan: free
     region: oregon
     # O TypeScript e o Vite são necessários durante o build.
-    buildCommand: npm install --include=dev && npm run build
+    buildCommand: npm ci --include=dev && npm run build
     startCommand: npm start
     healthCheckPath: /healthz
     envVars:
