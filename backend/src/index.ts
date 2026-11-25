@@ -29,6 +29,8 @@ const PORT = Number(process.env.PORT) || 3001;
 
 app.set('trust proxy', 1);
 app.use(cors({ origin: process.env.FRONTEND_URL || true }));
+// A foto da nota/lista (JPEG reduzido) precisa de um limite maior que o padrão de 100kb
+app.use('/api/shopping/receipt-scan', express.json({ limit: '4mb' }));
 app.use(express.json({ limit: '100kb' }));
 app.use(deviceMiddleware);
 

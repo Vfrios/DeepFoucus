@@ -4,6 +4,8 @@ import { api } from '../lib/api';
 import { subscribeRealtime } from '../lib/realtime';
 import { checkoutConfirmationMode, reviewShoppingCheckout } from '../lib/shoppingCheckout';
 import { parseReceiptCandidates } from '../lib/receiptOcr';
+import { prepareReceiptCanvas, receiptToJpegDataUrl, rotateCanvas } from '../lib/receiptImage';
+import { snapToKnownProducts } from '../lib/receiptVocabulary';
 
 type ShoppingTab = 'carrinho' | 'dispensa' | 'receitas';
 type ShoppingStatus = Exclude<ShoppingTab, 'receitas'>;
@@ -205,6 +207,7 @@ export default function PageShopping() {
   const [receiptOpen, setReceiptOpen] = useState(false);
   const [readingReceipt, setReadingReceipt] = useState(false);
   const [receiptProgress, setReceiptProgress] = useState(0);
+  const [receiptStatusText, setReceiptStatusText] = useState('Iniciando...');
   const [receiptError, setReceiptError] = useState('');
   const [receiptItems, setReceiptItems] = useState<ReceiptDraft[]>([]);
   const [addingReceiptItems, setAddingReceiptItems] = useState(false);
@@ -291,34 +294,113 @@ export default function PageShopping() {
     setReceiptError('');
     setReceiptItems([]);
     setReceiptProgress(0);
+    setReceiptStatusText('Iniciando...');
     setReceiptOpen(true);
     setReadingReceipt(true);
     const imageUrl = URL.createObjectURL(file);
+    let timeoutId: ReturnType<typeof setTimeout> | undefined;
+    let activeWorker: { terminate: () => Promise<unknown> } | null = null;
+    let cancelled = false;
+
     try {
-      const { createWorker } = await import('tesseract.js');
-      const worker = await createWorker('por', 1, {
-        logger: (message) => {
-          if (message.status === 'recognizing text') {
-            setReceiptProgress(Math.round(message.progress * 100));
-          }
-        },
-      });
-      try {
-        const { data } = await worker.recognize(imageUrl);
-        const candidates = parseReceiptCandidates(data.text);
-        setReceiptItems(candidates.map((nome) => ({ nome, quantidade: '1', selecionado: true })));
-        if (!candidates.length) setReceiptError('Não encontrei itens na imagem. Tente uma foto mais nítida e bem iluminada.');
-      } finally {
+      const known = [...lists.dispensa, ...lists.carrinho].map((entry) => entry.item);
+      setReceiptStatusText('Lendo com IA e OCR...');
+
+      // 1) IA de visão (backend): lê letra de mão bem melhor. A foto reduzida só vive em memória.
+      const aiTask = (async (): Promise<string[]> => {
+        const controller = new AbortController();
+        const abortId = setTimeout(() => controller.abort(), 28000);
         try {
-          await worker.terminate();
+          const image = await receiptToJpegDataUrl(imageUrl);
+          const result = await api<{ itens: string[] }>('/shopping/receipt-scan', {
+            method: 'POST',
+            body: JSON.stringify({ image }),
+            signal: controller.signal,
+          });
+          return Array.isArray(result.itens) ? result.itens : [];
         } catch (cause) {
-          console.warn('[shopping] receipt OCR worker cleanup failed:', cause);
+          console.warn('[shopping] leitura por IA indisponível, usando só o OCR:', cause);
+          return [];
+        } finally {
+          clearTimeout(abortId);
         }
+      })();
+
+      // 2) OCR local (Tesseract) em paralelo: é a reserva se a IA falhar.
+      const ocrTask = (async (): Promise<string[]> => {
+        const base = await prepareReceiptCanvas(imageUrl);
+        const { createWorker, PSM } = await import('tesseract.js');
+        const worker = await createWorker('por', 1, {
+          langPath: `${window.location.origin}/tessdata`,
+          gzip: true,
+          logger: (message) => {
+            if (message.status === 'recognizing text' || message.status === 'loading language traineddata') {
+              setReceiptProgress(Math.round(message.progress * 100));
+            }
+          },
+        });
+        activeWorker = worker;
+        if (cancelled) {
+          await worker.terminate();
+          return [];
+        }
+        // Bloco único de texto: funciona melhor para listas curtas e manuscritas
+        await worker.setParameters({ tessedit_pageseg_mode: PSM.SINGLE_BLOCK });
+
+        // Lê na orientação original; se a confiança for baixa (foto deitada), testa 90° e 270°
+        // e fica com a orientação mais confiável.
+        const attempts: Array<0 | 90 | 270> = [0, 90, 270];
+        let best: { found: string[]; confidence: number } | null = null;
+        for (const degrees of attempts) {
+          if (cancelled) break;
+          const canvas = degrees === 0 ? base : rotateCanvas(base, degrees);
+          const { data } = await worker.recognize(canvas);
+          const found = parseReceiptCandidates(data.text);
+          if (found.length && (!best || data.confidence > best.confidence)) {
+            best = { found, confidence: data.confidence };
+          }
+          if (best && best.confidence >= 70) break;
+        }
+        return best?.found ?? [];
+      })().catch((cause) => {
+        console.warn('[shopping] OCR local falhou:', cause);
+        return [] as string[];
+      });
+
+      const readAll = async (): Promise<string[]> => {
+        const aiItems = await aiTask;
+        if (aiItems.length) return snapToKnownProducts(aiItems, known);
+        setReceiptStatusText('Lendo com OCR local...');
+        return snapToKnownProducts(await ocrTask, known);
+      };
+
+      const timeoutPromise = new Promise<never>((_, reject) => {
+        timeoutId = setTimeout(() => {
+          reject(new Error('TIMEOUT'));
+        }, 45000);
+      });
+
+      const candidates = await Promise.race([readAll(), timeoutPromise]);
+      setReceiptItems(candidates.map((nome) => ({ nome, quantidade: '1', selecionado: true })));
+      if (!candidates.length) {
+        setReceiptError('Nenhum item identificado. Tire uma foto mais nítida, mais próxima e bem iluminada.');
       }
     } catch (cause) {
-      console.error('[shopping] receipt OCR failed:', cause);
-      setReceiptError('Não foi possível ler a imagem. Verifique a conexão para carregar o OCR em português e tente novamente.');
+      if (cause instanceof Error && cause.message === 'TIMEOUT') {
+        console.warn('[shopping] receipt reading timed out');
+        setReceiptError('Tempo esgotado ao ler a imagem. Tire uma foto mais nítida, mais próxima e bem iluminada.');
+      } else {
+        console.error('[shopping] receipt reading failed:', cause);
+        setReceiptError('Não foi possível ler a imagem. Tire uma foto mais nítida e bem iluminada.');
+      }
     } finally {
+      cancelled = true;
+      if (timeoutId) clearTimeout(timeoutId);
+      try {
+        await (activeWorker as { terminate: () => Promise<unknown> } | null)?.terminate();
+      } catch (cause) {
+        console.warn('[shopping] receipt OCR worker cleanup failed:', cause);
+      }
       URL.revokeObjectURL(imageUrl);
       setReadingReceipt(false);
     }
@@ -910,7 +992,7 @@ export default function PageShopping() {
             <p>A leitura é feita neste dispositivo. Revise os nomes e quantidades antes de adicionar à dispensa.</p>
             {readingReceipt ? (
               <p className="shopping-receipt-progress" role="status">
-                Lendo a nota em português... {receiptProgress}%
+                {receiptStatusText} {receiptProgress}%
               </p>
             ) : receiptItems.length > 0 && (
               <>

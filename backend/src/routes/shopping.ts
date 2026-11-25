@@ -3,6 +3,7 @@ import { ObjectId } from 'mongodb';
 import { getDb } from '../lib/mongo';
 import { getItemEmoji } from '../lib/icons';
 import { notifyAndroid } from '../lib/realtime';
+import { isReceiptImageDataUrl, readReceiptWithAI } from '../lib/receiptAi';
 import {
   addShoppingItem,
   generateRecipe,
@@ -129,6 +130,20 @@ r.get('/list', async (_req, res, next) => {
 
     res.json({ dispensa, carrinho });
   } catch (error) { next(error); }
+});
+
+r.post('/receipt-scan', async (req, res) => {
+  const image = req.body?.image;
+  if (!isReceiptImageDataUrl(image)) {
+    res.status(400).json({ error: 'invalid_receipt_image' });
+    return;
+  }
+  try {
+    // A imagem não é gravada em banco nem em disco: vive só na memória desta requisição.
+    res.json({ itens: await readReceiptWithAI(image) });
+  } catch {
+    res.status(502).json({ error: 'ai_unavailable' });
+  }
 });
 
 r.post('/pantry/import', async (req, res, next) => {

@@ -134,6 +134,53 @@ export async function callAI(
   );
 }
 
+/**
+ * Chamada com imagem (visão) e fallback em cascata entre os provedores que aceitam imagem.
+ * A imagem é enviada como data URL apenas na requisição; nada é gravado.
+ */
+export async function callVisionAI(
+  systemPrompt: string,
+  userPrompt: string,
+  imageDataUrl: string,
+  opts: { temperature?: number; maxTokens?: number } = {}
+): Promise<unknown> {
+  let ultimoErro = '';
+
+  for (const p of provedores()) {
+    if (!p.apiKey || p.nome === 'Groq') continue; // modelo do Groq configurado não aceita imagem
+    try {
+      const client = new OpenAI({ apiKey: p.apiKey, baseURL: p.baseURL, timeout: 25_000, maxRetries: 0 });
+      const response = await client.chat.completions.create({
+        model: p.model,
+        messages: [
+          { role: 'system', content: systemPrompt },
+          {
+            role: 'user',
+            content: [
+              { type: 'text', text: userPrompt },
+              { type: 'image_url', image_url: { url: imageDataUrl } },
+            ],
+          },
+        ],
+        temperature: opts.temperature ?? 0,
+        max_tokens: opts.maxTokens,
+        response_format: { type: 'json_object' },
+      });
+      return JSON.parse(response.choices[0]?.message?.content || '');
+    } catch (err: any) {
+      const msg = err?.message ? String(err.message).slice(0, 120) : 'erro_desconhecido';
+      console.warn(`[IA] ${p.nome} (visão) falhou: ${msg}`);
+      ultimoErro = msg;
+    }
+  }
+
+  throw new Error(
+    ultimoErro
+      ? `Nenhum provedor de visão respondeu. Último erro: ${ultimoErro}`
+      : 'Nenhum provedor de IA com visão está configurado.'
+  );
+}
+
 // ---------- Normalização de datas ----------
 
 /** Garante que a string ISO termine em -03:00 (Brasília). */

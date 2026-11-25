@@ -13,8 +13,10 @@ export function parseReceiptCandidates(text: string): string[] {
 
   for (const rawLine of text.split(/\r?\n/)) {
     let line = rawLine.replace(/\s+/g, ' ').trim();
-    if (line.length < 4 || NON_PRODUCT_LINE.test(normalizeText(line))) continue;
+    if (line.length < 3 || NON_PRODUCT_LINE.test(normalizeText(line))) continue;
     if (/^[\d\s.,:/-]+$/.test(line)) continue;
+    // Ruído de OCR (ex.: "ha?") costuma ter menos de 3 letras de verdade
+    if ((line.match(/\p{L}/gu) || []).length < 3) continue;
 
     line = line
       .replace(/^\d{4,}\s+/, '')
