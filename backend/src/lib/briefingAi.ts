@@ -8,7 +8,7 @@ import {
 } from './briefingCore';
 
 export const BRIEFING_AI_TIMEOUT_MS = 6_000;
-export const SPEECH_MAX_WORDS = 125;
+export const SPEECH_MAX_WORDS = 160;
 export const FULL_MAX_WORDS = 450;
 
 export const BRIEFING_AI_SYSTEM_PROMPT = `
@@ -21,8 +21,8 @@ Regras obrigatórias:
 3. NÃO use markdown (sem asteriscos, sem hashtags, sem crases, sem listas com hífen) e NÃO use emojis.
 4. Use horários por extenso curto ("às 18h", "às 19h30") e datas relativas ("hoje", "amanhã", "sexta").
 5. Mantenha a ordem das seções: cabeçalho, foco do dia, clima, agenda, PUC, tarefas, alertas do sistema e notas de falha (omitindo qualquer seção nula ou vazia).
-6. Nunca repita o mesmo item ou o mesmo número duas vezes.
-7. "speech": máximo de 115 palavras (cerca de 15 a 20 segundos falados). Inclua apenas o essencial: saudação + data, foco do dia, clima em uma frase, agenda principal, entregas PUC de hoje/amanhã/atrasadas, contagem de a verificar/prontas para enviar e alertas.
+6. Nunca repita o mesmo item ou o mesmo número duas vezes. Se algo já foi dito no Foco do dia, não repita os mesmos detalhes depois.
+7. "speech": entre 15 e 25 segundos falados (máximo de 150 palavras). Inclua TUDO o que for importante do dia e de amanhã (Canvas): saudação + data, foco do dia, clima em uma frase, eventos da agenda, entregas PUC (atrasadas, hoje e amanhã), tarefas de hoje/atrasadas, contagem de a verificar/prontas para enviar e alertas reais.
 8. "full": versão completa para ler na tela, com todas as seções presentes nos dados, em parágrafos curtos separados por linha em branco.
 `.trim();
 

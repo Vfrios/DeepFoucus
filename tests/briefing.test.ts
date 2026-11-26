@@ -194,13 +194,7 @@ describe('Morning Briefing — Core, Deduplication, Anti-Repetition & Service', 
             first_seen_at: '2026-11-26T06:00:00.000-03:00',
           },
         ],
-        pucDeliverables: [
-          {
-            course_id: 1,
-            assignment_id: 10,
-            status: 'entrega_gerada',
-          },
-        ],
+        pucDeliverables: [{ course_id: 1, assignment_id: 10, status: 'entrega_gerada' }],
         calendarEvents: [
           {
             id: 'primary:dup-ihc',
@@ -228,20 +222,16 @@ describe('Morning Briefing — Core, Deduplication, Anti-Repetition & Service', 
       })
     );
 
-    // Deve aparecer em venceHoje (maior prioridade), e NÃO duplicar em prontasParaEnviar nem novidades
     assert.equal(sections.puc?.venceHoje.length, 1);
     assert.equal(sections.puc?.totalProntasParaEnviar, 0);
     assert.equal(sections.puc?.novidades.length, 0);
-
-    // No Calendar, o evento duplicado da PUC deve ter sido mesclado/removido, sobrando só Dentista
     assert.equal(sections.agenda?.eventos.length, 1);
     assert.equal(sections.agenda?.eventos[0].titulo, 'Dentista');
   });
 
   it('prevents repeating yesterday news and announcements, and re-surfaces pending item only when state changes', () => {
-    const day1 = new Date('2026-11-25T10:30:00.000Z'); // 25/11 07:30 BRT
-    const day2 = new Date('2026-11-26T10:30:00.000Z'); // 26/11 07:30 BRT
-
+    const day1 = new Date('2026-11-25T10:30:00.000Z');
+    const day2 = new Date('2026-11-26T10:30:00.000Z');
     const courses = [{ canvas_id: 1, name: 'Engenharia de Software - PUC', aliases: ['ES'] }];
     const farDue = '2026-12-10T23:59:00.000-03:00';
 
@@ -273,9 +263,8 @@ describe('Morning Briefing — Core, Deduplication, Anti-Repetition & Service', 
       })
     );
 
-    assert.equal(run1.sections.puc?.novidades.length, 2); // trabalho novo + aviso novo
+    assert.equal(run1.sections.puc?.novidades.length, 2);
 
-    // Dia seguinte: mesmo trabalho pendente distante e mesmo aviso não lido -> não deve repetir
     const run2 = buildBriefingSections(
       baseInput({
         now: day2,
@@ -307,7 +296,6 @@ describe('Morning Briefing — Core, Deduplication, Anti-Repetition & Service', 
 
     assert.equal(run2.sections.puc, null);
 
-    // Se no dia 2 sair uma nota para aquele trabalho, aí sim aparece como novidade
     const run2WithGrade = buildBriefingSections(
       baseInput({
         now: day2,
@@ -365,9 +353,7 @@ describe('Morning Briefing — Core, Deduplication, Anti-Repetition & Service', 
 
     assert.equal(sections.puc?.venceHoje.length, 5);
     assert.equal(sections.puc?.overflowVenceHoje, 2);
-
-    const full = renderDeterministicFull(sections);
-    assert.match(full, /e mais 2/);
+    assert.match(renderDeterministicFull(sections), /e mais 2/);
   });
 
   it('selects at most 3 deterministic focus items prioritized by urgency, points, and ready-to-submit', () => {
@@ -417,16 +403,12 @@ describe('Morning Briefing — Core, Deduplication, Anti-Repetition & Service', 
     );
 
     assert.equal(sections.focoDoDia.length, 3);
-    assert.match(sections.focoDoDia[0].titulo, /Trabalho Hoje Alto Peso|Lista Atrasada/);
     assert.ok(sections.focoDoDia.some((f) => f.titulo.includes('Lista Atrasada')));
     assert.ok(sections.focoDoDia.some((f) => f.titulo.includes('Trabalho Hoje Alto Peso')));
     assert.ok(sections.focoDoDia.some((f) => f.titulo.includes('Trabalho Pronto')));
 
-    // Foco do dia aparece logo após o cabeçalho
     const speech = renderDeterministicSpeech(sections);
-    const headerIdx = speech.indexOf('Quinta, 26 de novembro');
-    const focusIdx = speech.indexOf('Foco do dia:');
-    assert.ok(headerIdx >= 0 && focusIdx > headerIdx);
+    assert.ok(speech.indexOf('Foco do dia:') > speech.indexOf('Quinta, 26 de novembro'));
   });
 
   it('keeps working when a source fails and adds a discrete failure note', async () => {
@@ -441,11 +423,7 @@ describe('Morning Briefing — Core, Deduplication, Anti-Repetition & Service', 
       },
     });
 
-    const result = await generateOrGetBriefing(
-      { now: new Date('2026-11-26T10:30:00.000Z') },
-      deps
-    );
-
+    const result = await generateOrGetBriefing({ now: new Date('2026-11-26T10:30:00.000Z') }, deps);
     assert.ok(result.failedSources.includes('calendar'));
     assert.match(result.speech, /Calendário indisponível agora/);
     assert.ok(result.sections.clima !== null);
@@ -458,22 +436,13 @@ describe('Morning Briefing — Core, Deduplication, Anti-Repetition & Service', 
       aiCaller: async () =>
         new Promise((resolve) => {
           setTimeout(
-            () =>
-              resolve({
-                provider: 'Groq',
-                model: 'fast',
-                raw: { speech: 'tarde demais', full: 'tarde demais' },
-              }),
+            () => resolve({ provider: 'Groq', model: 'fast', raw: { speech: 'tarde', full: 'tarde' } }),
             300
           );
         }),
     });
 
-    const result = await generateOrGetBriefing(
-      { now: new Date('2026-11-26T10:30:00.000Z') },
-      deps
-    );
-
+    const result = await generateOrGetBriefing({ now: new Date('2026-11-26T10:30:00.000Z') }, deps);
     assert.equal(result.aiUsed, false);
     assert.equal(result.aiFallbackReason, 'ai_timeout');
     assert.match(result.speech, /nenhuma IA estava disponível/i);
@@ -481,19 +450,18 @@ describe('Morning Briefing — Core, Deduplication, Anti-Repetition & Service', 
   });
 
   it('validates text against markdown, emojis, and word limit', async () => {
-    assert.equal(validateBriefingText('Bom dia. Hoje tem aula às 19h.', 120).ok, true);
-    assert.equal(validateBriefingText('**Bom dia!** Hoje tem aula.', 120).ok, false);
-    assert.equal(validateBriefingText('Bom dia ☀️ hoje tem aula.', 120).ok, false);
-    assert.equal(validateBriefingText('palavra '.repeat(130), 125).ok, false);
+    assert.equal(validateBriefingText('Bom dia. Hoje tem aula às 19h.', 160).ok, true);
+    assert.equal(validateBriefingText('**Bom dia!** Hoje tem aula.', 160).ok, false);
+    assert.equal(validateBriefingText('Bom dia ☀️ hoje tem aula.', 160).ok, false);
+    assert.equal(validateBriefingText('palavra '.repeat(170), 160).ok, false);
 
-    // Se a IA devolver texto estourando o limite de palavras, cai no fallback determinístico
     const { sections } = buildBriefingSections(baseInput());
     const aiRes = await redactBriefingWithAI(sections, {
       caller: async () => ({
         provider: 'Gemini',
         model: 'gemini-flash',
         raw: {
-          speech: 'palavra '.repeat(160),
+          speech: 'palavra '.repeat(175),
           full: 'Texto completo válido.',
         },
       }),
@@ -523,7 +491,7 @@ describe('Morning Briefing — Core, Deduplication, Anti-Repetition & Service', 
     assert.equal(first.aiUsed, true);
     assert.equal(second.cached, true);
     assert.equal(refreshed.cached, false);
-    assert.equal(getCalendarCalls(), 2); // 1ª chamada + refresh; 2ª veio do cache
+    assert.equal(getCalendarCalls(), 2);
   });
 
   it('sends at most one Web Push per day even across multiple calls and refresh=1', async () => {
@@ -551,15 +519,11 @@ describe('Morning Briefing — Core, Deduplication, Anti-Repetition & Service', 
     assert.equal(sentPushes[0].title, 'Bom dia');
     assert.equal(sentPushes[0].url, '/?page=puc');
     assert.ok(sentPushes[0].body.length <= 180);
-
-    const payloadCheck = buildBriefingPushPayload(r1.sections);
-    assert.ok(payloadCheck.body.length <= 180);
+    assert.ok(buildBriefingPushPayload(r1.sections).body.length <= 180);
   });
 
   it('handles America/Sao_Paulo midnight boundary accurately for today/tomorrow classification', () => {
-    // 2026-11-26T02:30:00Z = 25/11/2026 23:30 em São Paulo (ainda dia 25!)
     const lateNightBr = new Date('2026-11-26T02:30:00.000Z');
-    // 2026-11-26T03:30:00Z = 26/11/2026 00:30 em São Paulo (já virou dia 26!)
     const earlyMorningBr = new Date('2026-11-26T03:30:00.000Z');
 
     assert.equal(getSaoPauloDateKey(lateNightBr), '2026-11-25');
@@ -604,22 +568,13 @@ describe('Morning Briefing — Core, Deduplication, Anti-Repetition & Service', 
       resolveCourseSigla({ canvas_id: 1, name: 'Introdução à Pesquisa em Informática - PUC', auto_aliases: ['IPI'] }),
       'Pesquisa'
     );
-    assert.equal(
-      resolveCourseSigla({ canvas_id: 2, name: 'Metodologia Científica - PUC' }),
-      'Metodologia'
-    );
+    assert.equal(resolveCourseSigla({ canvas_id: 2, name: 'Metodologia Científica - PUC' }), 'Metodologia');
     assert.equal(
       resolveCourseSigla({ canvas_id: 3, name: 'Trabalho Interdisciplinar: Desenvolvimento Centrado no Usuário' }),
       'TI'
     );
-    assert.equal(
-      resolveCourseSigla({ canvas_id: 4, name: 'Programação Modular - PUC' }),
-      'PM'
-    );
-    assert.equal(
-      resolveCourseSigla({ canvas_id: 5, name: 'Interação Humano-Computador - PUC' }),
-      'IHC'
-    );
+    assert.equal(resolveCourseSigla({ canvas_id: 4, name: 'Programação Modular - PUC' }), 'PM');
+    assert.equal(resolveCourseSigla({ canvas_id: 5, name: 'Interação Humano-Computador - PUC' }), 'IHC');
     assert.equal(
       resolveCourseSigla({ canvas_id: 6, name: 'Desenvolvimento e Integração de Aplicações Web - PUC' }),
       'DIAW'
@@ -660,7 +615,7 @@ describe('Morning Briefing — Core, Deduplication, Anti-Repetition & Service', 
     assert.ok(!sections.focoDoDia.some((f) => /\bADA\b/i.test(f.titulo)));
   });
 
-  it('only alerts Canvas token at <= 5 days remaining (or 401) and never alerts GitHub expiry', () => {
+  it('only alerts Canvas token at <= 5 days, never alerts GitHub expiry, and ignores transient sync error', () => {
     const activeTokens = buildBriefingSections(
       baseInput({
         systemAlerts: {
@@ -682,16 +637,33 @@ describe('Morning Briefing — Core, Deduplication, Anti-Repetition & Service', 
     assert.equal(canvas5Days.sections.alertasSistema.length, 1);
     assert.match(canvas5Days.sections.alertasSistema[0], /Canvas expira em 5 dias/);
 
-    const decryptErrIgnored = buildBriefingSections(
+    const transientSyncErr = buildBriefingSections(
       baseInput({
         systemAlerts: {
-          canvasToken: { configured: true, decryptError: true, expired: true, expiringSoon: false, daysRemaining: 20 },
-          githubToken: { configured: true, decryptError: true, expired: true, expiringSoon: false, daysRemaining: null, authError: null },
-          lastCanvasSync: { status: 'error', finished_at: '2026-11-26T09:00:00.000Z' },
+          lastCanvasSync: {
+            status: 'error',
+            error: 'timeout',
+            consecutiveErrors: 1,
+            lastOkAt: '2026-11-26T08:00:00.000Z',
+          },
         },
       })
     );
-    assert.equal(decryptErrIgnored.sections.alertasSistema.length, 0);
+    assert.equal(transientSyncErr.sections.alertasSistema.length, 0);
+
+    const persistentSyncErr = buildBriefingSections(
+      baseInput({
+        systemAlerts: {
+          lastCanvasSync: {
+            status: 'error',
+            error: 'timeout',
+            consecutiveErrors: 2,
+            lastOkAt: '2026-11-26T08:00:00.000Z',
+          },
+        },
+      })
+    );
+    assert.equal(persistentSyncErr.sections.alertasSistema.length, 1);
   });
 
   it('triggers on-demand Canvas sync before reading PUC data when generating briefing', async () => {

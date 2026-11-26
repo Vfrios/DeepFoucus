@@ -283,6 +283,8 @@ export interface RawSystemAlertInputs {
     error?: string | null;
     finished_at?: Date | string | null;
     started_at?: Date | string | null;
+    consecutiveErrors?: number;
+    lastOkAt?: Date | string | null;
   } | null;
   pucAgent?: {
     enabled: boolean;
@@ -1068,13 +1070,16 @@ export function buildBriefingSections(input: BriefingRawInput): BuildBriefingSec
     if (sa.githubToken?.configured && !sa.githubToken.decryptError && sa.githubToken.authError) {
       alertasSistema.push(`Token do GitHub retornou erro ${sa.githubToken.authError} de autenticação.`);
     }
-    // Sync: só avisa se a última sincronização falhou nas últimas 24h (e não por decryptError local)
+    // Sync: só avisa se houver falha persistente (>= 2 erros seguidos OU sem sync bem-sucedido há mais de 12h),
+    // ignorando erros de descriptografia local
     if (sa.lastCanvasSync?.status === 'error' && !sa.canvasToken?.decryptError) {
-      const syncTimeRaw = sa.lastCanvasSync.finished_at ?? sa.lastCanvasSync.started_at;
-      const syncMs = syncTimeRaw ? new Date(syncTimeRaw).getTime() : NaN;
-      const isRecent = Number.isNaN(syncMs) || now.getTime() - syncMs <= 24 * 3_600_000;
-      if (isRecent) {
-        alertasSistema.push('A última sincronização do Canvas falhou.');
+      const errMsg = String(sa.lastCanvasSync.error || '');
+      const isDecryptErr = /encryption_key|decrypt|auth/i.test(errMsg) && !/401/.test(errMsg);
+      const consecutiveErrors = sa.lastCanvasSync.consecutiveErrors ?? 1;
+      const lastOkMs = sa.lastCanvasSync.lastOkAt ? new Date(sa.lastCanvasSync.lastOkAt).getTime() : NaN;
+      const okRecently = !Number.isNaN(lastOkMs) && now.getTime() - lastOkMs <= 12 * 3_600_000;
+      if (!isDecryptErr && (consecutiveErrors >= 2 || !okRecently)) {
+        alertasSistema.push('A sincronização do Canvas está falhando.');
       }
     }
     if (sa.pucAgent?.enabled && sa.pucAgent.paused) {

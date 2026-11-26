@@ -330,12 +330,19 @@ export function createDefaultBriefingSources(db: Db): BriefingDataSources {
       }));
     },
     async fetchSystemAlerts(now: Date): Promise<RawSystemAlertInputs> {
-      const [canvasToken, githubToken, lastCanvasSync, pucAgent] = await Promise.all([
+      const [canvasToken, githubToken, recentSyncs, lastOkSync, pucAgent] = await Promise.all([
         getCanvasTokenStatus(db, now).catch(() => null),
         getGithubConfigStatus(db, now).catch(() => null),
         db
           .collection('canvas_sync_log')
           .find({}, { projection: { status: 1, error: 1, finished_at: 1, started_at: 1 } })
+          .sort({ started_at: -1 })
+          .limit(3)
+          .toArray()
+          .catch(() => []),
+        db
+          .collection('canvas_sync_log')
+          .find({ status: { $in: ['ok', 'partial'] } }, { projection: { finished_at: 1, started_at: 1 } })
           .sort({ started_at: -1 })
           .limit(1)
           .next()
@@ -343,10 +350,26 @@ export function createDefaultBriefingSources(db: Db): BriefingDataSources {
         getPucAgentConfig(db).catch(() => null),
       ]);
 
+      const latestSync = recentSyncs[0] ?? null;
+      let consecutiveErrors = 0;
+      for (const s of recentSyncs) {
+        if (s.status === 'error') consecutiveErrors += 1;
+        else break;
+      }
+
       return {
         canvasToken,
         githubToken,
-        lastCanvasSync: lastCanvasSync as any,
+        lastCanvasSync: latestSync
+          ? {
+              status: latestSync.status,
+              error: latestSync.error,
+              finished_at: latestSync.finished_at,
+              started_at: latestSync.started_at,
+              consecutiveErrors,
+              lastOkAt: lastOkSync?.finished_at ?? lastOkSync?.started_at ?? null,
+            }
+          : null,
         pucAgent: pucAgent ? { enabled: pucAgent.enabled, paused: pucAgent.paused } : null,
       };
     },
