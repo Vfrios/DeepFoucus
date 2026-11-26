@@ -114,38 +114,41 @@ export default function Sidebar({ open, onClose, pages, currentIndex, onNavigate
           </div>
         </div>
 
-        {/* ---- Navegação rápida ---- */}
-        <nav className="sidebar-nav" aria-label="Páginas">
-          {pages.map((p, i) => (
-            <button
-              key={p.id}
-              className={`sidebar-link${i === currentIndex ? ' is-active' : ''}`}
-              onClick={() => handleNavigate(i)}
-            >
-              {p.title}
-            </button>
-          ))}
-        </nav>
-
-        {/* ---- Preferências ---- */}
-        <div className="sidebar-section">
-          <h3 className="sidebar-title">Preferências</h3>
-          <DeviceOverride />
-          {isPrimaryOwner && (
-            <div className="sidebar-pairing">
+        {/* ---- Conteúdo rolável (Navegação + Preferências) ---- */}
+        <div className="sidebar-content">
+          {/* ---- Navegação rápida ---- */}
+          <nav className="sidebar-nav" aria-label="Páginas">
+            {pages.map((p, i) => (
               <button
-                className="btn ghost sidebar-pairing-button"
-                type="button"
-                disabled={startingPairing}
-                onClick={() => void startDevicePairing()}
+                key={p.id}
+                className={`sidebar-link${i === currentIndex ? ' is-active' : ''}`}
+                onClick={() => handleNavigate(i)}
               >
-                {startingPairing ? 'Gerando...' : 'Conectar celular'}
+                {p.title}
               </button>
-              {pairingError && <p className="sidebar-pairing-error" role="alert">{pairingError}</p>}
+            ))}
+          </nav>
+
+          {/* ---- Preferências ---- */}
+          <div className="sidebar-section">
+            <h3 className="sidebar-title">Preferências</h3>
+            <DeviceOverride />
+            {isPrimaryOwner && (
+              <div className="sidebar-pairing">
+                <button
+                  className="btn ghost sidebar-pairing-button"
+                  type="button"
+                  disabled={startingPairing}
+                  onClick={() => void startDevicePairing()}
+                >
+                  {startingPairing ? 'Gerando...' : 'Conectar celular'}
+                </button>
+                {pairingError && <p className="sidebar-pairing-error" role="alert">{pairingError}</p>}
+              </div>
+            )}
+            <div className="sidebar-push">
+              <PushButton />
             </div>
-          )}
-          <div className="sidebar-push">
-            <PushButton />
           </div>
         </div>
 

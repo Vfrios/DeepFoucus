@@ -125,8 +125,18 @@
 }
 
 /* =========================================================
-   3. Navegação (.sidebar-nav, .sidebar-link)
+   3. Conteúdo Rolável e Navegação (.sidebar-content, .sidebar-nav, .sidebar-link)
    ========================================================= */
+.sidebar-content {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  overflow-x: hidden;
+  overscroll-behavior: contain;
+}
+
 .sidebar-nav {
   display: flex;
   flex-direction: column;
@@ -184,9 +194,7 @@
   flex-direction: column;
   gap: 16px;
   padding: 28px 20px 20px;
-  overflow: hidden;
-  flex: 1;
-  min-height: 0;
+  flex: 1 0 auto;
 }
 
 .sidebar-title {
