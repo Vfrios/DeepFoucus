@@ -1092,7 +1092,15 @@ export default function PagePUC() {
           onOpenDeliverable={(cid, aid) => {
             setAssistantTarget({ courseId: cid, assignmentId: aid });
           }}
-          onStatusChanged={(next) => setAgentBadge(next)}
+          onStatusChanged={(next) =>
+            setAgentBadge((prev) =>
+              prev.enabled === next.enabled &&
+              prev.paused === next.paused &&
+              prev.activeJobs === next.activeJobs
+                ? prev
+                : next
+            )
+          }
           onClose={() => setAgentOpen(false)}
         />
       )}

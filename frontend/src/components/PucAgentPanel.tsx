@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { api } from '../lib/api';
 import { formatSaoPauloDateTime } from '../lib/canvasHtml';
 
@@ -131,6 +131,11 @@ export default function PucAgentPanel({
   const [maxPerWeek, setMaxPerWeek] = useState(30);
   const [overdueToleranceDays, setOverdueToleranceDays] = useState(7);
 
+  const onStatusChangedRef = useRef(onStatusChanged);
+  useEffect(() => {
+    onStatusChangedRef.current = onStatusChanged;
+  }, [onStatusChanged]);
+
   const loadStatus = useCallback(async (silent = false) => {
     if (!silent) setLoading(true);
     try {
@@ -141,7 +146,7 @@ export default function PucAgentPanel({
       setMaxPerWeek(res.config.maxPerWeek);
       setOverdueToleranceDays(res.config.overdueToleranceDays);
       const activeJobs = res.jobs.filter((j) => j.status === 'queued' || j.status === 'running').length;
-      onStatusChanged?.({
+      onStatusChangedRef.current?.({
         enabled: res.config.enabled,
         paused: res.config.paused,
         activeJobs,
@@ -151,7 +156,7 @@ export default function PucAgentPanel({
     } finally {
       if (!silent) setLoading(false);
     }
-  }, [onStatusChanged]);
+  }, []);
 
   useEffect(() => {
     void loadStatus();
