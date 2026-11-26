@@ -1,4 +1,5 @@
 import OpenAI from 'openai';
+import { resolveAvailableModels } from './aiModels';
 
 /**
  * MOTOR DE IA GENÉRICO
@@ -68,20 +69,20 @@ export function provedores(): Provedor[] {
       nome: 'Groq',
       apiKey: process.env.GROQ_API_KEY,
       baseURL: 'https://api.groq.com/openai/v1',
-      model: 'openai/gpt-oss-120b',
+      model: (process.env.GROQ_MODEL || '').trim(),
       reasoningEffort: 'low',
     },
     {
       nome: 'Gemini',
       apiKey: process.env.GEMINI_API_KEY,
       baseURL: 'https://generativelanguage.googleapis.com/v1beta/openai/',
-      model: 'gemini-3.5-flash',
+      model: (process.env.GEMINI_MODEL || '').trim(),
     },
     {
       nome: 'OpenRouter',
       apiKey: process.env.OPENROUTER_API_KEY,
       baseURL: 'https://openrouter.ai/api/v1',
-      model: 'google/gemma-4-26b-a4b-it:free',
+      model: (process.env.OPENROUTER_MODEL || '').trim(),
     },
   ];
 }
@@ -100,30 +101,41 @@ export async function callAI(
 
   for (const p of provedores()) {
     if (!p.apiKey) continue; // provedor sem chave é pulado silenciosamente
-    try {
-      const client = new OpenAI({
-        apiKey: p.apiKey,
-        baseURL: p.baseURL,
-        timeout: 15_000,
-        maxRetries: 0,
-      });
-      const response = await client.chat.completions.create({
-        model: p.model,
-        messages: [
-          { role: 'system', content: systemPrompt },
-          { role: 'user', content: userPrompt },
-        ],
-        temperature: opts.temperature ?? 0.1,
-        max_tokens: opts.maxTokens,
-        response_format: { type: 'json_object' },
-        ...(p.reasoningEffort ? { reasoning_effort: p.reasoningEffort } : {}),
-      });
-      const conteudo = response.choices[0]?.message?.content || '';
-      return JSON.parse(conteudo);
-    } catch (err: any) {
-      const msg = err?.message ? String(err.message).slice(0, 120) : 'erro_desconhecido';
-      console.warn(`[IA] ${p.nome} falhou: ${msg}`);
-      ultimoErro = msg;
+    const models = await resolveAvailableModels({
+      apiKey: p.apiKey,
+      baseURL: p.baseURL,
+      preferredModel: p.model,
+      limit: 3,
+    });
+    if (models.length === 0) continue;
+
+    const client = new OpenAI({
+      apiKey: p.apiKey,
+      baseURL: p.baseURL,
+      timeout: 15_000,
+      maxRetries: 0,
+    });
+
+    for (const model of models) {
+      try {
+        const response = await client.chat.completions.create({
+          model,
+          messages: [
+            { role: 'system', content: systemPrompt },
+            { role: 'user', content: userPrompt },
+          ],
+          temperature: opts.temperature ?? 0.1,
+          max_tokens: opts.maxTokens,
+          response_format: { type: 'json_object' },
+          ...(p.reasoningEffort && model.includes('gpt-oss') ? { reasoning_effort: p.reasoningEffort } : {}),
+        });
+        const conteudo = response.choices[0]?.message?.content || '';
+        return JSON.parse(conteudo);
+      } catch (err: any) {
+        const msg = err?.message ? String(err.message).slice(0, 120) : 'erro_desconhecido';
+        console.warn(`[IA] ${p.nome} (${model}) falhou: ${msg}`);
+        ultimoErro = msg;
+      }
     }
   }
 
@@ -172,10 +184,19 @@ export async function callVisionAI(
   if (!candidates.length) throw new Error('Nenhum provedor de IA com visão está configurado.');
 
   const run = async (p: Provedor, signal: AbortSignal): Promise<unknown> => {
+    const models = await resolveAvailableModels({
+      apiKey: p.apiKey!,
+      baseURL: p.baseURL,
+      preferredModel: p.model,
+      limit: 1,
+    });
+    const model = models[0];
+    if (!model) throw new Error(`Nenhum modelo disponível em ${p.nome}`);
+
     const client = new OpenAI({ apiKey: p.apiKey, baseURL: p.baseURL, timeout: VISION_TIMEOUT_MS, maxRetries: 0 });
     const response = await client.chat.completions.create(
       {
-        model: p.model,
+        model,
         messages: [
           { role: 'system', content: systemPrompt },
           {

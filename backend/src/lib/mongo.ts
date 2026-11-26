@@ -101,6 +101,24 @@ export function getDb(): Promise<Db> {
       await d.collection('diets').createIndex({ email: 1, geradoEm: -1 });
       await d.collection('daily_plans').createIndex({ email: 1, data: 1 }, { unique: true });
 
+      // Canvas LMS (PUC)
+      await d.collection('canvas_courses').createIndex({ canvas_id: 1 }, { unique: true });
+      await d.collection('canvas_assignments').createIndex({ course_id: 1, canvas_id: 1 }, { unique: true });
+      await d.collection('canvas_assignments').createIndex({ due_at: 1 });
+      await d.collection('canvas_assignments').createIndex({ course_id: 1, project_id: 1 });
+      await d.collection('canvas_announcements').createIndex({ course_id: 1, canvas_id: 1 }, { unique: true });
+      await d.collection('canvas_announcements').createIndex({ posted_at: -1 });
+      await d.collection('canvas_pages').createIndex({ course_id: 1, slug: 1 }, { unique: true });
+      await d.collection('canvas_files').createIndex({ course_id: 1, canvas_id: 1 }, { unique: true });
+      await d.collection('canvas_modules').createIndex({ course_id: 1, canvas_id: 1 }, { unique: true });
+      await d.collection('canvas_sync_log').createIndex({ started_at: -1 });
+
+      // Assistente de Trabalhos PUC
+      await d.collection('puc_projects').createIndex({ course_id: 1, project_id: 1 }, { unique: true });
+      await d.collection('puc_deliverables').createIndex({ course_id: 1, assignment_id: 1 }, { unique: true });
+      await d.collection('puc_deliverables').createIndex({ status: 1, updated_at: -1 });
+      await d.collection('puc_course_lessons').createIndex({ course_id: 1 }, { unique: true });
+
       db = d;
       return d;
     })().catch((e) => {

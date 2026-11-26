@@ -19,6 +19,9 @@ import aiRoute from './routes/ai';
 import financeRoute from './routes/finance';
 import healthRoute, { startWorkoutSessionJob, rotateWaterMetrics } from './routes/health';
 import dailyPlansRoute from './routes/dailyPlans';
+import pucRoute from './routes/puc';
+import { syncAgora } from './lib/canvasSync';
+import { getDb } from './lib/mongo';
 import cron from 'node-cron';
 import { runScheduledAgent } from './agents/scheduler';
 import { agentLog } from './agents/log';
@@ -29,8 +32,9 @@ const PORT = Number(process.env.PORT) || 3001;
 
 app.set('trust proxy', 1);
 app.use(cors({ origin: process.env.FRONTEND_URL || true }));
-// A foto da nota/lista (JPEG reduzido) precisa de um limite maior que o padrão de 100kb
+// A foto da nota/lista (JPEG reduzido) e entregas Markdown precisam de limites maiores que 100kb
 app.use('/api/shopping/receipt-scan', express.json({ limit: '4mb' }));
+app.use('/api/puc/assistant', express.json({ limit: '2mb' }));
 app.use(express.json({ limit: '100kb' }));
 app.use(deviceMiddleware);
 
@@ -55,6 +59,7 @@ app.use('/api/notes', jwtAuth, requireRole(['owner']), notesRoute);
 app.use('/api/shopping', shoppingRoute);
 app.use('/api/ai', aiRoute);
 app.use('/api/finance', financeRoute);
+app.use('/api/puc', pucRoute);
 app.use('/api', (_req, res) => res.status(404).json({ error: 'not_found' }));
 
 // Em produção o Express também serve o build do Vite
@@ -91,6 +96,40 @@ setInterval(runWorkoutSessionJob, 5 * 60 * 1000);
 const runMetricRotation = () => rotateWaterMetrics();
 runMetricRotation();
 setInterval(runMetricRotation, 24 * 60 * 60 * 1000);
+const runCanvasSync = (mode: 'light' | 'full') => {
+  getDb()
+    .then((db) => syncAgora(db, mode))
+    .catch((error) => {
+      console.error(`[puc] sync (${mode}) failed:`, error instanceof Error ? error.message : String(error));
+    });
+};
+// Não roda no boot: aguarda 60s e só dispara sync leve se o último sync tiver mais de 20 min
+setTimeout(() => {
+  getDb()
+    .then(async (db) => {
+      const last = await db
+        .collection('canvas_sync_log')
+        .find()
+        .sort({ started_at: -1 })
+        .limit(1)
+        .next();
+      const lastAt = last?.started_at ? new Date(last.started_at).getTime() : 0;
+      if (!last || Date.now() - lastAt > 20 * 60 * 1000) {
+        await syncAgora(db, 'light');
+      }
+    })
+    .catch((error) => {
+      console.error('[puc] delayed startup sync check failed:', error instanceof Error ? error.message : String(error));
+    });
+}, 60_000);
+// Sync leve a cada 20 min
+setInterval(() => runCanvasSync('light'), 20 * 60 * 1000);
+// Sync completo 1x por dia (03:30 America/Sao_Paulo)
+try {
+  cron.schedule('30 3 * * *', () => runCanvasSync('full'), { timezone: 'America/Sao_Paulo', noOverlap: true });
+} catch (error) {
+  console.error('[puc] full sync cron setup failed:', error instanceof Error ? error.message : String(error));
+}
 const server = createServer(app);
 attachWebSocketServer(server);
 server.listen(PORT, () => console.log(`Wall Dashboard na porta ${PORT} (${PROD ? 'produção' : 'dev'})`));

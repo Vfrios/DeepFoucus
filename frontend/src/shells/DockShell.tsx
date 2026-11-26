@@ -59,6 +59,13 @@ function DockIcon({ name }: { name: DockIconName }) {
           <path d="M12 8v7M8.5 11.5h7" />
         </>
       )}
+      {name === 'puc' && (
+        <>
+          <path d="M2.5 9.5 12 4.5l9.5 5L12 14.5 2.5 9.5Z" />
+          <path d="M6 11.5v5c0 1.4 2.7 2.5 6 2.5s6-1.1 6-2.5v-5" />
+          <path d="M21.5 9.5v5.5" />
+        </>
+      )}
     </svg>
   );
 }
