@@ -119,6 +119,13 @@ export function getDb(): Promise<Db> {
       await d.collection('puc_deliverables').createIndex({ status: 1, updated_at: -1 });
       await d.collection('puc_course_lessons').createIndex({ course_id: 1 }, { unique: true });
 
+      // Agente de Automação PUC (jobs assíncronos + decisões)
+      await d.collection('puc_jobs').createIndex({ job_id: 1 }, { unique: true });
+      await d.collection('puc_jobs').createIndex({ status: 1, priority_due_at: 1, created_at: 1 });
+      await d.collection('puc_jobs').createIndex({ course_id: 1, assignment_id: 1, status: 1 });
+      await d.collection('puc_agent_records').createIndex({ course_id: 1, assignment_id: 1 }, { unique: true });
+      await d.collection('puc_agent_records').createIndex({ status: 1, updated_at: -1 });
+
       db = d;
       return d;
     })().catch((e) => {

@@ -255,6 +255,10 @@ export interface CanvasAssignmentApi {
   html_url?: string | null;
   submission_types?: string[];
   group_category_id?: number | null;
+  quiz_id?: number | null;
+  is_quiz_assignment?: boolean;
+  external_tool_tag_attributes?: { url?: string | null; new_tab?: boolean } | null;
+  created_at?: string | null;
   position?: number | null;
   updated_at?: string | null;
   published?: boolean;

@@ -25,6 +25,8 @@ import {
   GradedPartNotification,
   MultiPartProjectSpec,
 } from './pucAssistantCore';
+import { computeStatementHash } from './pucAgentCore';
+import { evaluateAgentAfterSync, SyncAgentEvaluationResult } from './pucAgentRunner';
 import { getGithubConfigStatus } from './pucGithub';
 import {
   computeDaysRemaining,
@@ -76,6 +78,7 @@ export interface SyncResult {
   pagesFetchedBodies?: number;
   pagesSkippedUnchanged?: number;
   changesDetected?: number;
+  agentSummary?: SyncAgentEvaluationResult;
   warnings?: string[];
   error?: string;
 }
@@ -190,6 +193,8 @@ async function syncSingleCourse(
   timings: StageTimings,
   changes: ChangeEvent[],
   gradedPartNotifications: GradedPartNotification[],
+  changedStatementKeys: Array<{ courseId: number; assignmentId: number }>,
+  unlockedPartKeys: Array<{ courseId: number; assignmentId: number }>,
   hadPreviousSync: boolean,
   pageStats: { fetched: number; skipped: number }
 ): Promise<void> {
@@ -225,6 +230,7 @@ async function syncSingleCourse(
               workflow_state: 1,
               submitted_at: 1,
               name: 1,
+              statement_hash: 1,
               assignment_kind: 1,
               assignment_kind_manual: 1,
               project_id: 1,
@@ -348,6 +354,18 @@ async function syncSingleCourse(
               ? sub.rubric_assessment
               : null;
 
+          const statementHash = computeStatementHash(a.description);
+          const prevDoc = prevMap.get(a.id);
+          if (
+            hadPreviousSync &&
+            prevDoc &&
+            typeof prevDoc.statement_hash === 'string' &&
+            prevDoc.statement_hash.length > 0 &&
+            prevDoc.statement_hash !== statementHash
+          ) {
+            changedStatementKeys.push({ courseId, assignmentId: a.id });
+          }
+
           return {
             updateOne: {
               filter: { course_id: courseId, canvas_id: a.id },
@@ -358,6 +376,7 @@ async function syncSingleCourse(
                   canvas_id: a.id,
                   name: a.name || '(sem título)',
                   description: a.description ?? null,
+                  statement_hash: statementHash,
                   due_at: dueAt,
                   lock_at: lockAt,
                   locked_for_user: Boolean(a.locked_for_user),
@@ -365,6 +384,10 @@ async function syncSingleCourse(
                   html_url: a.html_url || `${baseUrl}/courses/${courseId}/assignments/${a.id}`,
                   submission_types: submissionTypes,
                   group_category_id: typeof a.group_category_id === 'number' ? a.group_category_id : null,
+                  quiz_id: typeof a.quiz_id === 'number' ? a.quiz_id : null,
+                  is_quiz_assignment: Boolean(a.is_quiz_assignment),
+                  external_tool_url: a.external_tool_tag_attributes?.url ?? null,
+                  created_at: a.created_at ? new Date(a.created_at) : null,
                   workflow_state: workflowState,
                   submitted_at: submittedAt,
                   submission_body: typeof sub?.body === 'string' ? sub.body : null,
@@ -380,6 +403,9 @@ async function syncSingleCourse(
                   rubric_assessment: rubricAssessment,
                   updated_at: a.updated_at ? new Date(a.updated_at) : null,
                   synced_at: now,
+                },
+                $setOnInsert: {
+                  first_seen_at: now,
                 },
               },
               upsert: true,
@@ -467,6 +493,7 @@ async function syncSingleCourse(
         });
         if (notif) {
           gradedPartNotifications.push(notif);
+          unlockedPartKeys.push({ courseId, assignmentId: notif.nextAssignmentId });
         }
       }
     }
@@ -847,6 +874,8 @@ export async function syncAgora(db: Db, mode: CanvasSyncMode = 'light'): Promise
   const warnings: string[] = [];
   const changes: ChangeEvent[] = [];
   const gradedPartNotifications: GradedPartNotification[] = [];
+  const changedStatementKeys: Array<{ courseId: number; assignmentId: number }> = [];
+  const unlockedPartKeys: Array<{ courseId: number; assignmentId: number }> = [];
   const pageStats = { fetched: 0, skipped: 0 };
   const timings: StageTimings = {
     courses: 0,
@@ -1001,6 +1030,8 @@ export async function syncAgora(db: Db, mode: CanvasSyncMode = 'light'): Promise
           timings,
           changes,
           gradedPartNotifications,
+          changedStatementKeys,
+          unlockedPartKeys,
           hadPreviousSync,
           pageStats
         );
@@ -1016,6 +1047,21 @@ export async function syncAgora(db: Db, mode: CanvasSyncMode = 'light'): Promise
     }
     if (gradedPartNotifications.length > 0) {
       await sendGradedPartNotifications(gradedPartNotifications);
+    }
+
+    // Gatilho do Agente de Automação PUC ao final de cada sync
+    let agentSummary: SyncAgentEvaluationResult | undefined;
+    try {
+      agentSummary = await evaluateAgentAfterSync(db, {
+        courses: visibleCourses,
+        changedStatementKeys,
+        unlockedPartKeys,
+        now: new Date(),
+      });
+    } catch (agentErr) {
+      warnings.push(
+        `Agente PUC: ${agentErr instanceof Error ? agentErr.message : String(agentErr)}`
+      );
     }
 
     const finishedAt = new Date();
@@ -1035,6 +1081,7 @@ export async function syncAgora(db: Db, mode: CanvasSyncMode = 'light'): Promise
       pages_fetched_bodies: pageStats.fetched,
       pages_skipped_unchanged: pageStats.skipped,
       changes_detected: changes.length,
+      agent_summary: agentSummary ?? null,
       warnings: warnings.slice(0, 50),
       error: null,
     });
@@ -1050,6 +1097,7 @@ export async function syncAgora(db: Db, mode: CanvasSyncMode = 'light'): Promise
       pagesFetchedBodies: pageStats.fetched,
       pagesSkippedUnchanged: pageStats.skipped,
       changesDetected: changes.length,
+      agentSummary,
       warnings,
     };
   } catch (err) {

@@ -2,7 +2,12 @@ import { classifyDeliveryStatus, formatSaoPauloDateTime, normalizeText } from '.
 
 export type AssignmentKind = 'multi_part' | 'one_shot';
 
-export type DeliverableStatus = 'rascunho' | 'revisada_por_mim' | 'validada' | 'entrega_gerada';
+export type DeliverableStatus =
+  | 'rascunho'
+  | 'enviado_a_verificar'
+  | 'revisada_por_mim'
+  | 'validada'
+  | 'entrega_gerada';
 
 export type AssignmentDeliveryFormat = 'manuscrito' | 'digitado' | 'codigo' | 'link' | 'arquivo';
 
@@ -17,20 +22,27 @@ export type PartTimelineState =
 
 export const DELIVERABLE_STATUS_LABEL: Record<DeliverableStatus, string> = {
   rascunho: 'Rascunho',
+  enviado_a_verificar: 'Enviado a verificar',
   revisada_por_mim: 'Revisada por mim',
-  validada: 'Validada (pronta)',
-  entrega_gerada: 'Entrega gerada',
+  validada: 'Verificado',
+  entrega_gerada: 'No GitHub (verificado)',
 };
 
 /**
- * Normaliza status legados ('pronta' -> 'validada') para o novo ciclo:
- * rascunho -> revisada_por_mim -> validada -> entrega_gerada
+ * Normaliza status legados ('pronta' -> 'validada') para o ciclo atual:
+ * rascunho / enviado_a_verificar -> revisada_por_mim -> validada (verificado) -> entrega_gerada (no GitHub)
  */
 export function normalizeDeliverableStatus(raw: unknown): DeliverableStatus {
-  if (raw === 'rascunho' || raw === 'revisada_por_mim' || raw === 'validada' || raw === 'entrega_gerada') {
+  if (
+    raw === 'rascunho' ||
+    raw === 'enviado_a_verificar' ||
+    raw === 'revisada_por_mim' ||
+    raw === 'validada' ||
+    raw === 'entrega_gerada'
+  ) {
     return raw;
   }
-  if (raw === 'pronta') return 'validada';
+  if (raw === 'pronta' || raw === 'verificado') return 'validada';
   return 'rascunho';
 }
 

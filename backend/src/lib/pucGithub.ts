@@ -66,6 +66,7 @@ export interface GithubPublishResult {
   folderUrl: string;
   branch: string;
   paths: string[];
+  deletedPaths?: string[];
   retriesUsed: number;
 }
 
@@ -234,20 +235,94 @@ export function buildDeliverableGithubPaths(params: {
 }
 
 /**
+ * Monta a estrutura para entregas geradas automaticamente pelo Agente em `pendentes/`:
+ * `pendentes/<semestre>/<sigla>/<trabalho>/entrega-v1.md`,
+ * `entrega-v1.pdf` (digitada) ou `copiar-a-mao-v1.txt` (manuscrita), e código quando houver.
+ */
+export function buildPendingDeliverableGithubPaths(params: {
+  semester: string;
+  courseAcronym: string;
+  assignmentName: string;
+  version?: number;
+  isHandwritten?: boolean;
+  codeFiles?: ExtractedCodeFile[];
+}): DeliverableGithubPaths {
+  const semSeg = sanitizeGithubSegment(params.semester || 'sem-semestre', 'sem-semestre', false, 32);
+  const acronymRaw = (params.courseAcronym || 'PUC').trim().toUpperCase();
+  const acronymSeg = sanitizeGithubSegment(acronymRaw, 'PUC', false, 20).toUpperCase();
+  const workSeg = sanitizeGithubSegment(params.assignmentName || 'trabalho', 'trabalho', false, 80);
+  const ver = Math.max(1, Math.floor(params.version || 1));
+
+  const folderPath = `pendentes/${semSeg}/${acronymSeg}/${workSeg}`;
+  const isHandwritten = Boolean(params.isHandwritten);
+  const pdfPath = isHandwritten ? null : `${folderPath}/entrega-v${ver}.pdf`;
+  const txtPath = isHandwritten ? `${folderPath}/copiar-a-mao-v${ver}.txt` : null;
+  const mdPath = `${folderPath}/entrega-v${ver}.md`;
+
+  const codeFiles = Array.isArray(params.codeFiles) ? params.codeFiles : [];
+  const usedCodePaths = new Set<string>();
+  const codeFilePaths: Array<{ path: string; content: string }> = [];
+
+  for (const f of codeFiles) {
+    const rel = sanitizeGithubRelativePath(f.path, 'arquivo.txt');
+    const full = `${folderPath}/codigo-v${ver}/${rel}`;
+    const key = full.toLowerCase();
+    if (usedCodePaths.has(key)) continue;
+    usedCodePaths.add(key);
+    codeFilePaths.push({ path: full, content: f.content });
+  }
+
+  const zipPath = codeFilePaths.length > 0 ? `${folderPath}/codigo-v${ver}.zip` : null;
+  const cleanTitle = String(params.assignmentName || 'Trabalho')
+    .replace(/[\r\n]+/g, ' ')
+    .trim()
+    .slice(0, 120);
+  const commitMessage = `[${acronymSeg}] ${cleanTitle} - gerado (a verificar)`;
+
+  return {
+    folderPath,
+    pdfPath,
+    txtPath,
+    mdPath,
+    zipPath,
+    codeFilePaths,
+    commitMessage,
+  };
+}
+
+/**
  * Garante que SOMENTE arquivos da entrega do aluno dentro da pasta esperada sejam enviados ao GitHub.
+ * Aceita tanto `<semestre>/<sigla>/<trabalho>/...` quanto `pendentes/<semestre>/<sigla>/<trabalho>/...`.
  * Bloqueia qualquer tentativa de subir materiais de curso, anexos de professores ou dados do Canvas.
  */
 export function assertDeliverableOnlyFiles(
   folderPath: string,
   files: GithubFileToCommit[]
 ): void {
-  const prefix = `${folderPath.replace(/\/+$/, '')}/`;
-  const allowedPattern = /^([^/]+\/){3}(entrega-v\d+\.(md|pdf)|copiar-a-mao-v\d+\.txt|codigo-v\d+\.zip|codigo-v\d+\/.+)$/;
+  const cleanFolder = folderPath.replace(/\/+$/, '');
+  const prefix = `${cleanFolder}/`;
+  const allowedPattern =
+    /^(?:pendentes\/)?([^/]+\/){3}(entrega-v\d+\.(md|pdf)|copiar-a-mao-v\d+\.txt|codigo-v\d+\.zip|codigo-v\d+\/.+)$/;
 
   for (const f of files) {
     if (!f.path.startsWith(prefix) || f.path.includes('..') || !allowedPattern.test(f.path)) {
       throw new Error(
         `Arquivo bloqueado por política de privacidade ("${f.path}"): somente entregas do aluno podem ser publicadas no GitHub.`
+      );
+    }
+  }
+}
+
+/**
+ * Valida caminhos a serem removidos atomicamente no commit (somente dentro de `pendentes/`).
+ */
+export function assertPendingDeleteOnlyPaths(deletePaths: string[]): void {
+  const allowedPendingPattern =
+    /^pendentes\/([^/]+\/){3}(entrega-v\d+\.(md|pdf)|copiar-a-mao-v\d+\.txt|codigo-v\d+\.zip|codigo-v\d+\/.+)$/;
+  for (const p of deletePaths) {
+    if (!p || p.includes('..') || !allowedPendingPattern.test(p)) {
+      throw new Error(
+        `Remoção bloqueada por segurança ("${p}"): somente arquivos em pendentes/ podem ser removidos automaticamente.`
       );
     }
   }
@@ -594,6 +669,7 @@ export async function publishDeliverableToGithub(
     folderPath: string;
     commitMessage: string;
     files: GithubFileToCommit[];
+    deletePaths?: string[];
   },
   opts: {
     fetchImpl?: FetchLike;
@@ -617,6 +693,13 @@ export async function publishDeliverableToGithub(
 
   // Garante que apenas arquivos da entrega sejam enviados (nunca anexos/dados do Canvas)
   assertDeliverableOnlyFiles(params.folderPath, params.files);
+
+  const uniqueDeletePaths = Array.isArray(params.deletePaths)
+    ? Array.from(new Set(params.deletePaths.filter((p) => typeof p === 'string' && p.trim().length > 0)))
+    : [];
+  if (uniqueDeletePaths.length > 0) {
+    assertPendingDeleteOnlyPaths(uniqueDeletePaths);
+  }
 
   const baseRepoPath = `/repos/${encodeURIComponent(params.owner)}/${encodeURIComponent(params.repo)}`;
 
@@ -664,6 +747,21 @@ export async function publishDeliverableToGithub(
       opts
     );
 
+    const treeEntries: Array<{ path: string; mode: '100644'; type: 'blob'; sha: string | null }> = [
+      ...blobEntries.map((b) => ({
+        path: b.path,
+        mode: '100644' as const,
+        type: 'blob' as const,
+        sha: b.sha,
+      })),
+      ...uniqueDeletePaths.map((p) => ({
+        path: p,
+        mode: '100644' as const,
+        type: 'blob' as const,
+        sha: null,
+      })),
+    ];
+
     const newTree = await githubJson<{ sha: string }>(
       `${baseRepoPath}/git/trees`,
       params.token,
@@ -671,12 +769,7 @@ export async function publishDeliverableToGithub(
         method: 'POST',
         body: JSON.stringify({
           base_tree: headCommit.tree.sha,
-          tree: blobEntries.map((b) => ({
-            path: b.path,
-            mode: '100644',
-            type: 'blob',
-            sha: b.sha,
-          })),
+          tree: treeEntries,
         }),
       },
       opts
@@ -713,6 +806,7 @@ export async function publishDeliverableToGithub(
         folderUrl: `https://github.com/${params.owner}/${params.repo}/tree/${encodeURIComponent(params.branch)}/${params.folderPath}`,
         branch: params.branch,
         paths: blobEntries.map((b) => b.path),
+        ...(uniqueDeletePaths.length > 0 ? { deletedPaths: uniqueDeletePaths } : {}),
         retriesUsed,
       };
     }

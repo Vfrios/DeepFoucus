@@ -2,7 +2,12 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { api } from '../lib/api';
 import { formatSaoPauloDateTime, sanitizeCanvasHtml } from '../lib/canvasHtml';
 
-export type DeliverableStatus = 'rascunho' | 'revisada_por_mim' | 'validada' | 'entrega_gerada';
+export type DeliverableStatus =
+  | 'rascunho'
+  | 'enviado_a_verificar'
+  | 'revisada_por_mim'
+  | 'validada'
+  | 'entrega_gerada';
 
 interface ProviderOption {
   id: 'gemini' | 'groq' | 'openrouter';
@@ -203,6 +208,12 @@ interface AssistantWorkspaceResponse {
     lastPublishedFolderUrl?: string | null;
     lastPublishedVersion?: number | null;
     lastPublishedAt?: string | null;
+    hasPendingGithub?: boolean;
+    pendingHtmlUrl?: string | null;
+    pendingFolderUrl?: string | null;
+    statementChanged?: boolean;
+    generatedByAgent?: boolean;
+    estimatedCostUsd?: number | null;
     hasUnpublishedChanges?: boolean;
     lastReview: ReviewRecord | null;
     hasCodeFiles: boolean;
@@ -1172,6 +1183,28 @@ export default function PucWorkAssistantModal({
                       </div>
                     )}
 
+                    {/* Alerta de enunciado alterado no Canvas (nunca regera sozinho) */}
+                    {data.deliverable?.statementChanged && (
+                      <div className="puc-placeholder-alert" role="alert">
+                        <div className="puc-item-head">
+                          <strong>O enunciado mudou no Canvas após a geração.</strong>
+                          {data.course.aiAllowed && (
+                            <button
+                              type="button"
+                              className="btn"
+                              disabled={analyzing || generating || !data.canGenerate}
+                              onClick={() => void handleAnalyzeUnderstanding()}
+                            >
+                              Regerar
+                            </button>
+                          )}
+                        </div>
+                        <p className="puc-muted" style={{ margin: '4px 0 0' }}>
+                          O agente não regerou automaticamente para preservar suas edições. Clique em "Regerar" se quiser gerar novamente.
+                        </p>
+                      </div>
+                    )}
+
                     {/* Editor Markdown */}
                     <textarea
                       className="puc-markdown-editor"
@@ -1179,15 +1212,28 @@ export default function PucWorkAssistantModal({
                       value={markdown}
                       onChange={(e) => {
                         setMarkdown(e.target.value);
-                        if (status === 'rascunho' || status === 'entrega_gerada' || status === 'validada') {
+                        if (
+                          status === 'rascunho' ||
+                          status === 'enviado_a_verificar' ||
+                          status === 'entrega_gerada' ||
+                          status === 'validada'
+                        ) {
                           setStatus('revisada_por_mim');
                         }
                       }}
                     />
 
-                    {/* Controles de Status (rascunho -> revisada -> validada -> ENTREGA GERADA), Salvar, Revisar e Exportar */}
+                    {/* Controles de Status (enviado a verificar -> revisada -> verificado -> No GitHub), Salvar, Revisar e Exportar */}
                     <div className="puc-assistant-actions">
                       <div className="puc-status-pills">
+                        {status === 'enviado_a_verificar' && (
+                          <span
+                            className="puc-badge tone-accent"
+                            title="Publicado pelo agente em pendentes/ no GitHub aguardando sua verificação"
+                          >
+                            Enviado a verificar
+                          </span>
+                        )}
                         <button
                           type="button"
                           className={`puc-filter-pill${status === 'rascunho' ? ' is-on' : ''}`}
@@ -1219,17 +1265,17 @@ export default function PucWorkAssistantModal({
                               ? 'Remova todos os marcadores [PREENCHER] primeiro'
                               : completenessFailed
                                 ? 'Responda todas as questões faltantes primeiro'
-                                : 'Marcar entrega como validada (pronta para salvar no GitHub)'
+                                : 'Marcar entrega como Verificado (libera "Atualizar GitHub")'
                           }
                         >
-                          Validada (pronta)
+                          Verificado
                         </button>
                         {status === 'entrega_gerada' && (
                           <span
                             className="puc-badge tone-ok"
                             title="Definido automaticamente após commit confirmado no GitHub. Não envia ao Canvas."
                           >
-                            ✓ Entrega gerada (GitHub)
+                            ✓ No GitHub (verificado)
                           </span>
                         )}
                       </div>
@@ -1314,15 +1360,35 @@ export default function PucWorkAssistantModal({
                               data.github?.expired
                                 ? 'Token do GitHub expirado ou inválido — atualize na tela GitHub'
                                 : !canPublishGithub
-                                  ? 'Marque como "Validada (pronta)" (sem alterações não salvas, sem [PREENCHER] e completa) para publicar'
-                                  : 'Publicar commit atômico no GitHub privado e marcar como Entrega gerada'
+                                  ? 'Marque como "Verificado" (sem alterações não salvas, sem [PREENCHER] e completa) para atualizar no GitHub'
+                                  : data.deliverable?.hasPendingGithub
+                                    ? 'Commit atômico: move de pendentes/ para a pasta definitiva da matéria'
+                                    : 'Publicar commit atômico no GitHub privado'
                             }
                             onClick={() => void handlePublishGithub()}
                           >
-                            {publishingGh ? 'Publicando no GitHub...' : 'Salvar no GitHub'}
+                            {publishingGh
+                              ? 'Atualizando GitHub...'
+                              : data.deliverable?.hasPendingGithub ||
+                                  (data.deliverable?.lastPublishedVersion || 0) > 0
+                                ? 'Atualizar GitHub'
+                                : 'Salvar no GitHub'}
                           </button>
                         )}
                       </div>
+                      {data.deliverable?.hasPendingGithub &&
+                        (data.deliverable.pendingFolderUrl || data.deliverable.pendingHtmlUrl) && (
+                          <div className="puc-export-row">
+                            <a
+                              href={data.deliverable.pendingFolderUrl || data.deliverable.pendingHtmlUrl || '#'}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="btn ghost"
+                            >
+                              Ver em pendentes/ (GitHub)
+                            </a>
+                          </div>
+                        )}
                       {data.github?.configured &&
                         (Boolean(data.github?.expired) || (!canPublishGithub && status !== 'entrega_gerada')) &&
                         markdown.trim().length > 0 && (

@@ -15,6 +15,7 @@ import { jwtAuth } from '../middleware/jwtAuth';
 import { requireRole } from '../middleware/requireRole';
 import { createPucDownloadRouter } from './pucDownload';
 import { createPucAssistantRouter } from './pucAssistant';
+import { createPucAgentRouter } from './pucAgent';
 import {
   findPendingPlaceholders,
   isReadyToSubmitInCanvas,
@@ -102,16 +103,20 @@ function mapAssignment(a: any, now: Date, deliverable?: any) {
     deliverableStatus,
     readyToSubmit,
     isHandwritten: Boolean(deliverable?.is_handwritten),
-    githubUrl: deliverable?.last_published_url ?? null,
+    githubUrl: deliverable?.last_published_url ?? deliverable?.pending_html_url ?? null,
+    hasPendingGithub:
+      Array.isArray(deliverable?.pending_github_paths) && deliverable.pending_github_paths.length > 0,
+    statementChanged: Boolean(deliverable?.statement_changed),
     pendingPlaceholdersCount: deliverable?.current_markdown
       ? findPendingPlaceholders(String(deliverable.current_markdown)).length
       : 0,
   };
 }
 
-// Monta as rotas de download e do assistente (que também suportam ?dt=<token curto>) antes do middleware global
+// Monta as rotas de download, do assistente e do agente antes do middleware global
 r.use(createPucDownloadRouter(pucAuth));
 r.use('/assistant', createPucAssistantRouter(pucAuth));
+r.use('/agent', createPucAgentRouter(pucAuth));
 
 // Demais rotas exigem autenticação padrão
 r.use(pucAuth);
@@ -143,7 +148,9 @@ r.get('/status', async (_req, res, next) => {
     let readyToSubmit = 0;
     const awaitingReview = await db
       .collection('puc_deliverables')
-      .countDocuments({ status: { $in: ['rascunho', 'revisada_por_mim', 'validada', 'pronta'] } });
+      .countDocuments({
+        status: { $in: ['rascunho', 'enviado_a_verificar', 'revisada_por_mim', 'validada', 'pronta'] },
+      });
 
     if (visibleIds.length > 0) {
       const [allAssignments, unreadCount, generatedDeliverables] = await Promise.all([
@@ -472,7 +479,19 @@ r.get('/upcoming', async (_req, res, next) => {
         .collection('puc_deliverables')
         .find(
           { course_id: { $in: visibleIds } },
-          { projection: { course_id: 1, assignment_id: 1, status: 1, current_markdown: 1, last_published_url: 1, is_handwritten: 1 } }
+          {
+            projection: {
+              course_id: 1,
+              assignment_id: 1,
+              status: 1,
+              current_markdown: 1,
+              last_published_url: 1,
+              pending_html_url: 1,
+              pending_github_paths: 1,
+              statement_changed: 1,
+              is_handwritten: 1,
+            },
+          }
         )
         .toArray(),
     ]);
@@ -523,7 +542,18 @@ r.get('/:cid/assignments', async (req, res, next) => {
         .collection('puc_deliverables')
         .find(
           { course_id: cid },
-          { projection: { assignment_id: 1, status: 1, current_markdown: 1, last_published_url: 1, is_handwritten: 1 } }
+          {
+            projection: {
+              assignment_id: 1,
+              status: 1,
+              current_markdown: 1,
+              last_published_url: 1,
+              pending_html_url: 1,
+              pending_github_paths: 1,
+              statement_changed: 1,
+              is_handwritten: 1,
+            },
+          }
         )
         .toArray(),
     ]);

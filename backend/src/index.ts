@@ -21,6 +21,7 @@ import healthRoute, { startWorkoutSessionJob, rotateWaterMetrics } from './route
 import dailyPlansRoute from './routes/dailyPlans';
 import pucRoute from './routes/puc';
 import { syncAgora } from './lib/canvasSync';
+import { startPucAgentWorker } from './lib/pucAgentRunner';
 import { getDb } from './lib/mongo';
 import cron from 'node-cron';
 import { runScheduledAgent } from './agents/scheduler';
@@ -124,6 +125,8 @@ setTimeout(() => {
 }, 60_000);
 // Sync leve a cada 20 min
 setInterval(() => runCanvasSync('light'), 20 * 60 * 1000);
+// Worker assíncrono do Agente PUC (processa fila puc_jobs sem bloquear requisições HTTP)
+startPucAgentWorker(getDb);
 // Sync completo 1x por dia (03:30 America/Sao_Paulo)
 try {
   cron.schedule('30 3 * * *', () => runCanvasSync('full'), { timezone: 'America/Sao_Paulo', noOverlap: true });

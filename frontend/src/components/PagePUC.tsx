@@ -12,6 +12,7 @@ import {
 } from '../lib/canvasHtml';
 import PucWorkAssistantModal, { DeliverableStatus } from './PucWorkAssistantModal';
 import PucGithubConfigPanel, { GithubConfigStatus } from './PucGithubConfigPanel';
+import PucAgentPanel from './PucAgentPanel';
 
 interface TokenStatus {
   configured: boolean;
@@ -131,6 +132,8 @@ interface PucAssignment {
   readyToSubmit?: boolean;
   isHandwritten?: boolean;
   githubUrl?: string | null;
+  hasPendingGithub?: boolean;
+  statementChanged?: boolean;
   pendingPlaceholdersCount?: number;
 }
 
@@ -146,8 +149,9 @@ interface ReadyToSubmitItem {
 }
 
 function getDeliverableBadge(status: DeliverableStatus): { label: string; tone: string } {
-  if (status === 'entrega_gerada') return { label: 'Entrega gerada', tone: 'ok' };
-  if (status === 'validada') return { label: 'Validada (pronta)', tone: 'accent' };
+  if (status === 'entrega_gerada') return { label: 'No GitHub (verificado)', tone: 'ok' };
+  if (status === 'validada') return { label: 'Verificado', tone: 'accent' };
+  if (status === 'enviado_a_verificar') return { label: 'Enviado a verificar', tone: 'accent' };
   if (status === 'revisada_por_mim') return { label: 'Revisada por mim', tone: 'warm' };
   return { label: 'Rascunho', tone: 'muted' };
 }
@@ -365,6 +369,12 @@ export default function PagePUC() {
   const [togglingAiCourseId, setTogglingAiCourseId] = useState<number | null>(null);
   const [githubOpen, setGithubOpen] = useState(false);
   const [githubStatus, setGithubStatus] = useState<GithubConfigStatus | null>(null);
+  const [agentOpen, setAgentOpen] = useState(false);
+  const [agentBadge, setAgentBadge] = useState<{ enabled: boolean; paused: boolean; activeJobs: number }>({
+    enabled: false,
+    paused: false,
+    activeJobs: 0,
+  });
 
   // Downloads
   const [downloadingKey, setDownloadingKey] = useState<string | null>(null);
@@ -416,6 +426,20 @@ export default function PagePUC() {
 
   useEffect(() => {
     void loadBaseData();
+    // Deep-link via Web Push (/?page=puc&courseId=...&assignmentId=... ou ?tab=agent)
+    try {
+      const params = new URLSearchParams(window.location.search);
+      const cid = Number(params.get('courseId') || '');
+      const aid = Number(params.get('assignmentId') || '');
+      if (Number.isSafeInteger(cid) && cid > 0 && Number.isSafeInteger(aid) && aid > 0) {
+        setSelectedCourseId(cid);
+        setAssistantTarget({ courseId: cid, assignmentId: aid });
+      } else if (params.get('tab') === 'agent') {
+        setAgentOpen(true);
+      }
+    } catch {
+      // ignore
+    }
   }, [loadBaseData]);
 
   // Polling leve do progresso enquanto o sync está em andamento
@@ -819,6 +843,21 @@ export default function PagePUC() {
             </button>
             <button
               type="button"
+              className={`btn ghost${agentOpen ? ' is-active-btn' : ''}`}
+              onClick={() => setAgentOpen((v) => !v)}
+            >
+              {agentOpen
+                ? 'Fechar Agente'
+                : agentBadge.activeJobs > 0
+                  ? `Agente (${agentBadge.activeJobs} ativo)`
+                  : agentBadge.enabled
+                    ? agentBadge.paused
+                      ? 'Agente (pausado)'
+                      : 'Agente ●'
+                    : 'Agente'}
+            </button>
+            <button
+              type="button"
               className={`btn ghost${githubOpen ? ' is-active-btn' : ''}`}
               onClick={() => setGithubOpen((v) => !v)}
             >
@@ -922,7 +961,7 @@ export default function PagePUC() {
               className={`puc-quick-chip tone-warm${showAwaitingReview ? ' is-on' : ''}`}
               onClick={() => setShowAwaitingReview((v) => !v)}
             >
-              Aguardando revisão <strong>{summary.awaitingReview ?? awaitingReviewItems.length}</strong>
+              A verificar: <strong>{summary.awaitingReview ?? awaitingReviewItems.length}</strong>
             </button>
             <button
               type="button"
@@ -1046,6 +1085,17 @@ export default function PagePUC() {
           </div>
         )}
       </header>
+
+      {/* ---- Tela / Aba Agente de Automação PUC ---- */}
+      {agentOpen && (
+        <PucAgentPanel
+          onOpenDeliverable={(cid, aid) => {
+            setAssistantTarget({ courseId: cid, assignmentId: aid });
+          }}
+          onStatusChanged={(next) => setAgentBadge(next)}
+          onClose={() => setAgentOpen(false)}
+        />
+      )}
 
       {/* ---- Tela / Painel GitHub Privado ---- */}
       {githubOpen && (
@@ -1731,6 +1781,9 @@ export default function PagePUC() {
                                         Multi-parte{a.partOrder ? ` · P${a.partOrder}` : ''}
                                       </span>
                                     )}
+                                    {a.statementChanged && (
+                                      <span className="puc-badge tone-danger">Enunciado mudou</span>
+                                    )}
                                     {a.readyToSubmit && (
                                       <span className="puc-badge tone-accent">Pronto para enviar</span>
                                     )}
@@ -1751,7 +1804,9 @@ export default function PagePUC() {
                                   {showAssistantBtn && (
                                     <button
                                       type="button"
-                                      className="btn ghost"
+                                      className={
+                                        a.deliverableStatus === 'enviado_a_verificar' ? 'btn' : 'btn ghost'
+                                      }
                                       onClick={(e) => {
                                         e.stopPropagation();
                                         setAssistantTarget({
@@ -1760,7 +1815,9 @@ export default function PagePUC() {
                                         });
                                       }}
                                     >
-                                      Assistente
+                                      {a.deliverableStatus === 'enviado_a_verificar'
+                                        ? 'Abrir para verificar'
+                                        : 'Assistente'}
                                     </button>
                                   )}
                                   {a.githubUrl && (

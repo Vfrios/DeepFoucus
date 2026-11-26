@@ -1280,3 +1280,72 @@
 .puc-quick-chip.tone-ok strong {
   color: var(--accent);
 }
+
+/* ---- Painel do Agente de Automação PUC ---- */
+.puc-agent-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.puc-agent-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.puc-agent-switch-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+}
+
+.puc-agent-metrics {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 8px;
+}
+
+.puc-agent-metric-card {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.puc-agent-limits-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 10px;
+  align-items: end;
+  margin-top: 10px;
+}
+
+.puc-agent-limits-grid label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 0.82rem;
+}
+
+.puc-agent-limits-grid input {
+  width: 100%;
+  padding: 6px 8px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(0, 0, 0, 0.25);
+  color: inherit;
+}
+
+.puc-agent-courses-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 8px;
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}

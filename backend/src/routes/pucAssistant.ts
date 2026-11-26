@@ -289,6 +289,11 @@ async function executeGithubPublish(db: Db, cid: number, aid: number) {
     filesToCommit.push({ path: paths.zipPath, content: zipBuffer });
   }
 
+  // Se a entrega veio do agente em `pendentes/`, remove atomicamente esses arquivos no mesmo commit!
+  const pendingPathsToDelete: string[] = Array.isArray(deliverable.pending_github_paths)
+    ? deliverable.pending_github_paths.filter((p: unknown): p is string => typeof p === 'string' && p.startsWith('pendentes/'))
+    : [];
+
   // Publicação atômica no GitHub privado (se falhar, status permanece 'validada' no Mongo!)
   const published = await publishDeliverableToGithub(
     {
@@ -299,6 +304,7 @@ async function executeGithubPublish(db: Db, cid: number, aid: number) {
       folderPath: paths.folderPath,
       commitMessage: paths.commitMessage,
       files: filesToCommit,
+      ...(pendingPathsToDelete.length > 0 ? { deletePaths: pendingPathsToDelete } : {}),
     },
     {
       onAuthError: (st) => markGithubAuthError(db, st),
@@ -317,6 +323,7 @@ async function executeGithubPublish(db: Db, cid: number, aid: number) {
     mdPath: paths.mdPath,
     zipPath: paths.zipPath,
     codePaths: paths.codeFilePaths.map((c) => c.path),
+    movedFromPending: pendingPathsToDelete.length > 0,
     publishedAt: now.toISOString(),
     contentHash,
   };
@@ -326,24 +333,50 @@ async function executeGithubPublish(db: Db, cid: number, aid: number) {
 
   // Só muda status para 'entrega_gerada' APÓS confirmação do commit pela API do GitHub!
   // Limpeza do Mongo: mantém só texto atual, status e metadados; versões antigas ficam apenas no GitHub!
-  await db.collection('puc_deliverables').updateOne(
-    { course_id: cid, assignment_id: aid },
-    {
-      $set: {
-        status: 'entrega_gerada' as DeliverableStatus,
-        content_hash: contentHash,
-        last_published_version: nextVersion,
-        last_published_hash: contentHash,
-        last_published_sha: published.commitSha,
-        last_published_url: published.htmlUrl,
-        last_published_folder_url: published.folderUrl,
-        last_published_at: now,
-        publications: updatedPubs,
-        versions: [],
-        updated_at: now,
-      },
-    }
-  );
+  await Promise.all([
+    db.collection('puc_deliverables').updateOne(
+      { course_id: cid, assignment_id: aid },
+      {
+        $set: {
+          status: 'entrega_gerada' as DeliverableStatus,
+          content_hash: contentHash,
+          last_published_version: nextVersion,
+          last_published_hash: contentHash,
+          last_published_sha: published.commitSha,
+          last_published_url: published.htmlUrl,
+          last_published_folder_url: published.folderUrl,
+          last_published_at: now,
+          publications: updatedPubs,
+          pending_github_paths: [],
+          pending_github_folder: null,
+          pending_commit_sha: null,
+          pending_html_url: null,
+          pending_folder_url: null,
+          statement_changed: false,
+          versions: [],
+          updated_at: now,
+        },
+      }
+    ),
+    db.collection('puc_agent_records').updateOne(
+      { course_id: cid, assignment_id: aid },
+      {
+        $set: {
+          status: 'no_github',
+          decision_reason: `Verificado e movido para pasta definitiva no GitHub (v${nextVersion})`,
+          pending_github_paths: [],
+          pending_html_url: null,
+          pending_folder_url: null,
+          final_commit_sha: published.commitSha,
+          final_html_url: published.htmlUrl,
+          final_folder_url: published.folderUrl,
+          final_version: nextVersion,
+          statement_changed: false,
+          updated_at: now,
+        },
+      }
+    ),
+  ]);
 
   return {
     status: 'entrega_gerada' as DeliverableStatus,
@@ -804,7 +837,7 @@ export function createPucAssistantRouter(
         db
           .collection('puc_deliverables')
           .find(
-            { status: { $in: ['rascunho', 'revisada_por_mim', 'validada', 'pronta'] } },
+            { status: { $in: ['rascunho', 'enviado_a_verificar', 'revisada_por_mim', 'validada', 'pronta'] } },
             {
               projection: {
                 course_id: 1,
@@ -1336,6 +1369,14 @@ export function createPucAssistantRouter(
               lastPublishedFolderUrl: deliverable.last_published_folder_url ?? null,
               lastPublishedVersion: deliverable.last_published_version ?? null,
               lastPublishedAt: deliverable.last_published_at ?? null,
+              hasPendingGithub:
+                Array.isArray(deliverable.pending_github_paths) && deliverable.pending_github_paths.length > 0,
+              pendingHtmlUrl: deliverable.pending_html_url ?? null,
+              pendingFolderUrl: deliverable.pending_folder_url ?? null,
+              statementChanged: Boolean(deliverable.statement_changed),
+              generatedByAgent: Boolean(deliverable.generated_by_agent),
+              estimatedCostUsd:
+                typeof deliverable.estimated_cost_usd === 'number' ? deliverable.estimated_cost_usd : null,
               hasUnpublishedChanges: Boolean(
                 deliverable.last_published_hash &&
                   deliverable.last_published_hash !== sha256Text(currentMarkdown)
@@ -1840,6 +1881,31 @@ export function createPucAssistantRouter(
         },
         { upsert: true }
       );
+
+      // Sincroniza o registro do agente quando o usuário altera para "verificado" (validada) ou edita
+      if (nextStatus === 'validada') {
+        await db.collection('puc_agent_records').updateOne(
+          { course_id: cid, assignment_id: aid },
+          {
+            $set: {
+              status: 'verificado',
+              decision_reason: 'Verificado por você — clique em "Atualizar GitHub" para mover para a pasta da matéria',
+              updated_at: now,
+            },
+          }
+        );
+      } else if (nextStatus === 'revisada_por_mim') {
+        await db.collection('puc_agent_records').updateOne(
+          { course_id: cid, assignment_id: aid, status: { $in: ['no_github', 'verificado', 'enviado_a_verificar'] } },
+          {
+            $set: {
+              status: 'enviado_a_verificar',
+              decision_reason: 'Editado por você — valide e clique em "Atualizar GitHub"',
+              updated_at: now,
+            },
+          }
+        );
+      }
 
       // Publicação automática no GitHub ao validar (opção desligada por padrão na tela GitHub)
       let githubPublication: any = null;
