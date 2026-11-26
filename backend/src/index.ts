@@ -22,6 +22,7 @@ import dailyPlansRoute from './routes/dailyPlans';
 import pucRoute from './routes/puc';
 import { syncAgora } from './lib/canvasSync';
 import { startPucAgentWorker } from './lib/pucAgentRunner';
+import { startBriefingPushScheduler } from './lib/briefingService';
 import { getDb } from './lib/mongo';
 import cron from 'node-cron';
 import { runScheduledAgent } from './agents/scheduler';
@@ -127,6 +128,8 @@ setTimeout(() => {
 setInterval(() => runCanvasSync('light'), 20 * 60 * 1000);
 // Worker assíncrono do Agente PUC (processa fila puc_jobs sem bloquear requisições HTTP)
 startPucAgentWorker(getDb);
+// Push único da manhã do Briefing (quando horário fixo estiver configurado)
+startBriefingPushScheduler();
 // Sync completo 1x por dia (03:30 America/Sao_Paulo)
 try {
   cron.schedule('30 3 * * *', () => runCanvasSync('full'), { timezone: 'America/Sao_Paulo', noOverlap: true });

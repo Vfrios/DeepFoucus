@@ -126,6 +126,9 @@ export function getDb(): Promise<Db> {
       await d.collection('puc_agent_records').createIndex({ course_id: 1, assignment_id: 1 }, { unique: true });
       await d.collection('puc_agent_records').createIndex({ status: 1, updated_at: -1 });
 
+      // Briefing da manhã (cache diário + histórico para anti-repetição)
+      await d.collection('briefings').createIndex({ dateKey: 1 }, { unique: true });
+
       db = d;
       return d;
     })().catch((e) => {

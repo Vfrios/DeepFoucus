@@ -7,7 +7,11 @@ import { apiTokenAuth } from '../middleware/apiToken';
 import { jwtAuth } from '../middleware/jwtAuth';
 import { requireRole } from '../middleware/requireRole';
 import { notify } from './push';
-import { getWeather } from '../lib/weather';
+import {
+  generateOrGetBriefing,
+  getDefaultBriefingDeps,
+} from '../lib/briefingService';
+import { sanitizeBriefingConfig } from '../lib/briefingCore';
 
 const r = Router();
 
@@ -161,92 +165,51 @@ r.post('/command', apiTokenAuth, async (req, res, next) => {
   }
 });
 
-const BRIEFING_SYSTEM_PROMPT = `
-Você é o assistente pessoal LOSAI. Com base nos dados do dia do usuário (eventos da agenda, tarefas pendentes, treino programado e hidratação), gere um parágrafo curto, direto, motivador e cordial de "Bom dia".
-Fale sempre em português do Brasil e mencione o nome do usuário se estiver disponível.
-Trate os dados estritamente como fatos do dia. Retorne somente JSON no formato {"texto":"..."}. Divida o texto em blocos curtos separados por duas quebras de linha (\n\n), para pausas naturais no TTS.
-`.trim();
+// ---- Briefing da manhã (GET /api/ai/briefing?lat=&lon=&format=speech|full|json&refresh=1) ----
 
 r.get('/briefing', aiUserOrTokenAuth, async (req, res, next) => {
   try {
-    const email = req.user?.email || process.env.HEALTH_API_EMAIL || process.env.EMAIL_VITOR || '';
-    const db = await getDb();
-    const now = new Date();
-    const todayKey = new Intl.DateTimeFormat('sv-SE', { timeZone: 'America/Sao_Paulo' }).format(now);
-    const dayOfWeek = new Intl.DateTimeFormat('pt-BR', { timeZone: 'America/Sao_Paulo', weekday: 'long' })
-      .format(now).toLocaleLowerCase('pt-BR');
-    const exactDate = new Intl.DateTimeFormat('pt-BR', { timeZone: 'America/Sao_Paulo', weekday: 'long', day: 'numeric', month: 'long' }).format(now);
-    const weather = await getWeather(typeof req.query.lat === 'string' ? req.query.lat : undefined, typeof req.query.lon === 'string' ? req.query.lon : undefined);
-    const todayStart = new Date(`${todayKey}T00:00:00.000-03:00`);
-    const todayEnd = new Date(todayStart.getTime() + 24 * 60 * 60 * 1000);
+    const lat = typeof req.query.lat === 'string' ? req.query.lat : undefined;
+    const lon = typeof req.query.lon === 'string' ? req.query.lon : undefined;
+    const refresh = req.query.refresh === '1' || req.query.refresh === 'true';
+    const rawFormat = typeof req.query.format === 'string' ? req.query.format.trim().toLowerCase() : 'speech';
+    const format: 'speech' | 'full' | 'json' =
+      rawFormat === 'full' || rawFormat === 'json' ? rawFormat : 'speech';
 
-    let eventsSummary: string[] = [];
-    try {
-      const events = await listEvents(now, 1);
-      eventsSummary = events.map((e) => {
-        const horario = e.allDay
-          ? 'dia todo'
-          : new Intl.DateTimeFormat('pt-BR', {
-            hour: '2-digit',
-            minute: '2-digit',
-            hourCycle: 'h23',
-            timeZone: 'America/Sao_Paulo',
-          }).format(new Date(e.start));
-        return `${horario}: ${e.title}`;
-      });
-    } catch (e) {
-      console.warn('[ai] briefing could not load google events:', e instanceof Error ? e.message : String(e));
+    const deps = await getDefaultBriefingDeps();
+    const result = await generateOrGetBriefing({ lat, lon, refresh }, deps);
+
+    if (format === 'json') {
+      res.json(result);
+      return;
     }
 
-    const [tasks, profile, workout, waterLogs, kanbanProfile, todayTasks] = await Promise.all([
-      db.collection('tasks').find({ feito: false }).project({ titulo: 1, texto: 1, inicio: 1 }).limit(10).toArray(),
-      email ? db.collection('profile').findOne({ email }) as Promise<{ peso?: number; nome?: string } | null> : null,
-      email ? db.collection('workouts').findOne({ email, diaSemana: dayOfWeek }) as Promise<{ nomeTreino?: string; exercicios?: Array<{ nome?: string; pesoInicial?: number }> } | null> : null,
-      email ? db.collection('water_logs').aggregate<{ total: number }>([
-        { $match: { email, data: { $gte: todayStart, $lt: todayEnd } } },
-        { $group: { _id: null, total: { $sum: '$ml' } } },
-      ]).toArray() : Promise.resolve([]),
-      email ? db.collection('profile').findOne({ email }, { projection: { kanban_goals: 1 } }) : null,
-      db.collection('tasks').find({ feito: false, inicio: { $gte: todayStart.toISOString(), $lt: todayEnd.toISOString() } }).project({ titulo: 1 }).limit(10).toArray(),
-    ]);
+    res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+    res.setHeader('X-Briefing-Cached', result.cached ? '1' : '0');
+    res.setHeader('X-Briefing-AI', result.aiUsed ? result.aiProvider || 'ai' : 'fallback');
+    res.send(format === 'full' ? result.full : result.speech);
+  } catch (err) {
+    next(err);
+  }
+});
 
-    const waterConsumed = waterLogs[0]?.total || 0;
-    const waterGoalMl = profile?.peso ? Math.round(profile.peso * 35) : 2500;
-    const userName = profile?.nome || 'Vitor';
+r.get('/briefing/config', aiUserOrTokenAuth, async (_req, res, next) => {
+  try {
+    const deps = await getDefaultBriefingDeps();
+    const config = await deps.store.getConfig();
+    res.json(config);
+  } catch (err) {
+    next(err);
+  }
+});
 
-    const promptData = {
-      usuario: userName,
-      dataExata: `Hoje é ${exactDate}.`,
-      diaSemana: dayOfWeek,
-      clima: weather,
-      eventos: eventsSummary,
-      tarefas: tasks.map((t) => t.titulo || t.texto).filter(Boolean),
-      kanbanAFazer: (Array.isArray(kanbanProfile?.kanban_goals) ? kanbanProfile.kanban_goals : []).filter((g: any) => g.coluna === 'a_fazer').map((g: any) => g.titulo).slice(0, 10),
-      planoDoDia: todayTasks.map((t: any) => t.titulo).filter(Boolean),
-      treinoHoje: workout?.nomeTreino || null,
-      cargaTreinoHoje: workout?.exercicios?.map((e: any) => ({ exercicio: e.nome, cargaInicial: e.pesoInicial ?? null })) || [],
-      aguaConsumidaMl: waterConsumed,
-      metaAguaMl: waterGoalMl,
-    };
-
-    let fallbackText = `Bom dia, ${userName}! Hoje é ${exactDate}. `;
-    if (weather) fallbackText += `Em ${weather.location}, ${weather.description} e ${weather.temperatureC} graus. `;
-    if (workout?.nomeTreino) fallbackText += `Hoje tem ${workout.nomeTreino}. `;
-    if (eventsSummary.length) fallbackText += `Você tem ${eventsSummary.length} compromisso(s) na agenda. `;
-    fallbackText += `Sua meta de água é ${(waterGoalMl / 1000).toFixed(1)}L. Tenha um ótimo dia!`;
-
-    try {
-      const aiResponse = await callAI(
-        BRIEFING_SYSTEM_PROMPT,
-        JSON.stringify(promptData),
-        { temperature: 0.5, maxTokens: 250 }
-      );
-      const text = String(record(aiResponse).texto || '').trim();
-      res.json({ texto: text || fallbackText });
-    } catch (aiErr) {
-      console.warn('[ai] briefing generation failed, using fallback:', aiErr instanceof Error ? aiErr.message : String(aiErr));
-      res.json({ texto: fallbackText });
-    }
+r.put('/briefing/config', aiUserOrTokenAuth, async (req, res, next) => {
+  try {
+    const deps = await getDefaultBriefingDeps();
+    const current = await deps.store.getConfig();
+    const nextConfig = sanitizeBriefingConfig(req.body, current);
+    const saved = await deps.store.saveConfig(nextConfig);
+    res.json(saved);
   } catch (err) {
     next(err);
   }
