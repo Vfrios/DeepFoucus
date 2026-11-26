@@ -7,8 +7,10 @@ import {
   buildBriefingSections,
   DEFAULT_BRIEFING_CONFIG,
   getSaoPauloDateKey,
+  isIgnoredPucAssignment,
   renderDeterministicFull,
   renderDeterministicSpeech,
+  resolveCourseSigla,
   validateBriefingText,
 } from '../backend/src/lib/briefingCore';
 import { redactBriefingWithAI } from '../backend/src/lib/briefingAi';
@@ -591,5 +593,127 @@ describe('Morning Briefing — Core, Deduplication, Anti-Repetition & Service', 
     );
     assert.equal(afterMidnight.sections.puc?.venceHoje.length, 1);
     assert.equal(afterMidnight.sections.puc?.venceAmanha.length, 0);
+  });
+
+  it('ignores ADA completely and formats friendly course labels (Pesquisa, Metodologia, IHC, PM, DIAW, TI)', () => {
+    assert.equal(isIgnoredPucAssignment('ADA'), true);
+    assert.equal(isIgnoredPucAssignment('Avaliação Diagnóstica de Aprendizagem'), true);
+    assert.equal(isIgnoredPucAssignment('Trabalho Prático 1'), false);
+
+    assert.equal(
+      resolveCourseSigla({ canvas_id: 1, name: 'Introdução à Pesquisa em Informática - PUC', auto_aliases: ['IPI'] }),
+      'Pesquisa'
+    );
+    assert.equal(
+      resolveCourseSigla({ canvas_id: 2, name: 'Metodologia Científica - PUC' }),
+      'Metodologia'
+    );
+    assert.equal(
+      resolveCourseSigla({ canvas_id: 3, name: 'Trabalho Interdisciplinar: Desenvolvimento Centrado no Usuário' }),
+      'TI'
+    );
+    assert.equal(
+      resolveCourseSigla({ canvas_id: 4, name: 'Programação Modular - PUC' }),
+      'PM'
+    );
+    assert.equal(
+      resolveCourseSigla({ canvas_id: 5, name: 'Interação Humano-Computador - PUC' }),
+      'IHC'
+    );
+    assert.equal(
+      resolveCourseSigla({ canvas_id: 6, name: 'Desenvolvimento e Integração de Aplicações Web - PUC' }),
+      'DIAW'
+    );
+
+    const { sections } = buildBriefingSections(
+      baseInput({
+        pucCourses: [
+          { canvas_id: 1, name: 'Programação Modular - PUC' },
+          { canvas_id: 2, name: 'Introdução à Pesquisa em Informática - PUC', auto_aliases: ['IPI'] },
+        ],
+        pucAssignments: [
+          {
+            course_id: 1,
+            canvas_id: 10,
+            name: 'ADA',
+            due_at: '2026-11-20T23:59:00.000-03:00',
+            points_possible: 5,
+            submission_types: ['online_upload'],
+            workflow_state: 'unsubmitted',
+          },
+          {
+            course_id: 2,
+            canvas_id: 11,
+            name: 'Artigo Revisão',
+            due_at: '2026-11-27T23:59:00.000-03:00',
+            points_possible: 10,
+            submission_types: ['online_upload'],
+            workflow_state: 'unsubmitted',
+          },
+        ],
+      })
+    );
+
+    assert.equal(sections.puc?.atrasadas.length, 0);
+    assert.equal(sections.puc?.venceAmanha.length, 1);
+    assert.equal(sections.puc?.venceAmanha[0].sigla, 'Pesquisa');
+    assert.ok(!sections.focoDoDia.some((f) => /\bADA\b/i.test(f.titulo)));
+  });
+
+  it('only alerts Canvas token at <= 5 days remaining (or 401) and never alerts GitHub expiry', () => {
+    const activeTokens = buildBriefingSections(
+      baseInput({
+        systemAlerts: {
+          canvasToken: { configured: true, expired: false, expiringSoon: false, daysRemaining: 12 },
+          githubToken: { configured: true, expired: true, expiringSoon: true, daysRemaining: 0, authError: null },
+        },
+      })
+    );
+    assert.equal(activeTokens.sections.alertasSistema.length, 0);
+
+    const canvas5Days = buildBriefingSections(
+      baseInput({
+        systemAlerts: {
+          canvasToken: { configured: true, expired: false, expiringSoon: true, daysRemaining: 5 },
+          githubToken: { configured: true, expired: false, expiringSoon: false, daysRemaining: null, authError: null },
+        },
+      })
+    );
+    assert.equal(canvas5Days.sections.alertasSistema.length, 1);
+    assert.match(canvas5Days.sections.alertasSistema[0], /Canvas expira em 5 dias/);
+
+    const decryptErrIgnored = buildBriefingSections(
+      baseInput({
+        systemAlerts: {
+          canvasToken: { configured: true, decryptError: true, expired: true, expiringSoon: false, daysRemaining: 20 },
+          githubToken: { configured: true, decryptError: true, expired: true, expiringSoon: false, daysRemaining: null, authError: null },
+          lastCanvasSync: { status: 'error', finished_at: '2026-11-26T09:00:00.000Z' },
+        },
+      })
+    );
+    assert.equal(decryptErrIgnored.sections.alertasSistema.length, 0);
+  });
+
+  it('triggers on-demand Canvas sync before reading PUC data when generating briefing', async () => {
+    let syncCalled = 0;
+    const { deps } = createMemoryDeps({
+      sources: {
+        ensureFreshCanvasSync: async () => {
+          syncCalled += 1;
+        },
+      },
+      aiCaller: async () => ({
+        provider: 'Groq',
+        model: 'fast',
+        raw: {
+          speech: 'Bom dia. Quinta, 26 de novembro.',
+          full: 'Bom dia. Quinta, 26 de novembro.',
+        },
+      }),
+    });
+
+    const result = await generateOrGetBriefing({ now: new Date('2026-11-26T10:30:00.000Z') }, deps);
+    assert.equal(syncCalled, 1);
+    assert.equal(typeof result.timingsMs.canvasSync, 'number');
   });
 });

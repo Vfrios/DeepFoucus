@@ -1,6 +1,7 @@
 import type { Db } from 'mongodb';
 import cron from 'node-cron';
 import { getCanvasTokenStatus } from './canvasAuth';
+import { isCanvasSyncRunning, syncAgora } from './canvasSync';
 import { CalEvent, listEvents } from './google';
 import { getDb } from './mongo';
 import { getPucAgentConfig } from './pucAgentRunner';
@@ -36,6 +37,7 @@ const CONFIG_DOC_ID = 'briefing_config' as const;
 
 export interface BriefingTimingsMs {
   cacheLookup: number;
+  canvasSync?: number;
   weather?: number;
   calendar?: number;
   puc?: number;
@@ -90,6 +92,7 @@ export interface BriefingStore {
 }
 
 export interface BriefingDataSources {
+  ensureFreshCanvasSync?: (opts: { refresh: boolean; now: Date }) => Promise<void>;
   fetchWeather(lat?: string, lon?: string, signal?: AbortSignal, now?: Date): Promise<DetailedWeather | null>;
   fetchCalendar(now: Date): Promise<CalEvent[]>;
   fetchPuc(): Promise<{
@@ -201,6 +204,33 @@ export function createMongoBriefingStore(db: Db): BriefingStore {
 
 export function createDefaultBriefingSources(db: Db): BriefingDataSources {
   return {
+    async ensureFreshCanvasSync({ refresh, now }) {
+      if (isCanvasSyncRunning()) return;
+      const tokenStatus = await getCanvasTokenStatus(db, now).catch(() => null);
+      if (!tokenStatus?.configured || tokenStatus.decryptError || tokenStatus.expired401) return;
+
+      const lastOk = await db
+        .collection('canvas_sync_log')
+        .find({ status: { $in: ['ok', 'partial'] } }, { projection: { finished_at: 1, started_at: 1 } })
+        .sort({ started_at: -1 })
+        .limit(1)
+        .next()
+        .catch(() => null);
+
+      const lastAt = lastOk?.finished_at || lastOk?.started_at;
+      const ageMs = lastAt ? now.getTime() - new Date(lastAt).getTime() : Number.MAX_SAFE_INTEGER;
+      const maxStaleMs = refresh ? 60_000 : 10 * 60_000;
+      if (ageMs < maxStaleMs) return;
+
+      // Dispara sync leve e aguarda até 3.5s; se demorar mais, continua em segundo plano sem travar o briefing
+      const syncPromise = syncAgora(db, 'light').catch((err) => {
+        console.warn('[briefing] sync leve do Canvas falhou:', err instanceof Error ? err.message : String(err));
+      });
+      await Promise.race([
+        syncPromise,
+        new Promise<void>((resolve) => setTimeout(resolve, 3_500)),
+      ]);
+    },
     async fetchWeather(lat?: string, lon?: string, signal?: AbortSignal, now?: Date) {
       return getDetailedWeather(lat, lon, { signal, now });
     },
@@ -386,8 +416,24 @@ export async function generateOrGetBriefing(
     };
   }
 
-  // 2. Load previous day snapshot for anti-repetition
-  const prevDoc = await deps.store.getLatestBriefingBefore(todayKey).catch(() => null);
+  // 2. Load previous day snapshot for anti-repetition (+ optional fresh Canvas sync on GET)
+  const prevDocPromise = deps.store.getLatestBriefingBefore(todayKey).catch(() => null);
+
+  if ((config.sections.pucDeliveries || config.sections.pucNews) && deps.sources.ensureFreshCanvasSync) {
+    const tSync = Date.now();
+    try {
+      await withTimeout(
+        () => deps.sources.ensureFreshCanvasSync!({ refresh: Boolean(options.refresh), now }),
+        sourceTimeoutMs,
+        'canvasSync'
+      );
+    } catch (err) {
+      console.warn('[briefing] sync sob demanda não concluiu no tempo:', err instanceof Error ? err.message : String(err));
+    }
+    timingsMs.canvasSync = Date.now() - tSync;
+  }
+
+  const prevDoc = await prevDocPromise;
   const previousSnapshot = prevDoc?.snapshot ?? null;
 
   // 3. Collect all sources in parallel with 4s timeout each

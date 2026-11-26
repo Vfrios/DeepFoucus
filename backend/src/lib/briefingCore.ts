@@ -264,12 +264,15 @@ export interface RawTaskItem {
 export interface RawSystemAlertInputs {
   canvasToken?: {
     configured: boolean;
+    decryptError?: boolean;
     expired: boolean;
+    expired401?: boolean;
     expiringSoon: boolean;
     daysRemaining: number | null;
   } | null;
   githubToken?: {
     configured: boolean;
+    decryptError?: boolean;
     expired: boolean;
     expiringSoon: boolean;
     daysRemaining: number | null;
@@ -435,18 +438,56 @@ function shortenTitle(raw: string, maxLen = 48): string {
   return `${clean.slice(0, maxLen - 1).trimEnd()}…`;
 }
 
-function resolveCourseSigla(course: RawPucCourse | undefined, fallbackCourseName?: string): string {
+/**
+ * Atividades institucionais que não são entregas reais e nunca devem entrar no briefing
+ * (ex.: ADA - Avaliação Diagnóstica de Aprendizagem).
+ */
+const IGNORED_ASSIGNMENT_PATTERNS: RegExp[] = [
+  /\bada\b/i,
+  /avalia[cç][aã]o\s+diagn[oó]stica/i,
+];
+
+export function isIgnoredPucAssignment(name: string): boolean {
+  const clean = String(name || '').trim();
+  if (!clean) return false;
+  return IGNORED_ASSIGNMENT_PATTERNS.some((re) => re.test(clean));
+}
+
+const FRIENDLY_COURSE_RULES: Array<{ match: RegExp; label: string }> = [
+  { match: /introducao\s+a\s+pesquisa\s+em\s+informatica|pesquisa\s+em\s+informatica|\bipi\b/i, label: 'Pesquisa' },
+  { match: /\bmetodologia\b/i, label: 'Metodologia' },
+  { match: /trabalho\s+interdisciplinar/i, label: 'TI' },
+  { match: /interacao\s+humano[\s-]+computador|\bihc\b/i, label: 'IHC' },
+  { match: /programacao\s+modular|\bpm\b/i, label: 'PM' },
+  { match: /desenvolvimento\s+e\s+integracao\s+de\s+aplicacoes\s+web|\bdiaw\b/i, label: 'DIAW' },
+];
+
+export function resolveCourseSigla(course: RawPucCourse | undefined, fallbackCourseName?: string): string {
+  // 1. Apelido manual configurado pelo usuário sempre tem prioridade
   if (course?.aliases && course.aliases.length > 0 && course.aliases[0]?.trim()) {
-    return course.aliases[0].trim().toUpperCase();
+    return course.aliases[0].trim();
   }
-  if (course?.auto_aliases && course.auto_aliases.length > 0 && course.auto_aliases[0]?.trim()) {
-    return course.auto_aliases[0].trim().toUpperCase();
+
+  // 2. Nomes curtos/siglas naturais faláveis (IHC, PM, Metodologia, DIAW, Pesquisa, TI)
+  const rawName = course?.name || fallbackCourseName || '';
+  const mainTitle = rawName.split(/\s+-\s+/)[0] || rawName;
+  const normTitle = normalizeText(mainTitle);
+  const autoAliases = Array.isArray(course?.auto_aliases) ? course!.auto_aliases! : [];
+  const matchHaystack = `${normTitle} ${normalizeText(autoAliases.join(' '))}`;
+
+  for (const rule of FRIENDLY_COURSE_RULES) {
+    if (rule.match.test(matchHaystack)) {
+      return rule.label;
+    }
   }
-  const name = course?.name || fallbackCourseName || 'PUC';
-  const generated = generateAutoAliases(name, course?.course_code || '');
+
+  // 3. Sigla automática ou título principal curto
+  if (autoAliases.length > 0 && autoAliases[0]?.trim()) {
+    return autoAliases[0].trim().toUpperCase();
+  }
+  const generated = generateAutoAliases(rawName || 'PUC', course?.course_code || '');
   if (generated.length > 0) return generated[0];
-  const main = name.split(/\s+-\s+/)[0] || name;
-  return main.trim().slice(0, 18);
+  return (mainTitle.trim() || 'PUC').slice(0, 18);
 }
 
 function summarizeAnnouncement(title: string, message: string | null | undefined): string {
@@ -567,6 +608,7 @@ export function buildBriefingSections(input: BriefingRawInput): BuildBriefingSec
 
   if (config.sections.pucDeliveries || config.sections.pucNews) {
     for (const a of input.pucAssignments) {
+      if (isIgnoredPucAssignment(a.name)) continue;
       const key = `${a.course_id}:${a.canvas_id}`;
       const stableId = `puc:assignment:${key}`;
       const course = courseMap.get(Number(a.course_id));
@@ -1010,29 +1052,30 @@ export function buildBriefingSections(input: BriefingRawInput): BuildBriefingSec
   const alertasSistema: string[] = [];
   if (config.sections.systemAlerts && input.systemAlerts) {
     const sa = input.systemAlerts;
-    if (sa.canvasToken?.configured) {
-      if (sa.canvasToken.expired) {
+    // Canvas: único token com expiração — avisa apenas em 401 real ou a partir de 5 dias faltantes
+    if (sa.canvasToken?.configured && !sa.canvasToken.decryptError) {
+      if (sa.canvasToken.expired401) {
         alertasSistema.push('Token do Canvas expirou e precisa ser renovado na página PUC.');
-      } else if (
-        sa.canvasToken.expiringSoon &&
-        typeof sa.canvasToken.daysRemaining === 'number' &&
-        sa.canvasToken.daysRemaining <= 5
-      ) {
-        alertasSistema.push(`Token do Canvas expira em ${sa.canvasToken.daysRemaining} dia${sa.canvasToken.daysRemaining === 1 ? '' : 's'}.`);
+      } else if (typeof sa.canvasToken.daysRemaining === 'number' && sa.canvasToken.daysRemaining <= 0) {
+        alertasSistema.push('Token do Canvas expirou e precisa ser renovado na página PUC.');
+      } else if (typeof sa.canvasToken.daysRemaining === 'number' && sa.canvasToken.daysRemaining <= 5) {
+        alertasSistema.push(
+          `Token do Canvas expira em ${sa.canvasToken.daysRemaining} dia${sa.canvasToken.daysRemaining === 1 ? '' : 's'}.`
+        );
       }
     }
-    if (sa.githubToken?.configured) {
-      if (sa.githubToken.expired || sa.githubToken.authError) {
-        alertasSistema.push('Token do GitHub está expirado ou com erro de autenticação.');
-      } else if (
-        typeof sa.githubToken.daysRemaining === 'number' &&
-        sa.githubToken.daysRemaining <= 5
-      ) {
-        alertasSistema.push(`Token do GitHub expira em ${sa.githubToken.daysRemaining} dia${sa.githubToken.daysRemaining === 1 ? '' : 's'}.`);
-      }
+    // GitHub: não tem expiração — só avisa se houve erro real de autenticação (401/403)
+    if (sa.githubToken?.configured && !sa.githubToken.decryptError && sa.githubToken.authError) {
+      alertasSistema.push(`Token do GitHub retornou erro ${sa.githubToken.authError} de autenticação.`);
     }
-    if (sa.lastCanvasSync?.status === 'error') {
-      alertasSistema.push('A última sincronização do Canvas falhou.');
+    // Sync: só avisa se a última sincronização falhou nas últimas 24h (e não por decryptError local)
+    if (sa.lastCanvasSync?.status === 'error' && !sa.canvasToken?.decryptError) {
+      const syncTimeRaw = sa.lastCanvasSync.finished_at ?? sa.lastCanvasSync.started_at;
+      const syncMs = syncTimeRaw ? new Date(syncTimeRaw).getTime() : NaN;
+      const isRecent = Number.isNaN(syncMs) || now.getTime() - syncMs <= 24 * 3_600_000;
+      if (isRecent) {
+        alertasSistema.push('A última sincronização do Canvas falhou.');
+      }
     }
     if (sa.pucAgent?.enabled && sa.pucAgent.paused) {
       alertasSistema.push(

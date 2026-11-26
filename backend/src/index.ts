@@ -130,11 +130,12 @@ setInterval(() => runCanvasSync('light'), 20 * 60 * 1000);
 startPucAgentWorker(getDb);
 // Push único da manhã do Briefing (quando horário fixo estiver configurado)
 startBriefingPushScheduler();
-// Sync completo 1x por dia (03:30 America/Sao_Paulo)
+// Sync completo 1x por dia (03:30 America/Sao_Paulo) e sync leve da manhã (05:50 America/Sao_Paulo)
 try {
   cron.schedule('30 3 * * *', () => runCanvasSync('full'), { timezone: 'America/Sao_Paulo', noOverlap: true });
+  cron.schedule('50 5 * * *', () => runCanvasSync('light'), { timezone: 'America/Sao_Paulo', noOverlap: true });
 } catch (error) {
-  console.error('[puc] full sync cron setup failed:', error instanceof Error ? error.message : String(error));
+  console.error('[puc] sync cron setup failed:', error instanceof Error ? error.message : String(error));
 }
 const server = createServer(app);
 attachWebSocketServer(server);
