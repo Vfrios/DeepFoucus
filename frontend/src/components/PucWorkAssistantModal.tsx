@@ -2,12 +2,76 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { api } from '../lib/api';
 import { formatSaoPauloDateTime, sanitizeCanvasHtml } from '../lib/canvasHtml';
 
-export type DeliverableStatus = 'entrega_gerada' | 'revisada_por_mim' | 'pronta';
+export type DeliverableStatus = 'rascunho' | 'revisada_por_mim' | 'validada' | 'entrega_gerada';
 
 interface ProviderOption {
   id: 'gemini' | 'groq' | 'openrouter';
   label: string;
   model: string;
+}
+
+interface UnderstandingAttachmentItem {
+  fileId?: number;
+  name: string;
+  contentType: string;
+  pages: number;
+  charsExtracted: number;
+  status: 'ok' | 'empty' | 'error' | 'too_large';
+  needsVision: boolean;
+  visionReason?: string | null;
+  error?: string;
+}
+
+interface DetectedQuestionsSummary {
+  total: number;
+  closed: number;
+  open: number;
+  other: number;
+  questionNumbers: number[];
+  hasCrosswordOrGrid: boolean;
+  hasFiguresOrTables: boolean;
+}
+
+interface CompletenessCheckResult {
+  expectedCount: number;
+  answeredCount: number;
+  expectedNumbers: number[];
+  answeredNumbers: number[];
+  missingNumbers: number[];
+  passed: boolean;
+}
+
+interface GenerationSourceRef {
+  kind: string;
+  label: string;
+  detail?: string;
+}
+
+interface UnderstandingSummary {
+  assignmentId: number;
+  assignmentName: string;
+  courseId: number;
+  courseName: string;
+  submissionTypes: string[];
+  detectedFormat: 'manuscrito' | 'digitado' | 'codigo' | 'link' | 'arquivo';
+  isHandwritten: boolean;
+  handwrittenKeywords: string[];
+  isGroup: boolean;
+  dueAt: string | null;
+  pointsPossible: number | null;
+  hasRubric: boolean;
+  attachments: UnderstandingAttachmentItem[];
+  questions: DetectedQuestionsSummary;
+  titleDivergence: {
+    hasDivergence: boolean;
+    reason: string | null;
+    detectedAttachmentTitle: string | null;
+  };
+  unreadableAttachments: boolean;
+  needsVision: boolean;
+  canProceed: boolean;
+  blockReason: string | null;
+  sourcesPreview: GenerationSourceRef[];
 }
 
 interface ProjectPartItem {
@@ -60,7 +124,8 @@ interface GithubPublicationRecord {
   commitSha: string;
   htmlUrl: string;
   folderUrl: string;
-  pdfPath: string;
+  pdfPath: string | null;
+  txtPath?: string | null;
   mdPath: string;
   zipPath: string | null;
   codePaths: string[];
@@ -85,6 +150,7 @@ interface AssistantWorkspaceResponse {
     id: number;
     name: string;
     aiAllowed: boolean;
+    myProject?: string;
     groupMembers: string[];
   };
   studentName: string;
@@ -99,6 +165,7 @@ interface AssistantWorkspaceResponse {
     htmlUrl: string | null;
     score: number | null;
     grade: string | null;
+    deliveryStatus?: string;
     rubric: Array<{ id: string | null; description: string; long_description: string; points: number }>;
     submissionComments: Array<{ author_name?: string | null; comment?: string | null; created_at?: string | null }>;
     assignmentKind: 'multi_part' | 'one_shot';
@@ -121,7 +188,14 @@ interface AssistantWorkspaceResponse {
   deliverable: {
     status: DeliverableStatus;
     statusLabel: string;
+    readyToSubmit?: boolean;
+    isHandwritten?: boolean;
+    isGroup?: boolean;
     currentMarkdown: string;
+    completeness?: CompletenessCheckResult | null;
+    completenessOverridden?: boolean;
+    usedSources?: GenerationSourceRef[];
+    validationWarnings?: string[];
     groupMembers: string[];
     versions: DeliverableVersion[];
     publications?: GithubPublicationRecord[];
@@ -134,6 +208,11 @@ interface AssistantWorkspaceResponse {
     hasCodeFiles: boolean;
     codeFilesCount: number;
     exportGate: {
+      allowed: boolean;
+      reasons: string[];
+      pendingPlaceholders: string[];
+    };
+    publishGate?: {
       allowed: boolean;
       reasons: string[];
       pendingPlaceholders: string[];
@@ -156,6 +235,38 @@ interface PucWorkAssistantModalProps {
 
 function findLocalPlaceholders(markdown: string): string[] {
   return (String(markdown || '').match(/\[PREENCHER(?:\s*:[^\]]*)?\]/gi) || []).map((m) => m.trim());
+}
+
+function checkLocalCompleteness(
+  expectedNumbers: number[],
+  markdown: string
+): CompletenessCheckResult | null {
+  if (!expectedNumbers || expectedNumbers.length === 0) return null;
+  const text = String(markdown || '');
+  const answeredNumbers: number[] = [];
+  const missingNumbers: number[] = [];
+
+  for (const num of expectedNumbers) {
+    const padded = num < 10 ? `0?${num}` : `${num}`;
+    const pattern = new RegExp(
+      `(?:^|\\n)\\s*(?:(?:#{1,6}\\s*)?(?:\\*\\*)?(?:quest[aã]o|pergunta|exerc[ií]cio|q)\\s*${padded}(?:\\*\\*)?(?:\\s*[-–—.)\\]:(]|\\s*(?=\\n|$))|(?:#{1,6}\\s*)?(?:\\*\\*)?${padded}(?:\\*\\*)?\\s*(?:[-–—.)\\]:(]|\\s+-\\s+))`,
+      'i'
+    );
+    if (pattern.test(text)) {
+      answeredNumbers.push(num);
+    } else {
+      missingNumbers.push(num);
+    }
+  }
+
+  return {
+    expectedCount: expectedNumbers.length,
+    answeredCount: answeredNumbers.length,
+    expectedNumbers,
+    answeredNumbers,
+    missingNumbers,
+    passed: missingNumbers.length === 0,
+  };
 }
 
 function extractErr(err: unknown, fallback: string): string {
@@ -195,11 +306,20 @@ export default function PucWorkAssistantModal({
 
   // Editor state
   const [markdown, setMarkdown] = useState('');
-  const [status, setStatus] = useState<DeliverableStatus>('entrega_gerada');
+  const [status, setStatus] = useState<DeliverableStatus>('rascunho');
   const [studentName, setStudentName] = useState('');
   const [groupMembersInput, setGroupMembersInput] = useState('');
+  const [myProjectInput, setMyProjectInput] = useState('');
+  const [savingProject, setSavingProject] = useState(false);
   const [provider, setProvider] = useState<'auto' | 'gemini' | 'groq' | 'openrouter'>('auto');
   const [customInstructions, setCustomInstructions] = useState('');
+
+  // Etapa 1: Entendimento ("O que entendi") obrigatória antes de gerar
+  const [understanding, setUnderstanding] = useState<UnderstandingSummary | null>(null);
+  const [analyzing, setAnalyzing] = useState(false);
+  const [manualStatement, setManualStatement] = useState('');
+  const [confirmedDivergence, setConfirmedDivergence] = useState(false);
+  const [overrideCompleteness, setOverrideCompleteness] = useState(false);
 
   // Action states
   const [generating, setGenerating] = useState(false);
@@ -209,17 +329,19 @@ export default function PucWorkAssistantModal({
   const [togglingKind, setTogglingKind] = useState(false);
   const [mobilePane, setMobilePane] = useState<'editor' | 'brief' | 'timeline'>('editor');
 
-  const loadWorkspace = useCallback(async () => {
+  const loadWorkspace = useCallback(async (preserveError = false) => {
     setLoading(true);
-    setError('');
+    if (!preserveError) setError('');
     try {
       const res = await api<AssistantWorkspaceResponse>(
         `/puc/assistant/deliverables/${courseId}/${assignmentId}`
       );
       setData(res);
       setMarkdown(res.deliverable?.currentMarkdown || '');
-      setStatus(res.deliverable?.status || 'entrega_gerada');
+      setStatus(res.deliverable?.status || 'rascunho');
+      setOverrideCompleteness(Boolean(res.deliverable?.completenessOverridden));
       setStudentName(res.studentName || '');
+      setMyProjectInput(res.course.myProject || '');
       const members =
         res.deliverable?.groupMembers?.length
           ? res.deliverable.groupMembers
@@ -233,6 +355,9 @@ export default function PucWorkAssistantModal({
   }, [courseId, assignmentId]);
 
   useEffect(() => {
+    setUnderstanding(null);
+    setManualStatement('');
+    setConfirmedDivergence(false);
     void loadWorkspace();
   }, [loadWorkspace]);
 
@@ -242,10 +367,30 @@ export default function PucWorkAssistantModal({
     [data?.deliverable?.currentMarkdown, markdown]
   );
 
-  const canExportPdf =
+  const completeness = useMemo(() => {
+    const serverComp = data?.deliverable?.completeness || null;
+    if (!serverComp || serverComp.expectedNumbers.length === 0) return serverComp;
+    return checkLocalCompleteness(serverComp.expectedNumbers, markdown) || serverComp;
+  }, [data?.deliverable?.completeness, markdown]);
+  const completenessFailed = Boolean(
+    completeness && completeness.expectedCount > 0 && !completeness.passed && !overrideCompleteness
+  );
+  const isHandwritten = Boolean(data?.deliverable?.isHandwritten || understanding?.isHandwritten);
+  const isGroup = Boolean(data?.deliverable?.isGroup || understanding?.isGroup);
+
+  const canExportFinal =
     Boolean(data?.deliverable) &&
-    status === 'pronta' &&
+    (status === 'validada' || status === 'entrega_gerada') &&
     localPlaceholders.length === 0 &&
+    !completenessFailed &&
+    markdown.trim().length > 0 &&
+    !hasUnsavedChanges;
+
+  const canPublishGithub =
+    Boolean(data?.deliverable) &&
+    status === 'validada' &&
+    localPlaceholders.length === 0 &&
+    !completenessFailed &&
     markdown.trim().length > 0 &&
     !hasUnsavedChanges;
 
@@ -271,8 +416,64 @@ export default function PucWorkAssistantModal({
     [groupMembersInput]
   );
 
-  const handleGenerate = async () => {
-    if (generating || !data?.canGenerate) return;
+  const handleSaveMyProject = async () => {
+    if (savingProject) return;
+    setSavingProject(true);
+    setError('');
+    try {
+      await api(`/puc/courses/${courseId}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ myProject: myProjectInput }),
+      });
+      setFeedback('Descrição de "Meu projeto" salva para este curso.');
+      await loadWorkspace();
+    } catch (err) {
+      setError(extractErr(err, 'Não foi possível salvar a descrição do seu projeto.'));
+    } finally {
+      setSavingProject(false);
+    }
+  };
+
+  // Etapa 1: analisar enunciado + anexos e exibir o card "O que entendi"
+  const handleAnalyzeUnderstanding = async (overrideManual?: string) => {
+    if (analyzing || !data?.canGenerate) return;
+    setAnalyzing(true);
+    setError('');
+    setFeedback('');
+    try {
+      const res = await api<{ ok: boolean; understanding: UnderstandingSummary }>(
+        `/puc/assistant/deliverables/${courseId}/${assignmentId}/understand`,
+        {
+          method: 'POST',
+          body: JSON.stringify({
+            manualStatement: (overrideManual ?? manualStatement).trim() || undefined,
+          }),
+        }
+      );
+      setUnderstanding(res.understanding);
+      setConfirmedDivergence(false);
+    } catch (err) {
+      setError(extractErr(err, 'Falha ao analisar enunciado e anexos do trabalho.'));
+    } finally {
+      setAnalyzing(false);
+    }
+  };
+
+  // Etapa 2: só gera após o usuário clicar em "Confirmar e gerar"
+  const handleConfirmAndGenerate = async () => {
+    if (generating || !data?.canGenerate || !understanding) return;
+    if (!understanding.canProceed && !manualStatement.trim()) {
+      setError(
+        understanding.blockReason ||
+          'Cole o enunciado manualmente antes de confirmar a geração.'
+      );
+      return;
+    }
+    if (understanding.titleDivergence.hasDivergence && !confirmedDivergence) {
+      setError('Marque a confirmação de divergência entre título e anexo antes de gerar.');
+      return;
+    }
+
     setGenerating(true);
     setError('');
     setFeedback('');
@@ -283,18 +484,33 @@ export default function PucWorkAssistantModal({
         model: string;
         currentMarkdown: string;
         status: DeliverableStatus;
+        visionPagesUsed?: number;
+        completeness?: CompletenessCheckResult;
       }>(`/puc/assistant/deliverables/${courseId}/${assignmentId}/generate`, {
         method: 'POST',
         body: JSON.stringify({
+          confirmedUnderstanding: true,
+          confirmedDivergence,
+          manualStatement: manualStatement.trim() || undefined,
           provider,
           instructions: customInstructions,
           studentName,
-          groupMembers: parsedGroupMembers,
+          groupMembers: understanding.isGroup ? parsedGroupMembers : [],
         }),
       });
       setMarkdown(res.currentMarkdown);
       setStatus(res.status);
-      setFeedback(`Entrega gerada via ${res.providerLabel} (${res.model}). Revise antes de exportar.`);
+      setUnderstanding(null);
+      const visionNote = res.visionPagesUsed ? ` · Visão (${res.visionPagesUsed} pág.)` : '';
+      const compNote =
+        res.completeness && res.completeness.expectedCount > 0
+          ? res.completeness.passed
+            ? ` · ${res.completeness.answeredCount}/${res.completeness.expectedCount} questões respondidas`
+            : ` · Atenção: faltam questões ${res.completeness.missingNumbers.join(', ')}`
+          : '';
+      setFeedback(
+        `Rascunho gerado via ${res.providerLabel} (${res.model})${visionNote}${compNote}. Revise e valide antes de salvar no GitHub.`
+      );
       await loadWorkspace();
       onUpdated?.();
     } catch (err) {
@@ -306,19 +522,33 @@ export default function PucWorkAssistantModal({
 
   const handleSave = async (nextStatus?: DeliverableStatus, saveVersion = false) => {
     if (saving) return;
-    const targetStatus = nextStatus || status;
-    if (targetStatus === 'pronta' && localPlaceholders.length > 0) {
+    const targetStatus: DeliverableStatus =
+      nextStatus && nextStatus !== 'entrega_gerada'
+        ? nextStatus
+        : status === 'entrega_gerada'
+          ? 'revisada_por_mim'
+          : status;
+
+    if (targetStatus === 'validada' && localPlaceholders.length > 0) {
       setError(
-        `Complete os ${localPlaceholders.length} marcador(es) [PREENCHER] antes de marcar como "Pronta para exportar".`
+        `Complete os ${localPlaceholders.length} marcador(es) [PREENCHER] antes de validar a entrega.`
       );
       return;
     }
+    if (targetStatus === 'validada' && completenessFailed && completeness) {
+      setError(
+        `Responda a(s) questão(ões) faltante(s) (${completeness.missingNumbers.join(', ')}) antes de validar.`
+      );
+      return;
+    }
+
     setSaving(true);
     setError('');
     setFeedback('');
     try {
       const res = await api<{
         ok: boolean;
+        status: DeliverableStatus;
         githubPublication?: GithubPublicationRecord | null;
         githubWarning?: string | null;
       }>(`/puc/assistant/deliverables/${courseId}/${assignmentId}`, {
@@ -327,28 +557,29 @@ export default function PucWorkAssistantModal({
           markdown,
           status: targetStatus,
           studentName,
-          groupMembers: parsedGroupMembers,
+          groupMembers: isGroup ? parsedGroupMembers : [],
           saveVersion,
+          overrideCompleteness,
         }),
       });
-      setStatus(targetStatus);
+      setStatus(res.status);
       if (res.githubPublication) {
         setFeedback(
-          `Entrega marcada como pronta e publicada automaticamente no GitHub (v${res.githubPublication.version})!`
+          `Entrega validada e publicada automaticamente no GitHub (v${res.githubPublication.version}) → status atualizado para "Entrega gerada"!`
         );
       } else if (res.githubWarning) {
-        setFeedback('Entrega marcada como pronta (aviso GitHub abaixo).');
+        setFeedback('Entrega validada (status mantido como "Validada (pronta)" pois o commit no GitHub falhou).');
         setError(`Auto-publicação GitHub falhou: ${res.githubWarning}`);
       } else {
         setFeedback(
-          targetStatus === 'pronta'
-            ? 'Entrega marcada como pronta para exportar!'
+          res.status === 'validada'
+            ? 'Entrega validada! Agora você pode clicar em "Salvar no GitHub" ou exportar.'
             : saveVersion
               ? 'Nova versão salva no histórico.'
               : 'Alterações salvas.'
         );
       }
-      await loadWorkspace();
+      await loadWorkspace(Boolean(res.githubWarning));
       onUpdated?.();
     } catch (err) {
       setError(extractErr(err, 'Erro ao salvar alterações.'));
@@ -358,22 +589,26 @@ export default function PucWorkAssistantModal({
   };
 
   const handlePublishGithub = async () => {
-    if (publishingGh || !canExportPdf) return;
+    if (publishingGh || !canPublishGithub) return;
     setPublishingGh(true);
     setError('');
     setFeedback('');
     try {
-      const res = await api<{ ok: boolean; publication: GithubPublicationRecord }>(
-        `/puc/assistant/deliverables/${courseId}/${assignmentId}/publish-github`,
-        { method: 'POST' }
-      );
+      const res = await api<{
+        ok: boolean;
+        status: DeliverableStatus;
+        publication: GithubPublicationRecord;
+      }>(`/puc/assistant/deliverables/${courseId}/${assignmentId}/publish-github`, {
+        method: 'POST',
+      });
+      setStatus(res.status);
       setFeedback(
-        `Entrega publicada no GitHub privado (v${res.publication.version} · commit ${res.publication.commitSha.slice(0, 7)})! Versões antigas limpas do Mongo.`
+        `Commit confirmado no GitHub privado (v${res.publication.version} · ${res.publication.commitSha.slice(0, 7)})! Status atualizado para "Entrega gerada" (lembre-se de enviar manualmente no Canvas).`
       );
       await loadWorkspace();
       onUpdated?.();
     } catch (err) {
-      setError(extractErr(err, 'Falha ao salvar entrega no GitHub.'));
+      setError(`Commit no GitHub falhou (status mantido como Validada): ${extractErr(err, 'Erro desconhecido.')}`);
     } finally {
       setPublishingGh(false);
     }
@@ -453,9 +688,21 @@ export default function PucWorkAssistantModal({
                   {isMultiPart ? 'Projeto multi-parte' : 'Entrega única'}
                 </span>
                 {data.deliverable && (
-                  <span className={`puc-badge tone-${status === 'pronta' ? 'ok' : 'warm'}`}>
+                  <span
+                    className={`puc-badge tone-${
+                      status === 'entrega_gerada' ? 'ok' : status === 'validada' ? 'accent' : 'warm'
+                    }`}
+                  >
                     {data.deliverable.statusLabel}
                   </span>
+                )}
+                {data.assignment.deliveryStatus && (
+                  <span className="puc-badge tone-muted">
+                    Canvas: {data.assignment.deliveryStatus}
+                  </span>
+                )}
+                {isHandwritten && (
+                  <span className="puc-badge tone-accent">Modo copiar à mão</span>
                 )}
               </div>
             )}
@@ -632,10 +879,47 @@ export default function PucWorkAssistantModal({
                           </ul>
                         </div>
                       )}
+
+                    {/* Campo "Meu projeto" por curso (para questões "considerando o seu projeto") */}
+                    <div className="puc-detail-section puc-myproject-box">
+                      <h4>Meu projeto (neste curso)</h4>
+                      <p className="puc-muted">
+                        Usado em questões do tipo "considerando o seu projeto". Se ficar vazio, a IA usa apenas suas entregas anteriores ou marca [PREENCHER].
+                      </p>
+                      <textarea
+                        rows={4}
+                        placeholder="Descreva brevemente o tema, escopo, arquitetura ou domínio do seu projeto nesta disciplina..."
+                        value={myProjectInput}
+                        onChange={(e) => setMyProjectInput(e.target.value)}
+                      />
+                      <button
+                        type="button"
+                        className="btn ghost"
+                        disabled={savingProject}
+                        onClick={() => void handleSaveMyProject()}
+                      >
+                        {savingProject ? 'Salvando...' : 'Salvar Meu projeto'}
+                      </button>
+                    </div>
+
+                    {/* Fontes usadas na geração */}
+                    {data.deliverable?.usedSources && data.deliverable.usedSources.length > 0 && (
+                      <div className="puc-detail-section puc-sources-box">
+                        <h4>Fontes usadas na geração ({data.deliverable.usedSources.length})</h4>
+                        <ul className="puc-detail-sublist">
+                          {data.deliverable.usedSources.map((src, idx) => (
+                            <li key={`${src.kind}-${idx}`}>
+                              <strong>[{src.kind}]</strong> {src.label}
+                              {src.detail ? <span className="puc-muted"> · {src.detail}</span> : null}
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
                   </aside>
                 )}
 
-                {/* Coluna Direita: Geração + Editor + Revisão IA + Exportação */}
+                {/* Coluna Direita: Geração (Etapa 1 Entendimento + Etapa 2) + Editor + Revisão IA + Exportação */}
                 {(!isMobile || mobilePane === 'editor') && (
                   <section className="puc-assistant-editor-col">
                     {/* Barra de geração (oculta se IA desativada no curso) */}
@@ -646,9 +930,9 @@ export default function PucWorkAssistantModal({
                             aria-label="Provedor de IA"
                             value={provider}
                             onChange={(e) => setProvider(e.target.value as any)}
-                            disabled={generating}
+                            disabled={generating || analyzing}
                           >
-                            <option value="auto">Provedor: Automático (Gemini p/ longos)</option>
+                            <option value="auto">Provedor: Automático (Gemini p/ visão e longos)</option>
                             <option value="gemini">Gemini</option>
                             <option value="groq">Groq</option>
                             <option value="openrouter">OpenRouter</option>
@@ -656,11 +940,11 @@ export default function PucWorkAssistantModal({
                           <button
                             type="button"
                             className="btn"
-                            disabled={generating || !data.canGenerate}
-                            onClick={() => void handleGenerate()}
+                            disabled={generating || analyzing || !data.canGenerate}
+                            onClick={() => void handleAnalyzeUnderstanding()}
                           >
-                            {generating
-                              ? 'Gerando entrega...'
+                            {analyzing
+                              ? 'Analisando enunciado...'
                               : isMultiPart && prevPartGraded
                                 ? 'Gerar entrega da próxima parte'
                                 : 'Gerar entrega'}
@@ -671,7 +955,7 @@ export default function PucWorkAssistantModal({
                           placeholder="Orientações extras opcionais (ex.: foco em arquitetura hexagonal, citar autor X)..."
                           value={customInstructions}
                           onChange={(e) => setCustomInstructions(e.target.value)}
-                          disabled={generating || !data.canGenerate}
+                          disabled={generating || analyzing || !data.canGenerate}
                         />
                         {!data.canGenerate && data.generateBlockedReason && (
                           <p className="puc-feedback is-error">{data.generateBlockedReason}</p>
@@ -683,11 +967,182 @@ export default function PucWorkAssistantModal({
                       </div>
                     )}
 
+                    {/* ETAPA 1 OBRIGATÓRIA: Card "O que entendi" */}
+                    {understanding && (
+                      <section className="puc-understanding-card" aria-label="O que entendi">
+                        <div className="puc-item-head">
+                          <strong>O que entendi — confirme antes de gerar</strong>
+                          <button
+                            type="button"
+                            className="puc-hide-btn"
+                            disabled={generating}
+                            onClick={() => setUnderstanding(null)}
+                          >
+                            Cancelar
+                          </button>
+                        </div>
+
+                        <div className="puc-understanding-grid">
+                          <div>
+                            <span className="puc-muted">Trabalho (Canvas ID)</span>
+                            <strong>
+                              {understanding.assignmentName} (#{understanding.assignmentId})
+                            </strong>
+                          </div>
+                          <div>
+                            <span className="puc-muted">Formato detectado</span>
+                            <strong>
+                              {understanding.isHandwritten
+                                ? `Manuscrito (${understanding.handwrittenKeywords.join(', ')})`
+                                : understanding.detectedFormat}
+                            </strong>
+                          </div>
+                          <div>
+                            <span className="puc-muted">Modalidade / Prazo</span>
+                            <strong>
+                              {understanding.isGroup ? 'Em grupo' : 'Individual'} ·{' '}
+                              {formatSaoPauloDateTime(understanding.dueAt)}
+                            </strong>
+                          </div>
+                          <div>
+                            <span className="puc-muted">Tipo de entrega (Canvas)</span>
+                            <strong>{understanding.submissionTypes.join(', ') || 'Não informado'}</strong>
+                          </div>
+                          <div>
+                            <span className="puc-muted">Questões detectadas</span>
+                            <strong>
+                              {understanding.questions.total > 0
+                                ? `${understanding.questions.total} total (${understanding.questions.closed} fechadas, ${understanding.questions.open} abertas, ${understanding.questions.other} outras)`
+                                : 'Sem questões numeradas detectadas'}
+                            </strong>
+                          </div>
+                          <div>
+                            <span className="puc-muted">Rubrica / Visão PDF</span>
+                            <strong>
+                              {understanding.hasRubric ? 'Com rubrica' : 'Sem rubrica'}
+                              {understanding.needsVision ? ' · Leitura visual Gemini ativada' : ''}
+                            </strong>
+                          </div>
+                        </div>
+
+                        {/* Anexos lidos */}
+                        <div className="puc-understanding-section">
+                          <span className="puc-muted">Anexos lidos ({understanding.attachments.length}):</span>
+                          {understanding.attachments.length === 0 ? (
+                            <p className="puc-muted">Nenhum arquivo anexado no enunciado.</p>
+                          ) : (
+                            <ul className="puc-detail-sublist">
+                              {understanding.attachments.map((att, idx) => (
+                                <li key={`${att.name}-${idx}`}>
+                                  <strong>{att.name}</strong> — {att.pages} pág. · {att.charsExtracted} caracteres
+                                  {att.needsVision ? ' · 👁 Visão Gemini' : ''}
+                                  {att.status !== 'ok' ? ` · ⚠ ${att.error || att.status}` : ''}
+                                </li>
+                              ))}
+                            </ul>
+                          )}
+                        </div>
+
+                        {/* Alerta de divergência de título */}
+                        {understanding.titleDivergence.hasDivergence && (
+                          <div className="puc-placeholder-alert" role="alert">
+                            <strong>Divergência entre título do trabalho e anexo:</strong>
+                            <p>{understanding.titleDivergence.reason}</p>
+                            <label className="puc-hidden-toggle">
+                              <input
+                                type="checkbox"
+                                checked={confirmedDivergence}
+                                onChange={(e) => setConfirmedDivergence(e.target.checked)}
+                              />
+                              <span>Confirmo que o anexo pertence a este trabalho e desejo continuar</span>
+                            </label>
+                          </div>
+                        )}
+
+                        {/* Bloqueio quando anexo está vazio/ilegível + campo manual */}
+                        {(!understanding.canProceed || understanding.unreadableAttachments) && (
+                          <div className="puc-placeholder-alert" role="alert">
+                            <strong>{understanding.blockReason}</strong>
+                            <textarea
+                              rows={5}
+                              className="puc-manual-statement"
+                              placeholder="Cole aqui o enunciado completo do trabalho (o assistente nunca vai inventar nem copiar de trabalhos antigos)..."
+                              value={manualStatement}
+                              onChange={(e) => setManualStatement(e.target.value)}
+                            />
+                            <button
+                              type="button"
+                              className="btn ghost"
+                              disabled={analyzing || !manualStatement.trim()}
+                              onClick={() => void handleAnalyzeUnderstanding(manualStatement)}
+                            >
+                              Reanalisar com enunciado colado
+                            </button>
+                          </div>
+                        )}
+
+                        <div className="puc-export-row">
+                          <button
+                            type="button"
+                            className="btn"
+                            disabled={
+                              generating ||
+                              (!understanding.canProceed && !manualStatement.trim()) ||
+                              (understanding.titleDivergence.hasDivergence && !confirmedDivergence)
+                            }
+                            onClick={() => void handleConfirmAndGenerate()}
+                          >
+                            {generating ? 'Gerando entrega...' : 'Confirmar e gerar'}
+                          </button>
+                          <button
+                            type="button"
+                            className="btn ghost"
+                            disabled={generating}
+                            onClick={() => setUnderstanding(null)}
+                          >
+                            Cancelar
+                          </button>
+                        </div>
+                      </section>
+                    )}
+
+                    {/* Checagem de completude por questão (em tempo real enquanto edita) */}
+                    {completeness && completeness.expectedCount > 0 && (
+                      <div
+                        className={`puc-completeness-bar ${completeness.passed || overrideCompleteness ? 'is-ok' : 'is-warn'}`}
+                        role="status"
+                      >
+                        <div>
+                          <strong>
+                            Completude: {completeness.answeredCount}/{completeness.expectedCount} questões respondidas
+                          </strong>
+                          {!completeness.passed && (
+                            <span>
+                              {' '}
+                              · Não detectadas: {completeness.missingNumbers.join(', ')}
+                            </span>
+                          )}
+                        </div>
+                        {!completeness.passed && (
+                          <label className="puc-hidden-toggle" style={{ marginTop: 6 }}>
+                            <input
+                              type="checkbox"
+                              checked={overrideCompleteness}
+                              onChange={(e) => setOverrideCompleteness(e.target.checked)}
+                            />
+                            <span>
+                              Confirmo que todas as questões reais estão respondidas (liberar validação mesmo com este alerta)
+                            </span>
+                          </label>
+                        )}
+                      </div>
+                    )}
+
                     {/* Alerta de marcadores [PREENCHER] */}
                     {localPlaceholders.length > 0 && (
                       <div className="puc-placeholder-alert" role="status">
                         <strong>
-                          {localPlaceholders.length} marcador(es) [PREENCHER] pendente(s) — exportação PDF bloqueada:
+                          {localPlaceholders.length} marcador(es) [PREENCHER] pendente(s) — validação e publicação bloqueadas:
                         </strong>
                         <ul>
                           {localPlaceholders.slice(0, 5).map((ph, idx) => (
@@ -697,43 +1152,49 @@ export default function PucWorkAssistantModal({
                       </div>
                     )}
 
-                    {/* Metadados da Capa do PDF (Aluno + Integrantes do Grupo) */}
-                    <div className="puc-cover-fields">
-                      <input
-                        type="text"
-                        placeholder="Seu nome (capa do PDF)"
-                        value={studentName}
-                        onChange={(e) => setStudentName(e.target.value)}
-                      />
-                      <input
-                        type="text"
-                        placeholder="Integrantes do grupo separados por vírgula (capa do PDF)"
-                        value={groupMembersInput}
-                        onChange={(e) => setGroupMembersInput(e.target.value)}
-                      />
-                    </div>
+                    {/* Metadados da Capa (só pede integrantes se o trabalho for em grupo!) */}
+                    {!isHandwritten && (
+                      <div className="puc-cover-fields">
+                        <input
+                          type="text"
+                          placeholder="Seu nome (capa do PDF)"
+                          value={studentName}
+                          onChange={(e) => setStudentName(e.target.value)}
+                        />
+                        {isGroup && (
+                          <input
+                            type="text"
+                            placeholder="Integrantes do grupo separados por vírgula"
+                            value={groupMembersInput}
+                            onChange={(e) => setGroupMembersInput(e.target.value)}
+                          />
+                        )}
+                      </div>
+                    )}
 
                     {/* Editor Markdown */}
                     <textarea
                       className="puc-markdown-editor"
-                      placeholder='Clique em "Gerar entrega" para produzir a entrega pronta em Markdown ou escreva diretamente aqui...'
+                      placeholder='Clique em "Gerar entrega" para analisar o enunciado ("O que entendi") e gerar as respostas, ou escreva diretamente aqui...'
                       value={markdown}
                       onChange={(e) => {
                         setMarkdown(e.target.value);
-                        if (status === 'entrega_gerada') setStatus('revisada_por_mim');
+                        if (status === 'rascunho' || status === 'entrega_gerada' || status === 'validada') {
+                          setStatus('revisada_por_mim');
+                        }
                       }}
                     />
 
-                    {/* Controles de Status, Salvar, Revisar com IA e Exportar */}
+                    {/* Controles de Status (rascunho -> revisada -> validada -> ENTREGA GERADA), Salvar, Revisar e Exportar */}
                     <div className="puc-assistant-actions">
                       <div className="puc-status-pills">
                         <button
                           type="button"
-                          className={`puc-filter-pill${status === 'entrega_gerada' ? ' is-on' : ''}`}
-                          onClick={() => void handleSave('entrega_gerada')}
+                          className={`puc-filter-pill${status === 'rascunho' ? ' is-on' : ''}`}
+                          onClick={() => void handleSave('rascunho')}
                           disabled={saving || !markdown.trim()}
                         >
-                          Entrega gerada
+                          Rascunho
                         </button>
                         <button
                           type="button"
@@ -741,21 +1202,36 @@ export default function PucWorkAssistantModal({
                           onClick={() => void handleSave('revisada_por_mim')}
                           disabled={saving || !markdown.trim()}
                         >
-                          Em revisão
+                          Revisada por mim
                         </button>
                         <button
                           type="button"
-                          className={`puc-filter-pill${status === 'pronta' ? ' is-on' : ''}`}
-                          onClick={() => void handleSave('pronta')}
-                          disabled={saving || !markdown.trim() || localPlaceholders.length > 0}
+                          className={`puc-filter-pill${status === 'validada' ? ' is-on' : ''}`}
+                          onClick={() => void handleSave('validada')}
+                          disabled={
+                            saving ||
+                            !markdown.trim() ||
+                            localPlaceholders.length > 0 ||
+                            completenessFailed
+                          }
                           title={
                             localPlaceholders.length > 0
                               ? 'Remova todos os marcadores [PREENCHER] primeiro'
-                              : 'Marcar entrega como pronta para exportar'
+                              : completenessFailed
+                                ? 'Responda todas as questões faltantes primeiro'
+                                : 'Marcar entrega como validada (pronta para salvar no GitHub)'
                           }
                         >
-                          Pronta para exportar
+                          Validada (pronta)
                         </button>
+                        {status === 'entrega_gerada' && (
+                          <span
+                            className="puc-badge tone-ok"
+                            title="Definido automaticamente após commit confirmado no GitHub. Não envia ao Canvas."
+                          >
+                            ✓ Entrega gerada (GitHub)
+                          </span>
+                        )}
                       </div>
 
                       <div className="puc-export-row">
@@ -763,7 +1239,7 @@ export default function PucWorkAssistantModal({
                           type="button"
                           className="btn ghost"
                           disabled={saving || !markdown.trim()}
-                          onClick={() => void handleSave(status, true)}
+                          onClick={() => void handleSave(undefined, true)}
                         >
                           {saving ? 'Salvando...' : 'Salvar versão'}
                         </button>
@@ -777,41 +1253,96 @@ export default function PucWorkAssistantModal({
                             {reviewing ? 'Revisando...' : 'Revisar com IA'}
                           </button>
                         )}
-                        <button
-                          type="button"
-                          className="btn"
-                          disabled={!canExportPdf}
-                          title={
-                            !canExportPdf
-                              ? 'Salve e marque como "Pronta para exportar" sem nenhum [PREENCHER] pendente'
-                              : 'Baixar PDF formatado ABNT'
-                          }
-                          onClick={() =>
-                            void onTriggerDownload(
-                              `/api/puc/assistant/deliverables/${courseId}/${assignmentId}/export.pdf`,
-                              `pdf-${courseId}-${assignmentId}`
-                            )
-                          }
-                        >
-                          Exportar PDF
-                        </button>
+
+                        {isHandwritten ? (
+                          <>
+                            <button
+                              type="button"
+                              className="btn"
+                              disabled={!data.deliverable}
+                              onClick={() =>
+                                void onTriggerDownload(
+                                  `/api/puc/assistant/deliverables/${courseId}/${assignmentId}/export.txt`,
+                                  `txt-${courseId}-${assignmentId}`
+                                )
+                              }
+                            >
+                              Baixar copiar à mão (.txt)
+                            </button>
+                            <button
+                              type="button"
+                              className="btn ghost"
+                              disabled={!data.deliverable}
+                              onClick={() =>
+                                void onTriggerDownload(
+                                  `/api/puc/assistant/deliverables/${courseId}/${assignmentId}/export-print.html`,
+                                  `print-${courseId}-${assignmentId}`,
+                                  true
+                                )
+                              }
+                            >
+                              Imprimir A4 (copiar à mão)
+                            </button>
+                          </>
+                        ) : (
+                          <button
+                            type="button"
+                            className="btn"
+                            disabled={!canExportFinal}
+                            title={
+                              !canExportFinal
+                                ? 'Salve e marque como "Validada (pronta)" sem [PREENCHER] nem questões faltando'
+                                : 'Baixar PDF formatado'
+                            }
+                            onClick={() =>
+                              void onTriggerDownload(
+                                `/api/puc/assistant/deliverables/${courseId}/${assignmentId}/export.pdf`,
+                                `pdf-${courseId}-${assignmentId}`
+                              )
+                            }
+                          >
+                            Exportar PDF
+                          </button>
+                        )}
+
                         {data.github?.configured && (
                           <button
                             type="button"
                             className="btn"
-                            disabled={!canExportPdf || publishingGh || Boolean(data.github?.expired)}
+                            disabled={!canPublishGithub || publishingGh || Boolean(data.github?.expired)}
                             title={
                               data.github?.expired
                                 ? 'Token do GitHub expirado ou inválido — atualize na tela GitHub'
-                                : !canExportPdf
-                                  ? 'Salve e marque como "Pronta para exportar" sem [PREENCHER] pendente'
-                                  : 'Publicar PDF, .md e código no repositório GitHub privado'
+                                : !canPublishGithub
+                                  ? 'Marque como "Validada (pronta)" (sem alterações não salvas, sem [PREENCHER] e completa) para publicar'
+                                  : 'Publicar commit atômico no GitHub privado e marcar como Entrega gerada'
                             }
                             onClick={() => void handlePublishGithub()}
                           >
                             {publishingGh ? 'Publicando no GitHub...' : 'Salvar no GitHub'}
                           </button>
                         )}
+                      </div>
+                      {data.github?.configured &&
+                        (Boolean(data.github?.expired) || (!canPublishGithub && status !== 'entrega_gerada')) &&
+                        markdown.trim().length > 0 && (
+                          <p className="puc-muted" style={{ margin: '4px 0 0', fontSize: '0.8rem' }}>
+                            {data.github?.authError
+                              ? `GitHub bloqueado (HTTP ${data.github.authError}): o token foi rejeitado ou não tem permissão Contents (Read and write) neste repositório. Abra o painel "GitHub" no topo da página PUC, teste a conexão e salve novamente.`
+                              : data.github?.expired
+                                ? 'Token do GitHub expirado ou inválido — abra o painel "GitHub" no topo da página PUC para atualizar o token.'
+                                : completenessFailed
+                                  ? 'Para liberar "Validada (pronta)" e "Salvar no GitHub", responda as questões faltantes ou marque a confirmação na barra de Completude acima.'
+                                  : localPlaceholders.length > 0
+                                    ? 'Remova os marcadores [PREENCHER] para validar e salvar no GitHub.'
+                                    : status !== 'validada'
+                                      ? 'Clique em "Validada (pronta)" acima para liberar o botão "Salvar no GitHub".'
+                                      : hasUnsavedChanges
+                                        ? 'Há alterações não salvas — clique em "Validada (pronta)" para salvar e liberar "Salvar no GitHub".'
+                                        : ''}
+                          </p>
+                        )}
+                      <div className="puc-export-row">
                         {data.deliverable?.lastPublishedUrl && (
                           <a
                             href={data.deliverable.lastPublishedFolderUrl || data.deliverable.lastPublishedUrl}

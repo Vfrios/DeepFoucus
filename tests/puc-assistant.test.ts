@@ -3,20 +3,37 @@ import test from 'node:test';
 import {
   AssignmentRecord,
   buildDeliverableContext,
+  buildUnderstandingSummary,
   canExportDeliverable,
   canGenerateForPart,
+  canPublishDeliverable,
+  canValidateDeliverable,
+  checkAnswerCompleteness,
   classifyAssignmentsForCourse,
   computePartTimelineState,
+  countReadyToSubmit,
+  detectAssignmentFormat,
   detectGradedPartUnlock,
+  detectHandwrittenFormat,
+  detectQuestionsFromText,
+  detectTitleDivergence,
+  extractCanvasFileRefsFromHtml,
   extractCodeFilesFromMarkdown,
   extractCourseLessonsFromAssignments,
   findPendingPlaceholders,
+  formatHandwrittenCopyTxt,
+  isReadyToSubmitInCanvas,
+  shouldUseVisionForPdf,
+  transitionStatusAfterGithubCommit,
+  transitionStatusOnEdit,
+  validateAndSanitizeGeneratedMarkdown,
   wrapUntrustedData,
 } from '../backend/src/lib/pucAssistantCore';
 import { extractReadableTextFromBuffer } from '../backend/src/lib/pucAssistantAi';
 import {
   generateDeliverableCodeZipBuffer,
   generateDeliverablePdfBuffer,
+  generateHandwrittenPrintHtml,
 } from '../backend/src/lib/pucAssistantPdf';
 
 test('1. Montagem do contexto: sanitiza HTML, ranqueia materiais relevantes, aplica anti prompt-injection e inclui lições', () => {
@@ -70,6 +87,7 @@ test('1. Montagem do contexto: sanitiza HTML, ranqueia materiais relevantes, apl
     },
     groupMembers: ['Vitor', 'Ana Paula'],
     studentName: 'Vitor',
+    isGroup: true,
   });
 
   assert.ok(ctx.promptDataBlock.includes('<DADOS_NAO_CONFIAVEIS fonte="ENUNCIADO">'));
@@ -289,18 +307,21 @@ test('5. Bloqueio de exportação com [PREENCHER] pendente ou status não pronto
   assert.equal(blockedPlaceholder.allowed, false);
   assert.equal(blockedPlaceholder.pendingPlaceholders.length, 1);
 
-  // Bloqueia se status não for 'pronta' mesmo sem [PREENCHER]
+  // Bloqueia se status não for 'validada'/'entrega_gerada' mesmo sem [PREENCHER]
   const mdClean = '# Relatório\n\nTodos os requisitos foram atendidos.\n\n## Checklist da rubrica\n- Critério 1: OK\n';
-  const blockedStatus = canExportDeliverable('entrega_gerada', mdClean);
-  assert.equal(blockedStatus.allowed, false);
+  const blockedDraft = canExportDeliverable('rascunho', mdClean);
+  assert.equal(blockedDraft.allowed, false);
 
   const blockedInReview = canExportDeliverable('revisada_por_mim', mdClean);
   assert.equal(blockedInReview.allowed, false);
 
-  // Libera somente quando status === 'pronta' e 0 placeholders
-  const allowed = canExportDeliverable('pronta', mdClean);
+  // Libera quando status === 'validada' (ou legado 'pronta') e 0 placeholders
+  const allowed = canExportDeliverable('validada', mdClean);
   assert.equal(allowed.allowed, true);
   assert.equal(allowed.reasons.length, 0);
+
+  const allowedLegacy = canExportDeliverable('pronta', mdClean);
+  assert.equal(allowedLegacy.allowed, true);
 });
 
 test('6. Geração de PDF em memória (capa com integrantes) e ZIP de código + Lições do professor', async () => {
@@ -366,4 +387,282 @@ test('6. Geração de PDF em memória (capa com integrantes) e ZIP de código + 
   ]);
   assert.ok(lessons.recurring_issues.length >= 1);
   assert.ok(lessons.recurring_issues.some((x) => x.includes('ABNT')));
+});
+
+test('7. Detecção de formato manuscrito, extração de anexos do HTML e visão PDF', () => {
+  const hw = detectHandwrittenFormat('Lista prova 3: copie à mão em folha A4 e digitalize em PDF.');
+  assert.equal(hw.isHandwritten, true);
+  assert.ok(hw.matchedKeywords.includes('à mão'));
+  assert.ok(hw.matchedKeywords.includes('digitalize'));
+
+  const typed = detectHandwrittenFormat('Escreva um relatório em PDF e envie no Canvas.');
+  assert.equal(typed.isHandwritten, false);
+
+  const fmt = detectAssignmentFormat(
+    { canvas_id: 1, course_id: 1, name: 'Lista prova 3', submission_types: ['online_upload'] },
+    'Atividade manuscrita: responder à mão na folha e digitalizar.'
+  );
+  assert.equal(fmt.format, 'manuscrito');
+  assert.equal(fmt.isHandwritten, true);
+
+  const htmlRefs = extractCanvasFileRefsFromHtml(
+    '<p>Baixe a lista: <a href="https://pucminas.instructure.com/courses/10/files/998877/download">Lista prova 3.pdf</a></p>'
+  );
+  assert.equal(htmlRefs.length, 1);
+  assert.equal(htmlRefs[0].fileId, 998877);
+  assert.equal(htmlRefs[0].label, 'Lista prova 3.pdf');
+
+  // Visão PDF ativada quando texto curto p/ páginas ou há palavra cruzada
+  assert.equal(shouldUseVisionForPdf({ pages: 4, extractedChars: 120, text: 'texto curto' }).needsVision, true);
+  assert.equal(shouldUseVisionForPdf({ pages: 2, extractedChars: 2500, text: 'Complete a palavra cruzada abaixo' }).needsVision, true);
+  assert.equal(shouldUseVisionForPdf({ pages: 2, extractedChars: 2500, text: 'Texto dissertativo puro sobre redes.' }).needsVision, false);
+});
+
+test('8. Alerta de divergência de título e recusa quando anexo vem vazio/ilegível', () => {
+  const div = detectTitleDivergence('Exercício 7', [{ name: 'Exercicio_6.pdf', text: 'Exercício 6 - Redes' }]);
+  assert.equal(div.hasDivergence, true);
+  assert.ok(div.reason?.includes('7') && div.reason?.includes('6'));
+
+  const noDiv = detectTitleDivergence('Lista prova 3', [{ name: 'Lista_prova_3.pdf', text: 'Lista prova 3' }]);
+  assert.equal(noDiv.hasDivergence, false);
+
+  // Recusa quando o anexo vem vazio e não há enunciado manual
+  const blocked = buildUnderstandingSummary({
+    courseId: 10,
+    courseName: 'Redes de Computadores',
+    assignment: {
+      canvas_id: 500,
+      course_id: 10,
+      name: 'Lista prova 3',
+      description: '<p>Veja o arquivo anexo.</p>',
+      submission_types: ['online_upload'],
+    },
+    attachments: [
+      {
+        name: 'Lista_prova_3.pdf',
+        contentType: 'application/pdf',
+        text: '',
+        pages: 5,
+        charsExtracted: 0,
+        status: 'empty',
+      },
+    ],
+  });
+  assert.equal(blocked.unreadableAttachments, true);
+  assert.equal(blocked.canProceed, false);
+  assert.ok(blocked.blockReason?.includes('Cole o enunciado manualmente'));
+
+  // Ao colar enunciado manualmente, libera
+  const unblocked = buildUnderstandingSummary({
+    courseId: 10,
+    courseName: 'Redes de Computadores',
+    assignment: {
+      canvas_id: 500,
+      course_id: 10,
+      name: 'Lista prova 3',
+      description: '<p>Veja o arquivo anexo.</p>',
+      submission_types: ['online_upload'],
+    },
+    attachments: [
+      {
+        name: 'Lista_prova_3.pdf',
+        contentType: 'application/pdf',
+        text: '',
+        pages: 5,
+        charsExtracted: 0,
+        status: 'empty',
+      },
+    ],
+    manualStatement: '1. O que é TCP?\n2. O que é UDP?',
+  });
+  assert.equal(unblocked.canProceed, true);
+  assert.equal(unblocked.questions.questionNumbers.length, 2);
+});
+
+test('9. Isolamento de contexto, não inventar integrantes em individual e Meu projeto', () => {
+  const ctx = buildDeliverableContext({
+    courseName: 'Redes de Computadores',
+    assignment: {
+      canvas_id: 700,
+      course_id: 10,
+      name: 'Lista prova 3',
+      description: '<p>Resolva as questões 1 e 2 considerando o seu projeto.</p>',
+      submission_types: ['online_upload'],
+      // sem group_category_id -> individual!
+    },
+    assignmentAttachments: [
+      {
+        name: 'Lista_prova_3.pdf',
+        contentType: 'application/pdf',
+        text: '1. Qual protocolo garante entrega?\na) UDP\nb) TCP\nc) IP\nd) ARP\n2. Considerando o seu projeto, qual protocolo você usa?',
+      },
+    ],
+    previousSubmissions: [
+      {
+        assignment_id: 699,
+        name: 'Exercício 7 - Redação MIS/MAC',
+        submitted_at: '2026-10-10T12:00:00Z',
+        submitted_text: '<p>Redação de uma página sobre MIS e MAC.</p>',
+      },
+    ],
+    myProject: 'Sistema de telemetria IoT usando MQTT sobre TCP.',
+    groupMembers: ['Colega Inventado 1', 'Colega Inventado 2'],
+    studentName: 'Vitor',
+  });
+
+  // Trabalho B (700) tem seu próprio enunciado isolado e NÃO recebe integrantes por ser individual
+  assert.equal(ctx.isGroup, false);
+  assert.ok(!ctx.promptDataBlock.includes('Colega Inventado 1'), 'não deve incluir integrantes em trabalho individual');
+  assert.ok(ctx.promptDataBlock.includes('[TRABALHO ATUAL #700: Lista prova 3]'));
+  assert.ok(ctx.promptDataBlock.includes('ENTREGAS_ANTERIORES_DO_ALUNO_APENAS_REFERENCIA'));
+  assert.ok(ctx.promptDataBlock.includes('NÃO É O ENUNCIADO ATUAL'));
+  assert.ok(ctx.promptDataBlock.includes('MEU_PROJETO_DO_CURSO'));
+  assert.ok(ctx.promptDataBlock.includes('telemetria IoT usando MQTT'));
+  assert.ok(ctx.usedSources.some((s) => s.kind === 'meu_projeto'));
+});
+
+test('10. Checagem de completude por questão, Modo copiar à mão (.txt e A4) e validação de markdown', () => {
+  const listText = [
+    '1. Qual camada roteia pacotes?',
+    'a) Física',
+    'b) Enlace',
+    'c) Rede',
+    'd) Aplicação',
+    '2. Explique a diferença entre TCP e UDP.',
+    '3. Complete a palavra cruzada abaixo.',
+  ].join('\n');
+
+  const detected = detectQuestionsFromText(listText);
+  assert.deepEqual(detected.questionNumbers, [1, 2, 3]);
+  assert.equal(detected.closed, 1);
+  assert.equal(detected.open, 1);
+  assert.equal(detected.other, 1);
+  assert.equal(detected.hasCrosswordOrGrid, true);
+
+  // Resposta incompleta (falta questão 2)
+  const partialMd = '## Questões Fechadas (copiar à mão)\n1 - c\n\n## Palavras Cruzadas\n3 (horizontal, 3 letras): TCP';
+  const incomplete = checkAnswerCompleteness(detected.questionNumbers, partialMd);
+  assert.equal(incomplete.passed, false);
+  assert.deepEqual(incomplete.missingNumbers, [2]);
+
+  // Validação bloqueia se incompleta ou com [PREENCHER]
+  assert.equal(canValidateDeliverable(partialMd, incomplete).allowed, false);
+  assert.equal(
+    canValidateDeliverable('1 - c\n2. [PREENCHER: descreva seu projeto]\n3 - TCP', {
+      expectedCount: 3,
+      answeredCount: 3,
+      expectedNumbers: [1, 2, 3],
+      answeredNumbers: [1, 2, 3],
+      missingNumbers: [],
+      passed: true,
+    }).allowed,
+    false
+  );
+
+  // Resposta completa em Modo copiar à mão
+  const fullHandwrittenMd = [
+    '## Questões Fechadas (copiar à mão)',
+    '1 - c',
+    '',
+    '## Questões Abertas (copiar à mão)',
+    '### Questão 2',
+    'O TCP é orientado à conexão e garante entrega ordenada; o UDP é sem conexão e mais rápido.',
+    '',
+    '## Palavras Cruzadas / Grades / Figuras',
+    '3 (horizontal, 3 letras): TCP',
+    '',
+    '## Justificativas (para estudar, não copiar)',
+    '1 - c: O roteamento ocorre na camada de Rede (IP).',
+  ].join('\n');
+
+  const complete = checkAnswerCompleteness(detected.questionNumbers, fullHandwrittenMd);
+  assert.equal(complete.passed, true);
+  assert.deepEqual(complete.missingNumbers, []);
+
+  const txt = formatHandwrittenCopyTxt(fullHandwrittenMd, {
+    courseName: 'Redes',
+    assignmentName: 'Lista prova 3',
+  });
+  assert.ok(txt.includes('1 - c'));
+  assert.ok(txt.includes('JUSTIFICATIVAS (PARA ESTUDAR, NÃO COPIAR)'));
+
+  const printHtml = generateHandwrittenPrintHtml({
+    courseName: 'Redes',
+    assignmentName: 'Lista prova 3',
+    markdown: fullHandwrittenMd,
+  });
+  assert.ok(printHtml.includes('@page { size: A4;'));
+  assert.ok(printHtml.includes('class="closed-line">1 - c<'));
+  assert.ok(printHtml.includes('class="justificativas-box"'));
+
+  // Validação de markdown: corrige "## ## Checklist" e remove "Checklist da rubrica" quando sem rubrica
+  const malformed = '## ## Respostas\n\nTexto normal.\n\n## ## Checklist da rubrica\n- Critério inventado: ok\n';
+  const sanitized = validateAndSanitizeGeneratedMarkdown(malformed, {
+    hasRubric: false,
+    isGroup: false,
+  });
+  assert.ok(sanitized.markdown.includes('## Respostas'));
+  assert.ok(!sanitized.markdown.includes('## ##'));
+  assert.ok(!sanitized.markdown.includes('Checklist da rubrica'));
+  assert.equal(sanitized.removedEmptyRubric, true);
+  assert.ok(sanitized.fixedHeadings >= 2);
+});
+
+test('11. Ciclo de status (validada -> entrega_gerada só após commit), prontas para enviar e gate multi-parte', () => {
+  // Só permite publicar quando status === 'validada'
+  assert.equal(canPublishDeliverable('rascunho', '# Entrega pronta').allowed, false);
+  assert.equal(canPublishDeliverable('revisada_por_mim', '# Entrega pronta').allowed, false);
+  assert.equal(canPublishDeliverable('validada', '# Entrega pronta').allowed, true);
+  assert.equal(canPublishDeliverable('entrega_gerada', '# Entrega pronta').allowed, false);
+
+  // Commit confirmado -> entrega_gerada; falha de commit -> mantém validada
+  assert.equal(transitionStatusAfterGithubCommit('validada', true), 'entrega_gerada');
+  assert.equal(transitionStatusAfterGithubCommit('validada', false), 'validada');
+
+  // Edição de uma entrega já 'entrega_gerada' volta para 'revisada_por_mim'
+  assert.equal(
+    transitionStatusOnEdit('entrega_gerada', '# Versão 1', '# Versão 2 editada'),
+    'revisada_por_mim'
+  );
+
+  // Entrega gerada continua contando como pronta para enviar enquanto Canvas está pendente/atrasado,
+  // e deixa de contar quando o sync marca como 'entregue' ou 'corrigido'
+  assert.equal(isReadyToSubmitInCanvas('entrega_gerada', 'pendente'), true);
+  assert.equal(isReadyToSubmitInCanvas('entrega_gerada', 'atrasado'), true);
+  assert.equal(isReadyToSubmitInCanvas('entrega_gerada', 'entregue'), false);
+  assert.equal(isReadyToSubmitInCanvas('entrega_gerada', 'corrigido'), false);
+  assert.equal(isReadyToSubmitInCanvas('validada', 'pendente'), false);
+
+  assert.equal(
+    countReadyToSubmit([
+      { deliverableStatus: 'entrega_gerada', canvasDeliveryStatus: 'pendente' },
+      { deliverableStatus: 'entrega_gerada', canvasDeliveryStatus: 'atrasado' },
+      { deliverableStatus: 'entrega_gerada', canvasDeliveryStatus: 'entregue' },
+      { deliverableStatus: 'validada', canvasDeliveryStatus: 'pendente' },
+    ]),
+    2
+  );
+
+  // Multi-parte: parte 2 continua BLOQUEADA mesmo se parte 1 tiver status 'entrega_gerada' no assistente (precisa 'corrigido' no Canvas!)
+  const part1PendingCanvas: AssignmentRecord = {
+    canvas_id: 1,
+    course_id: 20,
+    name: 'Projeto - Parte 1',
+    workflow_state: 'unsubmitted',
+    submission_types: ['online_upload'],
+  };
+  const part2: AssignmentRecord = {
+    canvas_id: 2,
+    course_id: 20,
+    name: 'Projeto - Parte 2',
+    workflow_state: 'unsubmitted',
+    submission_types: ['online_upload'],
+  };
+  const gate = canGenerateForPart({
+    assignment: part2,
+    dependsOnAssignment: part1PendingCanvas,
+    deliverableStatus: null,
+  });
+  assert.equal(gate.allowed, false);
+  assert.equal(gate.state, 'bloqueada');
 });

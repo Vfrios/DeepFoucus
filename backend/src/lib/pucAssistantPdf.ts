@@ -286,3 +286,164 @@ export async function generateDeliverableCodeZipBuffer(params: {
     void archive.finalize();
   });
 }
+
+function escapeHtml(raw: string): string {
+  return String(raw || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+/**
+ * Gera página HTML de impressão A4 otimizada para o "Modo copiar à mão":
+ * fonte grande, alto contraste, espaço generoso entre respostas e separação visual
+ * da seção de justificativas (para estudar, não copiar).
+ */
+export function generateHandwrittenPrintHtml(input: {
+  courseName: string;
+  assignmentName: string;
+  markdown: string;
+  generatedAt?: Date;
+}): string {
+  const dateLabel =
+    formatSaoPauloDateTime(input.generatedAt ?? new Date()).split(',')[0] ||
+    new Date().toLocaleDateString('pt-BR');
+
+  const lines = String(input.markdown || '').replace(/\r\n/g, '\n').split('\n');
+  const htmlBlocks: string[] = [];
+  let inJustificativas = false;
+
+  for (const rawLine of lines) {
+    const trimmed = rawLine.trim();
+    if (!trimmed) continue;
+
+    if (/^#{1,2}\s+/.test(trimmed)) {
+      const title = cleanInlineMarkdown(trimmed.replace(/^#{1,2}\s+/, ''));
+      const isJust = /justificativa/i.test(title);
+      if (isJust && !inJustificativas) {
+        inJustificativas = true;
+        htmlBlocks.push('<section class="justificativas-box">');
+      } else if (!isJust && inJustificativas) {
+        inJustificativas = false;
+        htmlBlocks.push('</section>');
+      }
+      htmlBlocks.push(`<h2>${escapeHtml(title)}</h2>`);
+      continue;
+    }
+
+    if (/^#{3,6}\s+/.test(trimmed)) {
+      const title = cleanInlineMarkdown(trimmed.replace(/^#{3,6}\s+/, ''));
+      htmlBlocks.push(`<h3>${escapeHtml(title)}</h3>`);
+      continue;
+    }
+
+    // Linha compacta de questão fechada: "1 - b"
+    if (/^\d{1,3}\s*[-–—]\s*[a-eA-E]\b/.test(trimmed)) {
+      htmlBlocks.push(`<div class="closed-line">${escapeHtml(cleanInlineMarkdown(trimmed))}</div>`);
+      continue;
+    }
+
+    htmlBlocks.push(`<p>${escapeHtml(cleanInlineMarkdown(trimmed))}</p>`);
+  }
+
+  if (inJustificativas) {
+    htmlBlocks.push('</section>');
+  }
+
+  return `<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <title>Copiar à mão — ${escapeHtml(input.assignmentName)}</title>
+  <style>
+    @page { size: A4; margin: 18mm; }
+    * { box-sizing: border-box; }
+    body {
+      font-family: 'Segoe UI', Roboto, Arial, sans-serif;
+      color: #111;
+      background: #fff;
+      margin: 0;
+      padding: 20px 28px;
+      font-size: 16pt;
+      line-height: 1.75;
+    }
+    .toolbar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 10px 14px;
+      margin-bottom: 18px;
+      background: #f3f5f8;
+      border: 1px solid #cfd6df;
+      border-radius: 8px;
+      font-size: 11pt;
+    }
+    .toolbar button {
+      background: #0f4c5c;
+      color: #fff;
+      border: none;
+      border-radius: 6px;
+      padding: 8px 16px;
+      font-size: 11pt;
+      cursor: pointer;
+    }
+    header {
+      border-bottom: 2px solid #222;
+      padding-bottom: 10px;
+      margin-bottom: 20px;
+    }
+    header h1 { margin: 0 0 4px; font-size: 18pt; }
+    header .meta { font-size: 11pt; color: #444; }
+    h2 {
+      margin: 26px 0 12px;
+      font-size: 16pt;
+      border-bottom: 1px solid #bbb;
+      padding-bottom: 4px;
+    }
+    h3 {
+      margin: 22px 0 8px;
+      font-size: 15pt;
+    }
+    p {
+      margin: 0 0 16px;
+      text-align: left;
+    }
+    .closed-line {
+      font-family: 'Consolas', 'Courier New', monospace;
+      font-size: 17pt;
+      font-weight: 700;
+      padding: 5px 0;
+      border-bottom: 1px dashed #ddd;
+    }
+    .justificativas-box {
+      margin-top: 32px;
+      padding: 16px 20px;
+      border: 2px dashed #888;
+      background: #fafafa;
+      font-size: 12.5pt;
+      line-height: 1.55;
+      page-break-before: always;
+    }
+    @media print {
+      body { padding: 0; }
+      .no-print { display: none !important; }
+    }
+  </style>
+</head>
+<body>
+  <div class="toolbar no-print">
+    <span><strong>Modo copiar à mão (A4)</strong> — fonte grande com espaço entre respostas</span>
+    <button type="button" onclick="window.print()">Imprimir / Salvar PDF A4</button>
+  </div>
+  <header>
+    <h1>${escapeHtml(input.assignmentName)}</h1>
+    <div class="meta">${escapeHtml(input.courseName)} · ${escapeHtml(dateLabel)}</div>
+  </header>
+  <main>
+    ${htmlBlocks.join('\n    ')}
+  </main>
+</body>
+</html>`;
+}

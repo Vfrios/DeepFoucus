@@ -44,6 +44,7 @@ interface GlobalSummary {
   dueThisWeek: number;
   unreadAnnouncements: number;
   awaitingReview?: number;
+  readyToSubmit?: number;
 }
 
 interface LastSyncInfo {
@@ -127,8 +128,28 @@ interface PucAssignment {
   partOrder?: number | null;
   dependsOn?: number | null;
   deliverableStatus?: DeliverableStatus | null;
+  readyToSubmit?: boolean;
+  isHandwritten?: boolean;
   githubUrl?: string | null;
   pendingPlaceholdersCount?: number;
+}
+
+interface ReadyToSubmitItem {
+  courseId: number;
+  courseName: string;
+  assignmentId: number;
+  assignmentName: string;
+  githubUrl: string | null;
+  version: number | null;
+  dueAt: string | null;
+  htmlUrl: string | null;
+}
+
+function getDeliverableBadge(status: DeliverableStatus): { label: string; tone: string } {
+  if (status === 'entrega_gerada') return { label: 'Entrega gerada', tone: 'ok' };
+  if (status === 'validada') return { label: 'Validada (pronta)', tone: 'accent' };
+  if (status === 'revisada_por_mim') return { label: 'Revisada por mim', tone: 'warm' };
+  return { label: 'Rascunho', tone: 'muted' };
 }
 
 interface MultiPartProjectSummary {
@@ -338,7 +359,9 @@ export default function PagePUC() {
   const [courseProjects, setCourseProjects] = useState<MultiPartProjectSummary[]>([]);
   const [allProjects, setAllProjects] = useState<MultiPartProjectSummary[]>([]);
   const [awaitingReviewItems, setAwaitingReviewItems] = useState<AwaitingReviewItem[]>([]);
+  const [readyToSubmitItems, setReadyToSubmitItems] = useState<ReadyToSubmitItem[]>([]);
   const [showAwaitingReview, setShowAwaitingReview] = useState(false);
+  const [showReadyToSubmit, setShowReadyToSubmit] = useState(false);
   const [togglingAiCourseId, setTogglingAiCourseId] = useState<number | null>(null);
   const [githubOpen, setGithubOpen] = useState(false);
   const [githubStatus, setGithubStatus] = useState<GithubConfigStatus | null>(null);
@@ -354,8 +377,15 @@ export default function PagePUC() {
         api<PucStatusResponse>('/puc/status'),
         api<PucCourse[]>('/puc/courses'),
         api<UpcomingResponse>('/puc/upcoming'),
-        api<{ awaitingReviewCount: number; items: AwaitingReviewItem[] }>('/puc/assistant/summary').catch(() => ({
+        api<{
+          awaitingReviewCount: number;
+          readyToSubmitCount?: number;
+          readyToSubmitItems?: ReadyToSubmitItem[];
+          items: AwaitingReviewItem[];
+        }>('/puc/assistant/summary').catch(() => ({
           awaitingReviewCount: 0,
+          readyToSubmitCount: 0,
+          readyToSubmitItems: [],
           items: [],
         })),
         api<MultiPartProjectSummary[]>('/puc/assistant/projects').catch(() => []),
@@ -366,6 +396,7 @@ export default function PagePUC() {
       setCourses(cr);
       setUpcoming(up);
       setAwaitingReviewItems(revSum.items || []);
+      setReadyToSubmitItems(revSum.readyToSubmitItems || []);
       setAllProjects(projs || []);
       setGithubStatus(ghCfg);
       if (!st.token.configured || st.token.expired || st.token.expiringSoon) {
@@ -893,6 +924,14 @@ export default function PagePUC() {
             >
               Aguardando revisão <strong>{summary.awaitingReview ?? awaitingReviewItems.length}</strong>
             </button>
+            <button
+              type="button"
+              className={`puc-quick-chip tone-ok${showReadyToSubmit ? ' is-on' : ''}`}
+              onClick={() => setShowReadyToSubmit((v) => !v)}
+              title="Entregas já salvas no GitHub que ainda faltam enviar manualmente no Canvas"
+            >
+              Prontas para enviar: <strong>{summary.readyToSubmit ?? readyToSubmitItems.length}</strong>
+            </button>
             <span className="puc-quick-stat">
               Entregues/Corrigidos: <strong>{summary.submitted + summary.graded}</strong>
             </span>
@@ -1098,6 +1137,63 @@ export default function PagePUC() {
         </section>
       )}
 
+      {/* ---- Painel de Entregas Prontas para Enviar no Canvas ---- */}
+      {showReadyToSubmit && (
+        <section className="puc-card">
+          <div className="puc-item-head">
+            <h2 className="puc-section-title">Prontas para enviar no Canvas ({readyToSubmitItems.length})</h2>
+            <button type="button" className="puc-hide-btn" onClick={() => setShowReadyToSubmit(false)}>
+              Fechar
+            </button>
+          </div>
+          {readyToSubmitItems.length === 0 ? (
+            <p className="puc-empty">Nenhuma entrega gerada aguardando envio manual no Canvas.</p>
+          ) : (
+            <ul className="puc-list">
+              {readyToSubmitItems.map((item) => (
+                <li
+                  key={`${item.courseId}-${item.assignmentId}`}
+                  className="puc-list-item is-clickable puc-ready-to-submit"
+                  onClick={() => setAssistantTarget({ courseId: item.courseId, assignmentId: item.assignmentId })}
+                >
+                  <div className="puc-item-head">
+                    <span className="puc-course-chip">{item.courseName}</span>
+                    <div className="puc-assignment-actions">
+                      <span className="puc-badge tone-ok">Entrega gerada</span>
+                      <span className="puc-badge tone-warm">Pronto para enviar</span>
+                    </div>
+                  </div>
+                  <strong className="puc-item-title">{item.assignmentName}</strong>
+                  <div className="puc-item-meta">
+                    <span>Prazo: {formatSaoPauloDateTime(item.dueAt)}</span>
+                    {item.githubUrl && (
+                      <a
+                        href={item.githubUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        Ver no GitHub {item.version ? `(v${item.version})` : ''}
+                      </a>
+                    )}
+                    {item.htmlUrl && (
+                      <a
+                        href={item.htmlUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        Enviar no Canvas →
+                      </a>
+                    )}
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+      )}
+
       {/* ---- Painel de Entregas Aguardando Revisão ---- */}
       {showAwaitingReview && (
         <section className="puc-card">
@@ -1233,30 +1329,30 @@ export default function PagePUC() {
               <ul className="puc-list">
                 {upcoming.assignments.map((a) => {
                   const badge = statusBadgeInfo(a.deliveryStatus, a.score, a.pointsPossible, a.grade);
+                  const delivBadge = a.deliverableStatus ? getDeliverableBadge(a.deliverableStatus) : null;
                   const courseObj = courses.find((c) => c.id === a.courseId);
                   const showAssistant = courseObj?.aiAllowed !== false || Boolean(a.deliverableStatus);
                   return (
                     <li
                       key={`${a.courseId}-${a.id}`}
-                      className="puc-list-item is-clickable"
+                      className={`puc-list-item is-clickable${a.readyToSubmit ? ' puc-ready-to-submit' : ''}`}
                       onClick={() => setOpenAssignment(a)}
                     >
                       <div className="puc-item-head">
                         <span className="puc-course-chip">{a.courseName}</span>
-                        <span className={`puc-badge tone-${badge.tone}`}>{badge.label}</span>
+                        <div className="puc-assignment-actions">
+                          {delivBadge && (
+                            <span className={`puc-badge tone-${delivBadge.tone}`}>{delivBadge.label}</span>
+                          )}
+                          {a.readyToSubmit && (
+                            <span className="puc-badge tone-accent">Pronto para enviar</span>
+                          )}
+                          <span className={`puc-badge tone-${badge.tone}`}>{badge.label}</span>
+                        </div>
                       </div>
                       <strong className="puc-item-title">{a.name}</strong>
                       <div className="puc-item-meta">
                         <span>Prazo: {formatSaoPauloDateTime(a.dueAt)}</span>
-                        {a.deliverableStatus && (
-                          <span className="puc-badge tone-warm">
-                            {a.deliverableStatus === 'pronta'
-                              ? 'Pronta para exportar'
-                              : a.deliverableStatus === 'revisada_por_mim'
-                                ? 'Em revisão'
-                                : 'Entrega gerada'}
-                          </span>
-                        )}
                         {showAssistant && (
                           <button
                             type="button"
@@ -1616,12 +1712,15 @@ export default function PagePUC() {
                               a.pointsPossible,
                               a.grade
                             );
+                            const delivBadge = a.deliverableStatus
+                              ? getDeliverableBadge(a.deliverableStatus)
+                              : null;
                             const showAssistantBtn =
                               selectedCourse.aiAllowed !== false || Boolean(a.deliverableStatus);
                             return (
                               <li
                                 key={a.id}
-                                className="puc-list-item is-clickable"
+                                className={`puc-list-item is-clickable${a.readyToSubmit ? ' puc-ready-to-submit' : ''}`}
                                 onClick={() => setOpenAssignment(a)}
                               >
                                 <div className="puc-item-head">
@@ -1632,13 +1731,12 @@ export default function PagePUC() {
                                         Multi-parte{a.partOrder ? ` · P${a.partOrder}` : ''}
                                       </span>
                                     )}
-                                    {a.deliverableStatus && (
-                                      <span className="puc-badge tone-warm">
-                                        {a.deliverableStatus === 'pronta'
-                                          ? 'Pronta para exportar'
-                                          : a.deliverableStatus === 'revisada_por_mim'
-                                            ? 'Em revisão'
-                                            : 'Entrega gerada'}
+                                    {a.readyToSubmit && (
+                                      <span className="puc-badge tone-accent">Pronto para enviar</span>
+                                    )}
+                                    {delivBadge && (
+                                      <span className={`puc-badge tone-${delivBadge.tone}`}>
+                                        {delivBadge.label}
                                       </span>
                                     )}
                                     <span className={`puc-badge tone-${badge.tone}`}>{badge.label}</span>

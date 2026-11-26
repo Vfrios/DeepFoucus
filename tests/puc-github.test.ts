@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
+  assertDeliverableOnlyFiles,
   buildDeliverableGithubPaths,
   decryptGithubToken,
   encryptGithubToken,
@@ -41,7 +42,7 @@ test('1. Montagem do caminho/estrutura e mensagem de commit para entregas com e 
       '2026-2/IHC/Trabalho-Pratico-Prototipo-Codigo/codigo-v2/README.md',
     ]
   );
-  assert.equal(withCode.commitMessage, '[IHC] Trabalho Prático: Protótipo & Código - v2 (pronta)');
+  assert.equal(withCode.commitMessage, '[IHC] Trabalho Prático: Protótipo & Código - v2 (validada)');
 
   const textOnly = buildDeliverableGithubPaths({
     semester: '2026/2',
@@ -50,8 +51,23 @@ test('1. Montagem do caminho/estrutura e mensagem de commit para entregas com e 
     version: 1,
   });
   assert.equal(textOnly.zipPath, null);
+  assert.equal(textOnly.txtPath, null);
+  assert.equal(textOnly.pdfPath, '2026-2/ESII/Resenha-Artigo-1/entrega-v1.pdf');
   assert.equal(textOnly.codeFilePaths.length, 0);
-  assert.equal(textOnly.commitMessage, '[ESII] Resenha Artigo 1 - v1 (pronta)');
+  assert.equal(textOnly.commitMessage, '[ESII] Resenha Artigo 1 - v1 (validada)');
+
+  // Entrega manuscrita gera copiar-a-mao-v<N>.txt em vez de PDF
+  const handwritten = buildDeliverableGithubPaths({
+    semester: '2026/2',
+    courseAcronym: 'REDES',
+    assignmentName: 'Lista prova 3',
+    version: 1,
+    isHandwritten: true,
+  });
+  assert.equal(handwritten.pdfPath, null);
+  assert.equal(handwritten.txtPath, '2026-2/REDES/Lista-prova-3/copiar-a-mao-v1.txt');
+  assert.equal(handwritten.mdPath, '2026-2/REDES/Lista-prova-3/entrega-v1.md');
+  assert.equal(handwritten.commitMessage, '[REDES] Lista prova 3 - v1 (validada)');
 });
 
 test('2. Sanitização de nomes bloqueia path traversal (..), barras e caracteres inválidos', () => {
@@ -205,4 +221,43 @@ test('5. Criptografia AES-256-GCM do token GitHub: roundtrip e rejeição de adu
     if (prevKey === undefined) delete process.env.ENCRYPTION_KEY;
     else process.env.ENCRYPTION_KEY = prevKey;
   }
+});
+
+test('6. Garantia de privacidade: bloqueia qualquer arquivo que não seja entrega do aluno', async () => {
+  assert.doesNotThrow(() =>
+    assertDeliverableOnlyFiles('2026-2/REDES/Lista-prova-3', [
+      { path: '2026-2/REDES/Lista-prova-3/entrega-v1.md', content: Buffer.from('# OK') },
+      { path: '2026-2/REDES/Lista-prova-3/copiar-a-mao-v1.txt', content: Buffer.from('1 - b') },
+    ])
+  );
+
+  // Material de curso / anexo do professor / dados do Canvas devem ser bloqueados
+  assert.throws(
+    () =>
+      assertDeliverableOnlyFiles('2026-2/REDES/Lista-prova-3', [
+        { path: '2026-2/REDES/Lista-prova-3/anexo-professor.pdf', content: Buffer.from('%PDF') },
+      ]),
+    /política de privacidade/i
+  );
+
+  await assert.rejects(
+    () =>
+      publishDeliverableToGithub(
+        {
+          token: 'github_pat_fake',
+          owner: 'vitor',
+          repo: 'puc-privado',
+          branch: 'main',
+          folderPath: '2026-2/REDES/Lista-prova-3',
+          commitMessage: '[REDES] Lista prova 3 - v1 (validada)',
+          files: [{ path: 'canvas/notas-e-feedback.json', content: Buffer.from('{}') }],
+        },
+        {
+          fetchImpl: async () => {
+            throw new Error('não deveria chamar fetch para arquivo bloqueado');
+          },
+        }
+      ),
+    /política de privacidade/i
+  );
 });

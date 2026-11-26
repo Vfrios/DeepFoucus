@@ -239,7 +239,7 @@ export default function PucGithubConfigPanel({
             checked={autoPublish}
             onChange={(e) => setAutoPublish(e.target.checked)}
           />
-          <span>Salvar automaticamente no GitHub ao marcar entrega como pronta</span>
+          <span>Publicar automaticamente no GitHub ao validar entrega (desligada por padrão)</span>
         </label>
 
         <div className="puc-header-actions">

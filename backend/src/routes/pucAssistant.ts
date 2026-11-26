@@ -7,31 +7,43 @@ import {
   downloadAndExtractCanvasAttachment,
   generateDeliverable,
   listConfiguredProviders,
+  PdfVisionPage,
   reviewDeliverable,
 } from '../lib/pucAssistantAi';
 import {
   AssignmentKind,
   AssignmentRecord,
   buildDeliverableContext,
+  buildUnderstandingSummary,
   canExportDeliverable,
   canGenerateForPart,
+  canPublishDeliverable,
+  canValidateDeliverable,
+  checkAnswerCompleteness,
   classifyAssignmentsForCourse,
   computePartTimelineState,
   CourseLessonSummary,
   DELIVERABLE_STATUS_LABEL,
   DeliverableStatus,
+  extractCanvasFileRefsFromHtml,
   extractCodeFilesFromMarkdown,
   ExtractedAttachmentText,
   findPendingPlaceholders,
+  formatHandwrittenCopyTxt,
+  isReadyToSubmitInCanvas,
   MultiPartProjectSpec,
+  normalizeDeliverableStatus,
   PART_TIMELINE_LABEL,
   PreviousPartApprovedInput,
   PreviousSubmissionInput,
   sanitizeHtmlToText,
+  transitionStatusOnEdit,
 } from '../lib/pucAssistantCore';
+import { classifyDeliveryStatus } from '../lib/canvasUtils';
 import {
   generateDeliverableCodeZipBuffer,
   generateDeliverablePdfBuffer,
+  generateHandwrittenPrintHtml,
 } from '../lib/pucAssistantPdf';
 import {
   buildDeliverableGithubPaths,
@@ -96,7 +108,7 @@ function checkGithubRateLimit(key: string): boolean {
 async function tryFetchFromGithubIfUnchanged(
   db: Db,
   deliverable: any,
-  kind: 'pdf' | 'md' | 'zip'
+  kind: 'pdf' | 'md' | 'zip' | 'txt'
 ): Promise<Buffer | null> {
   const currentMarkdown = String(deliverable?.current_markdown || '');
   const currentHash = sha256Text(currentMarkdown);
@@ -105,7 +117,13 @@ async function tryFetchFromGithubIfUnchanged(
   if (!latestPub || latestPub.contentHash !== currentHash) return null;
 
   const targetPath =
-    kind === 'pdf' ? latestPub.pdfPath : kind === 'md' ? latestPub.mdPath : latestPub.zipPath;
+    kind === 'pdf'
+      ? latestPub.pdfPath
+      : kind === 'md'
+        ? latestPub.mdPath
+        : kind === 'txt'
+          ? latestPub.txtPath
+          : latestPub.zipPath;
   if (!targetPath) return null;
 
   const gh = await getGithubTokenAndConfig(db);
@@ -129,6 +147,53 @@ async function tryFetchFromGithubIfUnchanged(
   }
 }
 
+/**
+ * Coleta e lê os anexos DO ENUNCIADO do trabalho atual:
+ * 1) Links de arquivos do Canvas embutidos no HTML da descrição (`assignment.description`).
+ * 2) Não mistura com anexos de outros trabalhos!
+ */
+async function collectStatementAttachments(
+  assignment: any,
+  canvasToken: string | null,
+  onUnauthorized: () => Promise<void>,
+  opts: { includeVision?: boolean } = {}
+): Promise<{ attachments: ExtractedAttachmentText[]; visionPages: PdfVisionPage[] }> {
+  const attachments: ExtractedAttachmentText[] = [];
+  const visionPages: PdfVisionPage[] = [];
+  if (!canvasToken) return { attachments, visionPages };
+
+  const htmlRefs = extractCanvasFileRefsFromHtml(assignment?.description);
+  const seenIds = new Set<number>();
+  const targets: Array<{ fileId: number; name: string; contentType: string }> = [];
+
+  for (const ref of htmlRefs) {
+    if (seenIds.has(ref.fileId)) continue;
+    seenIds.add(ref.fileId);
+    targets.push({
+      fileId: ref.fileId,
+      name: ref.label,
+      contentType: ref.label.toLowerCase().endsWith('.pdf') ? 'application/pdf' : 'application/octet-stream',
+    });
+  }
+
+  for (const t of targets.slice(0, 4)) {
+    const res = await downloadAndExtractCanvasAttachment(
+      t.fileId,
+      t.name,
+      t.contentType,
+      canvasToken,
+      onUnauthorized,
+      { includeVision: Boolean(opts.includeVision) }
+    );
+    attachments.push(res.attachment);
+    if (res.visionPages.length > 0) {
+      visionPages.push(...res.visionPages);
+    }
+  }
+
+  return { attachments, visionPages };
+}
+
 async function executeGithubPublish(db: Db, cid: number, aid: number) {
   const [deliverable, assignment, course, tokenDoc, gh] = await Promise.all([
     db.collection('puc_deliverables').findOne({ course_id: cid, assignment_id: aid }),
@@ -149,7 +214,14 @@ async function executeGithubPublish(db: Db, cid: number, aid: number) {
   }
 
   const markdown = String(deliverable.current_markdown || '');
-  const gate = canExportDeliverable(deliverable.status, markdown);
+  const expectedNums: number[] = Array.isArray(deliverable.expected_question_numbers)
+    ? deliverable.expected_question_numbers
+    : [];
+  const rawCompleteness = checkAnswerCompleteness(expectedNums, markdown);
+  const effectiveCompleteness = deliverable.completeness_overridden
+    ? { ...rawCompleteness, passed: true }
+    : rawCompleteness;
+  const gate = canPublishDeliverable(deliverable.status, markdown, effectiveCompleteness);
   if (!gate.allowed) {
     throw Object.assign(
       new Error(gate.reasons[0] || 'Entrega bloqueada para publicação no GitHub.'),
@@ -160,12 +232,15 @@ async function executeGithubPublish(db: Db, cid: number, aid: number) {
   const courseName = String(course?.name || assignment?.course_name || deliverable.course_name || `Curso ${cid}`);
   const assignmentName = String(assignment?.name || deliverable.assignment_name || `Trabalho ${aid}`);
   const studentName = String(deliverable.student_name || tokenDoc?.canvas_user_name || 'Aluno PUC Minas');
-  const groupMembers =
-    Array.isArray(deliverable.group_members) && deliverable.group_members.length > 0
+  const isGroup = Boolean(deliverable.is_group);
+  const isHandwritten = Boolean(deliverable.is_handwritten);
+  const groupMembers = isGroup
+    ? Array.isArray(deliverable.group_members) && deliverable.group_members.length > 0
       ? deliverable.group_members
       : Array.isArray(course?.group_members)
         ? course.group_members
-        : [];
+        : []
+    : [];
 
   const nextVersion = Number(deliverable.last_published_version || 0) + 1;
   const codeFiles = extractCodeFilesFromMarkdown(markdown);
@@ -179,22 +254,28 @@ async function executeGithubPublish(db: Db, cid: number, aid: number) {
     }),
     assignmentName,
     version: nextVersion,
+    isHandwritten,
     codeFiles,
   });
 
-  // Gera PDF, MD e (se houver código) arquivos individuais + ZIP em memória
-  const pdfBuffer = await generateDeliverablePdfBuffer({
-    courseName,
-    assignmentName,
-    studentName,
-    groupMembers,
-    markdown,
-  });
-
+  // Monta SOMENTE os arquivos da entrega (nunca anexos/materiais/dados do Canvas)
   const filesToCommit: GithubFileToCommit[] = [
-    { path: paths.pdfPath, content: pdfBuffer },
     { path: paths.mdPath, content: Buffer.from(markdown, 'utf8') },
   ];
+
+  if (isHandwritten && paths.txtPath) {
+    const txtContent = formatHandwrittenCopyTxt(markdown, { courseName, assignmentName });
+    filesToCommit.push({ path: paths.txtPath, content: Buffer.from(txtContent, 'utf8') });
+  } else if (paths.pdfPath) {
+    const pdfBuffer = await generateDeliverablePdfBuffer({
+      courseName,
+      assignmentName,
+      studentName,
+      groupMembers,
+      markdown,
+    });
+    filesToCommit.push({ path: paths.pdfPath, content: pdfBuffer });
+  }
 
   if (paths.codeFilePaths.length > 0 && paths.zipPath) {
     for (const cf of paths.codeFilePaths) {
@@ -208,7 +289,7 @@ async function executeGithubPublish(db: Db, cid: number, aid: number) {
     filesToCommit.push({ path: paths.zipPath, content: zipBuffer });
   }
 
-  // Publicação atômica no GitHub privado (não altera Mongo se falhar)
+  // Publicação atômica no GitHub privado (se falhar, status permanece 'validada' no Mongo!)
   const published = await publishDeliverableToGithub(
     {
       token: gh.token,
@@ -232,6 +313,7 @@ async function executeGithubPublish(db: Db, cid: number, aid: number) {
     htmlUrl: published.htmlUrl,
     folderUrl: published.folderUrl,
     pdfPath: paths.pdfPath,
+    txtPath: paths.txtPath,
     mdPath: paths.mdPath,
     zipPath: paths.zipPath,
     codePaths: paths.codeFilePaths.map((c) => c.path),
@@ -242,11 +324,13 @@ async function executeGithubPublish(db: Db, cid: number, aid: number) {
   const prevPubs = Array.isArray(deliverable.publications) ? deliverable.publications : [];
   const updatedPubs = [...prevPubs, pubRecord].slice(-50);
 
+  // Só muda status para 'entrega_gerada' APÓS confirmação do commit pela API do GitHub!
   // Limpeza do Mongo: mantém só texto atual, status e metadados; versões antigas ficam apenas no GitHub!
   await db.collection('puc_deliverables').updateOne(
     { course_id: cid, assignment_id: aid },
     {
       $set: {
+        status: 'entrega_gerada' as DeliverableStatus,
         content_hash: contentHash,
         last_published_version: nextVersion,
         last_published_hash: contentHash,
@@ -262,6 +346,8 @@ async function executeGithubPublish(db: Db, cid: number, aid: number) {
   );
 
   return {
+    status: 'entrega_gerada' as DeliverableStatus,
+    statusLabel: DELIVERABLE_STATUS_LABEL.entrega_gerada,
     publication: pubRecord,
     publications: updatedPubs,
     retriesUsed: published.retriesUsed,
@@ -281,10 +367,11 @@ function parseProvider(raw: unknown): AiProviderId {
   return 'auto';
 }
 
-function parseStatus(raw: unknown): DeliverableStatus | null {
-  if (raw === 'entrega_gerada' || raw === 'revisada_por_mim' || raw === 'pronta') {
+function parseEditableStatus(raw: unknown): DeliverableStatus | null {
+  if (raw === 'rascunho' || raw === 'revisada_por_mim' || raw === 'validada') {
     return raw;
   }
+  if (raw === 'pronta') return 'validada';
   return null;
 }
 
@@ -345,7 +432,14 @@ export function createPucAssistantRouter(
       }
 
       const markdown = String(deliverable.current_markdown || '');
-      const gate = canExportDeliverable(deliverable.status, markdown);
+      const expectedNums: number[] = Array.isArray(deliverable.expected_question_numbers)
+        ? deliverable.expected_question_numbers
+        : [];
+      const rawCompleteness = checkAnswerCompleteness(expectedNums, markdown);
+      const effectiveCompleteness = deliverable.completeness_overridden
+        ? { ...rawCompleteness, passed: true }
+        : rawCompleteness;
+      const gate = canExportDeliverable(deliverable.status, markdown, effectiveCompleteness);
       if (!gate.allowed) {
         res.status(400).json({
           error: gate.reasons[0] || 'exportacao_bloqueada',
@@ -357,6 +451,7 @@ export function createPucAssistantRouter(
 
       const courseName = String(course?.name || assignment?.course_name || `Curso ${cid}`);
       const assignmentName = String(assignment?.name || deliverable.assignment_name || `Trabalho ${aid}`);
+      const isGroup = Boolean(deliverable.is_group);
 
       // Se já publicada no GitHub e o texto não mudou desde o commit, serve direto do GitHub
       const fromGithub = await tryFetchFromGithubIfUnchanged(db, deliverable, 'pdf');
@@ -366,12 +461,13 @@ export function createPucAssistantRouter(
           courseName,
           assignmentName,
           studentName: String(deliverable.student_name || tokenDoc?.canvas_user_name || 'Aluno PUC Minas'),
-          groupMembers:
-            Array.isArray(deliverable.group_members) && deliverable.group_members.length > 0
+          groupMembers: isGroup
+            ? Array.isArray(deliverable.group_members) && deliverable.group_members.length > 0
               ? deliverable.group_members
               : Array.isArray(course?.group_members)
                 ? course.group_members
-                : [],
+                : []
+            : [],
           markdown,
         }));
 
@@ -446,6 +542,74 @@ export function createPucAssistantRouter(
       res.setHeader('Cache-Control', 'no-store');
       res.setHeader('Content-Length', String(zipBuffer.length));
       res.send(zipBuffer);
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  // GET /api/puc/assistant/deliverables/:cid/:aid/export.txt -> Modo copiar à mão (.txt)
+  r.get('/deliverables/:cid/:aid/export.txt', downloadAuth, async (req, res, next) => {
+    try {
+      const cid = parseNumericId(req.params.cid);
+      const aid = parseNumericId(req.params.aid);
+      if (!cid || !aid) {
+        res.status(400).json({ error: 'parametros_invalidos' });
+        return;
+      }
+      const db = await getDb();
+      const deliverable = await db
+        .collection('puc_deliverables')
+        .findOne({ course_id: cid, assignment_id: aid });
+      if (!deliverable) {
+        res.status(404).json({ error: 'entrega_nao_encontrada' });
+        return;
+      }
+
+      const markdown = String(deliverable.current_markdown || '');
+      const assignmentName = String(deliverable.assignment_name || `entrega-${aid}`);
+      const courseName = String(deliverable.course_name || '');
+      const fromGithub = await tryFetchFromGithubIfUnchanged(db, deliverable, 'txt');
+      const txtContent = fromGithub
+        ? fromGithub.toString('utf8')
+        : formatHandwrittenCopyTxt(markdown, { courseName, assignmentName });
+
+      const fileName = `${sanitizeSegment(assignmentName, `entrega-${aid}`)}-copiar-a-mao.txt`;
+      res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+      res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
+      res.setHeader('Cache-Control', 'no-store');
+      res.send(txtContent);
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  // GET /api/puc/assistant/deliverables/:cid/:aid/export-print.html -> Página de impressão A4 (Modo copiar à mão)
+  r.get('/deliverables/:cid/:aid/export-print.html', downloadAuth, async (req, res, next) => {
+    try {
+      const cid = parseNumericId(req.params.cid);
+      const aid = parseNumericId(req.params.aid);
+      if (!cid || !aid) {
+        res.status(400).json({ error: 'parametros_invalidos' });
+        return;
+      }
+      const db = await getDb();
+      const deliverable = await db
+        .collection('puc_deliverables')
+        .findOne({ course_id: cid, assignment_id: aid });
+      if (!deliverable) {
+        res.status(404).json({ error: 'entrega_nao_encontrada' });
+        return;
+      }
+
+      const html = generateHandwrittenPrintHtml({
+        courseName: String(deliverable.course_name || `Curso ${cid}`),
+        assignmentName: String(deliverable.assignment_name || `Trabalho ${aid}`),
+        markdown: String(deliverable.current_markdown || ''),
+      });
+
+      res.setHeader('Content-Type', 'text/html; charset=utf-8');
+      res.setHeader('Cache-Control', 'no-store');
+      res.send(html);
     } catch (err) {
       next(err);
     }
@@ -631,42 +795,111 @@ export function createPucAssistantRouter(
     }
   });
 
-  // GET /api/puc/assistant/summary -> entregas aguardando revisão
+  // GET /api/puc/assistant/summary -> entregas aguardando revisão + prontas para enviar no Canvas
   r.get('/summary', async (_req, res, next) => {
     try {
       const db = await getDb();
-      const awaitingDocs = await db
-        .collection('puc_deliverables')
-        .find(
-          { status: { $in: ['entrega_gerada', 'revisada_por_mim'] } },
-          {
-            projection: {
-              course_id: 1,
-              course_name: 1,
-              assignment_id: 1,
-              assignment_name: 1,
-              status: 1,
-              updated_at: 1,
-              current_markdown: 1,
-            },
+      const now = new Date();
+      const [awaitingDocs, generatedDocs] = await Promise.all([
+        db
+          .collection('puc_deliverables')
+          .find(
+            { status: { $in: ['rascunho', 'revisada_por_mim', 'validada', 'pronta'] } },
+            {
+              projection: {
+                course_id: 1,
+                course_name: 1,
+                assignment_id: 1,
+                assignment_name: 1,
+                status: 1,
+                updated_at: 1,
+                current_markdown: 1,
+              },
+            }
+          )
+          .sort({ updated_at: -1 })
+          .limit(30)
+          .toArray(),
+        db
+          .collection('puc_deliverables')
+          .find(
+            { status: 'entrega_gerada' },
+            {
+              projection: {
+                course_id: 1,
+                course_name: 1,
+                assignment_id: 1,
+                assignment_name: 1,
+                status: 1,
+                last_published_url: 1,
+                last_published_version: 1,
+                updated_at: 1,
+              },
+            }
+          )
+          .sort({ updated_at: -1 })
+          .limit(50)
+          .toArray(),
+      ]);
+
+      let readyToSubmitItems: Array<{
+        courseId: number;
+        courseName: string;
+        assignmentId: number;
+        assignmentName: string;
+        githubUrl: string | null;
+        version: number | null;
+        dueAt: unknown;
+        htmlUrl: string | null;
+      }> = [];
+
+      if (generatedDocs.length > 0) {
+        const pairFilters = generatedDocs.map((d) => ({
+          course_id: Number(d.course_id),
+          canvas_id: Number(d.assignment_id),
+        }));
+        const matchedAssignments = await db
+          .collection('canvas_assignments')
+          .find({ $or: pairFilters })
+          .toArray();
+        const aByKey = new Map(matchedAssignments.map((a) => [`${a.course_id}:${a.canvas_id}`, a]));
+
+        for (const d of generatedDocs) {
+          const a = aByKey.get(`${d.course_id}:${d.assignment_id}`);
+          if (!a) continue;
+          const canvasSt = classifyDeliveryStatus(a as any, now);
+          if (isReadyToSubmitInCanvas('entrega_gerada', canvasSt)) {
+            readyToSubmitItems.push({
+              courseId: Number(d.course_id),
+              courseName: String(d.course_name || a.course_name || ''),
+              assignmentId: Number(d.assignment_id),
+              assignmentName: String(d.assignment_name || a.name || ''),
+              githubUrl: d.last_published_url ?? null,
+              version: d.last_published_version ?? null,
+              dueAt: a.due_at ?? null,
+              htmlUrl: a.html_url ?? null,
+            });
           }
-        )
-        .sort({ updated_at: -1 })
-        .limit(30)
-        .toArray();
+        }
+      }
 
       res.json({
         awaitingReviewCount: awaitingDocs.length,
-        items: awaitingDocs.map((d) => ({
-          courseId: Number(d.course_id),
-          courseName: String(d.course_name || ''),
-          assignmentId: Number(d.assignment_id),
-          assignmentName: String(d.assignment_name || ''),
-          status: d.status as DeliverableStatus,
-          statusLabel: DELIVERABLE_STATUS_LABEL[(d.status as DeliverableStatus) || 'entrega_gerada'],
-          pendingPlaceholdersCount: findPendingPlaceholders(String(d.current_markdown || '')).length,
-          updatedAt: d.updated_at ?? null,
-        })),
+        readyToSubmitCount: readyToSubmitItems.length,
+        readyToSubmitItems,
+        items: awaitingDocs.map((d) => {
+          const normSt = normalizeDeliverableStatus(d.status);
+          return {
+            courseId: Number(d.course_id),
+            courseName: String(d.course_name || ''),
+            assignmentId: Number(d.assignment_id),
+            assignmentName: String(d.assignment_name || ''),
+            status: normSt,
+            statusLabel: DELIVERABLE_STATUS_LABEL[normSt],
+            pendingPlaceholdersCount: findPendingPlaceholders(String(d.current_markdown || '')).length,
+            updatedAt: d.updated_at ?? null,
+          };
+        }),
       });
     } catch (err) {
       next(err);
@@ -1019,16 +1252,33 @@ export function createPucAssistantRouter(
       }
 
       const currentMarkdown = String(deliverable?.current_markdown || '');
+      const normStatus = deliverable ? normalizeDeliverableStatus(deliverable.status) : null;
+      const expectedNums: number[] = Array.isArray(deliverable?.expected_question_numbers)
+        ? deliverable.expected_question_numbers
+        : [];
+      const rawCompleteness = deliverable
+        ? checkAnswerCompleteness(expectedNums, currentMarkdown)
+        : null;
+      const completenessOverridden = Boolean(deliverable?.completeness_overridden);
+      const effectiveCompleteness =
+        rawCompleteness && completenessOverridden
+          ? { ...rawCompleteness, passed: true }
+          : rawCompleteness;
       const exportGate = deliverable
-        ? canExportDeliverable(deliverable.status, currentMarkdown)
+        ? canExportDeliverable(normStatus, currentMarkdown, effectiveCompleteness)
         : { allowed: false, reasons: ['Gere a entrega primeiro.'], pendingPlaceholders: [] };
+      const publishGate = deliverable
+        ? canPublishDeliverable(normStatus, currentMarkdown, effectiveCompleteness)
+        : { allowed: false, reasons: ['Gere e valide a entrega primeiro.'], pendingPlaceholders: [] };
       const codeFiles = currentMarkdown ? extractCodeFilesFromMarkdown(currentMarkdown) : [];
+      const canvasDeliveryStatus = classifyDeliveryStatus(assignment as any, now);
 
       res.json({
         course: {
           id: cid,
           name: String(course?.name || assignment.course_name || ''),
           aiAllowed: course?.ai_allowed !== false,
+          myProject: typeof course?.my_project === 'string' ? course.my_project : '',
           groupMembers: Array.isArray(course?.group_members) ? course.group_members : [],
         },
         studentName: String(
@@ -1045,6 +1295,7 @@ export function createPucAssistantRouter(
           htmlUrl: assignment.html_url ?? null,
           score: typeof assignment.score === 'number' ? assignment.score : null,
           grade: assignment.grade ?? null,
+          deliveryStatus: canvasDeliveryStatus,
           rubric: Array.isArray(assignment.rubric) ? assignment.rubric : [],
           submissionComments: Array.isArray(assignment.submission_comments)
             ? assignment.submission_comments
@@ -1060,12 +1311,20 @@ export function createPucAssistantRouter(
             ? 'IA desabilitada para este curso.'
             : canGenerateCheck.reason || null,
         lessons: lessons || null,
-        deliverable: deliverable
+        deliverable: deliverable && normStatus
           ? {
-              status: deliverable.status as DeliverableStatus,
-              statusLabel:
-                DELIVERABLE_STATUS_LABEL[(deliverable.status as DeliverableStatus) || 'entrega_gerada'],
+              status: normStatus,
+              statusLabel: DELIVERABLE_STATUS_LABEL[normStatus],
+              readyToSubmit: isReadyToSubmitInCanvas(normStatus, canvasDeliveryStatus),
+              isHandwritten: Boolean(deliverable.is_handwritten),
+              isGroup: Boolean(deliverable.is_group),
               currentMarkdown,
+              completeness: rawCompleteness,
+              completenessOverridden,
+              usedSources: Array.isArray(deliverable.used_sources) ? deliverable.used_sources : [],
+              validationWarnings: Array.isArray(deliverable.validation_warnings)
+                ? deliverable.validation_warnings
+                : [],
               groupMembers: Array.isArray(deliverable.group_members)
                 ? deliverable.group_members
                 : Array.isArray(course?.group_members)
@@ -1085,6 +1344,7 @@ export function createPucAssistantRouter(
               hasCodeFiles: codeFiles.length > 0,
               codeFilesCount: codeFiles.length,
               exportGate,
+              publishGate,
               updatedAt: deliverable.updated_at ?? null,
             }
           : null,
@@ -1096,13 +1356,84 @@ export function createPucAssistantRouter(
     }
   });
 
-  // POST /api/puc/assistant/deliverables/:cid/:aid/generate -> gera a ENTREGA PRONTA
+  // POST /api/puc/assistant/deliverables/:cid/:aid/understand -> Etapa 1 obrigatória ("O que entendi")
+  r.post('/deliverables/:cid/:aid/understand', async (req, res, next) => {
+    try {
+      const cid = parseNumericId(req.params.cid);
+      const aid = parseNumericId(req.params.aid);
+      if (!cid || !aid) {
+        res.status(400).json({ error: 'parametros_invalidos' });
+        return;
+      }
+
+      const db = await getDb();
+      const [course, assignment, lessons, tokenAuth, pagesCount, prevSubsCount] = await Promise.all([
+        db.collection('canvas_courses').findOne({ canvas_id: cid }),
+        db.collection('canvas_assignments').findOne({ course_id: cid, canvas_id: aid }),
+        db.collection('puc_course_lessons').findOne({ course_id: cid }),
+        getCanvasToken(db),
+        db.collection('canvas_pages').countDocuments({ course_id: cid }),
+        db.collection('canvas_assignments').countDocuments({
+          course_id: cid,
+          canvas_id: { $ne: aid },
+          $or: [{ workflow_state: 'graded' }, { submitted_at: { $ne: null } }],
+        }),
+      ]);
+
+      if (!assignment) {
+        res.status(404).json({ error: 'trabalho_nao_encontrado' });
+        return;
+      }
+
+      const onUnauthorized = async () => {
+        await markCanvasToken401(db);
+      };
+
+      const { attachments } = await collectStatementAttachments(
+        assignment,
+        tokenAuth.token,
+        onUnauthorized,
+        { includeVision: false }
+      );
+
+      const manualStatement =
+        typeof req.body?.manualStatement === 'string' ? req.body.manualStatement.trim() : '';
+
+      const understanding = buildUnderstandingSummary({
+        courseId: cid,
+        courseName: String(course?.name || assignment.course_name || `Curso ${cid}`),
+        assignment: assignment as unknown as AssignmentRecord,
+        attachments,
+        manualStatement: manualStatement || null,
+        myProject: typeof course?.my_project === 'string' ? course.my_project : null,
+        previousSubmissionsCount: prevSubsCount,
+        coursePagesCount: pagesCount,
+        hasTeacherLessons: Boolean(
+          lessons &&
+            ((lessons.recurring_issues?.length || 0) > 0 || (lessons.charged_points?.length || 0) > 0)
+        ),
+      });
+
+      res.json({ ok: true, understanding });
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  // POST /api/puc/assistant/deliverables/:cid/:aid/generate -> Etapa 2 (só roda após confirmar "O que entendi")
   r.post('/deliverables/:cid/:aid/generate', async (req, res, next) => {
     try {
       const cid = parseNumericId(req.params.cid);
       const aid = parseNumericId(req.params.aid);
       if (!cid || !aid) {
         res.status(400).json({ error: 'parametros_invalidos' });
+        return;
+      }
+
+      if (req.body?.confirmedUnderstanding !== true) {
+        res.status(400).json({
+          error: 'Confirme primeiro o resumo "O que entendi" antes de gerar a entrega.',
+        });
         return;
       }
 
@@ -1133,7 +1464,7 @@ export function createPucAssistantRouter(
       const now = new Date();
       let previousPartApproved: PreviousPartApprovedInput | null = null;
 
-      // Gate rígido de dependência para projetos multi-parte
+      // Gate rígido de dependência para projetos multi-parte (parte anterior CORRIGIDA no Canvas)
       if (assignment.assignment_kind === 'multi_part' && typeof assignment.depends_on === 'number') {
         const depDoc = (await db.collection('canvas_assignments').findOne({
           course_id: cid,
@@ -1171,7 +1502,7 @@ export function createPucAssistantRouter(
         }
       }
 
-      // Buscar materiais relevantes do curso + entregas anteriores
+      // Buscar materiais relevantes do curso + entregas anteriores (apenas referência de projeto/continuidade)
       const [coursePages, courseFiles, otherAssignments] = await Promise.all([
         db.collection('canvas_pages').find({ course_id: cid }).limit(40).toArray(),
         db.collection('canvas_files').find({ course_id: cid }).limit(60).toArray(),
@@ -1191,23 +1522,48 @@ export function createPucAssistantRouter(
         await markCanvasToken401(db);
       };
 
-      // Extrair anexos legíveis do trabalho atual (se houver e se o token Canvas estiver disponível)
-      const assignmentAttachments: ExtractedAttachmentText[] = [];
-      if (tokenAuth.token && Array.isArray(assignment.attachments)) {
-        for (const att of assignment.attachments.slice(0, 3)) {
-          if (typeof att?.id !== 'number') continue;
-          const extracted = await downloadAndExtractCanvasAttachment(
-            att.id,
-            String(att.display_name || 'anexo'),
-            String(att.content_type || 'application/octet-stream'),
-            tokenAuth.token,
-            onUnauthorized
-          );
-          if (extracted) assignmentAttachments.push(extracted);
-        }
+      // Ler anexos DO ENUNCIADO do trabalho atual (+ renderizar páginas para visão Gemini quando necessário)
+      const { attachments: assignmentAttachments, visionPages } = await collectStatementAttachments(
+        assignment,
+        tokenAuth.token,
+        onUnauthorized,
+        { includeVision: true }
+      );
+
+      const manualStatement =
+        typeof req.body?.manualStatement === 'string' ? req.body.manualStatement.trim() : '';
+
+      // Revalidar entendimento no backend (nunca gerar se anexo ilegível sem enunciado manual)
+      const understanding = buildUnderstandingSummary({
+        courseId: cid,
+        courseName: String(course?.name || assignment.course_name || `Curso ${cid}`),
+        assignment: assignment as unknown as AssignmentRecord,
+        attachments: assignmentAttachments,
+        manualStatement: manualStatement || null,
+        myProject: typeof course?.my_project === 'string' ? course.my_project : null,
+      });
+
+      if (!understanding.canProceed && visionPages.length === 0) {
+        res.status(400).json({
+          error:
+            understanding.blockReason ||
+            'Anexo ilegível ou vazio. Cole o enunciado manualmente antes de gerar.',
+          understanding,
+        });
+        return;
       }
 
-      // Montar entregas anteriores do usuário (texto + anexos frescos)
+      if (understanding.titleDivergence.hasDivergence && req.body?.confirmedDivergence !== true) {
+        res.status(400).json({
+          error:
+            understanding.titleDivergence.reason ||
+            'Divergência detectada entre o título do trabalho e o anexo. Confirme para continuar.',
+          understanding,
+        });
+        return;
+      }
+
+      // Montar entregas anteriores do usuário (com data, SOMENTE referência de continuidade/projeto)
       const previousSubmissions: PreviousSubmissionInput[] = [];
       for (const prev of otherAssignments.slice(0, 3)) {
         const prevAtts: ExtractedAttachmentText[] = [];
@@ -1219,14 +1575,16 @@ export function createPucAssistantRouter(
               String(att.display_name || 'anexo'),
               String(att.content_type || 'application/octet-stream'),
               tokenAuth.token,
-              onUnauthorized
+              onUnauthorized,
+              { includeVision: false }
             );
-            if (extracted) prevAtts.push(extracted);
+            if (extracted.attachment.status === 'ok') prevAtts.push(extracted.attachment);
           }
         }
         previousSubmissions.push({
           assignment_id: Number(prev.canvas_id),
           name: String(prev.name || ''),
+          submitted_at: prev.submitted_at ?? prev.due_at ?? null,
           score: typeof prev.score === 'number' ? prev.score : null,
           points_possible: typeof prev.points_possible === 'number' ? prev.points_possible : null,
           grade: prev.grade ?? null,
@@ -1238,14 +1596,15 @@ export function createPucAssistantRouter(
         });
       }
 
-      const groupMembers =
-        Array.isArray(req.body?.groupMembers) && req.body.groupMembers.length > 0
+      const groupMembers = understanding.isGroup
+        ? Array.isArray(req.body?.groupMembers) && req.body.groupMembers.length > 0
           ? cleanGroupMembers(req.body.groupMembers)
           : Array.isArray(existingDeliverable?.group_members) && existingDeliverable.group_members.length > 0
             ? existingDeliverable.group_members
             : Array.isArray(course?.group_members)
               ? course.group_members
-              : [];
+              : []
+        : [];
 
       const studentName = String(
         req.body?.studentName || existingDeliverable?.student_name || tokenAuth.doc?.canvas_user_name || ''
@@ -1255,6 +1614,8 @@ export function createPucAssistantRouter(
         courseName: String(course?.name || assignment.course_name || ''),
         assignment: assignment as unknown as AssignmentRecord,
         assignmentAttachments,
+        manualStatement: manualStatement || null,
+        myProject: typeof course?.my_project === 'string' ? course.my_project : null,
         coursePages: coursePages.map((p) => ({
           title: String(p.title || ''),
           body: typeof p.body === 'string' ? p.body : '',
@@ -1269,6 +1630,10 @@ export function createPucAssistantRouter(
         teacherLessons: (lessons as unknown as CourseLessonSummary) ?? null,
         groupMembers,
         studentName: studentName || null,
+        isHandwritten: understanding.isHandwritten,
+        isGroup: understanding.isGroup,
+        detectedQuestions: understanding.questions,
+        visionPagesUsed: visionPages.length,
       });
 
       const preferredProvider = parseProvider(req.body?.provider);
@@ -1277,6 +1642,7 @@ export function createPucAssistantRouter(
 
       const generated = await generateDeliverable({
         context: builtContext,
+        visionImages: visionPages,
         preferredProvider,
         customInstructions,
       });
@@ -1294,6 +1660,9 @@ export function createPucAssistantRouter(
       };
       const updatedVersions = [...prevVersions, newVersion].slice(-15);
 
+      // Novo ciclo: geração inicia como 'rascunho' (só vira 'entrega_gerada' após validar + commit no GitHub!)
+      const initialStatus: DeliverableStatus = 'rascunho';
+
       await db.collection('puc_deliverables').updateOne(
         { course_id: cid, assignment_id: aid },
         {
@@ -1302,8 +1671,15 @@ export function createPucAssistantRouter(
             course_name: String(course?.name || assignment.course_name || ''),
             assignment_id: aid,
             assignment_name: String(assignment.name || ''),
-            status: 'entrega_gerada' as DeliverableStatus,
+            status: initialStatus,
             current_markdown: generated.text,
+            content_hash: sha256Text(generated.text),
+            is_handwritten: builtContext.isHandwritten,
+            is_group: builtContext.isGroup,
+            expected_question_numbers: builtContext.detectedQuestions.questionNumbers,
+            completeness: generated.completeness,
+            used_sources: builtContext.usedSources,
+            validation_warnings: generated.validation.warnings,
             student_name: studentName,
             group_members: groupMembers,
             last_provider: generated.provider,
@@ -1318,14 +1694,21 @@ export function createPucAssistantRouter(
         { upsert: true }
       );
 
-      const exportGate = canExportDeliverable('entrega_gerada', generated.text);
+      const exportGate = canExportDeliverable(initialStatus, generated.text, generated.completeness);
+      const publishGate = canPublishDeliverable(initialStatus, generated.text, generated.completeness);
       const codeFiles = extractCodeFilesFromMarkdown(generated.text);
 
       res.json({
         ok: true,
-        status: 'entrega_gerada' as DeliverableStatus,
-        statusLabel: DELIVERABLE_STATUS_LABEL.entrega_gerada,
+        status: initialStatus,
+        statusLabel: DELIVERABLE_STATUS_LABEL[initialStatus],
         currentMarkdown: generated.text,
+        isHandwritten: builtContext.isHandwritten,
+        isGroup: builtContext.isGroup,
+        completeness: generated.completeness,
+        usedSources: builtContext.usedSources,
+        validationWarnings: generated.validation.warnings,
+        visionPagesUsed: generated.visionPagesUsed,
         provider: generated.provider,
         providerLabel: generated.providerLabel,
         model: generated.model,
@@ -1333,6 +1716,7 @@ export function createPucAssistantRouter(
         hasCodeFiles: codeFiles.length > 0,
         codeFilesCount: codeFiles.length,
         exportGate,
+        publishGate,
       });
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Erro ao gerar entrega.';
@@ -1366,25 +1750,49 @@ export function createPucAssistantRouter(
         return;
       }
 
-      const now = new Date();
-      const nextMarkdown =
-        typeof req.body?.markdown === 'string'
-          ? req.body.markdown
-          : String(existing?.current_markdown || '');
-
-      let nextStatus: DeliverableStatus =
-        parseStatus(req.body?.status) ||
-        (existing?.status as DeliverableStatus) ||
-        'revisada_por_mim';
-
-      // Não permitir marcar como 'pronta' se ainda houver [PREENCHER] pendente
-      const pendingPlaceholders = findPendingPlaceholders(nextMarkdown);
-      if (nextStatus === 'pronta' && pendingPlaceholders.length > 0) {
+      if (req.body?.status === 'entrega_gerada') {
         res.status(400).json({
-          error: `Complete os ${pendingPlaceholders.length} marcador(es) [PREENCHER] antes de marcar a entrega como pronta.`,
-          pendingPlaceholders,
+          error: 'O status "Entrega gerada" só é atribuído automaticamente após o commit confirmado no GitHub.',
         });
         return;
+      }
+
+      const now = new Date();
+      const prevMarkdown = String(existing?.current_markdown || '');
+      const nextMarkdown =
+        typeof req.body?.markdown === 'string' ? req.body.markdown : prevMarkdown;
+
+      const requestedStatus = parseEditableStatus(req.body?.status);
+      const existingStatus = existing?.status ? normalizeDeliverableStatus(existing.status) : 'rascunho';
+
+      // Se o texto de uma entrega já 'entrega_gerada' foi editado sem pedido explícito de validar, volta para 'revisada_por_mim'
+      let nextStatus: DeliverableStatus =
+        requestedStatus || transitionStatusOnEdit(existingStatus, prevMarkdown, nextMarkdown);
+
+      const expectedNums: number[] = Array.isArray(existing?.expected_question_numbers)
+        ? existing.expected_question_numbers
+        : [];
+      const completeness = checkAnswerCompleteness(expectedNums, nextMarkdown);
+      const completenessOverridden =
+        typeof req.body?.overrideCompleteness === 'boolean'
+          ? req.body.overrideCompleteness
+          : Boolean(existing?.completeness_overridden);
+      const effectiveCompleteness = completenessOverridden
+        ? { ...completeness, passed: true }
+        : completeness;
+
+      // Não permitir validar ('validada') se houver [PREENCHER] pendente ou questões faltando (salvo confirmação manual)
+      if (nextStatus === 'validada') {
+        const valGate = canValidateDeliverable(nextMarkdown, effectiveCompleteness);
+        if (!valGate.allowed) {
+          res.status(400).json({
+            error: valGate.reasons[0] || 'Entrega não atende aos critérios de validação.',
+            reasons: valGate.reasons,
+            pendingPlaceholders: valGate.pendingPlaceholders,
+            completeness,
+          });
+          return;
+        }
       }
 
       const patch: Record<string, unknown> = {
@@ -1394,6 +1802,8 @@ export function createPucAssistantRouter(
         assignment_name: String(assignment.name || ''),
         current_markdown: nextMarkdown,
         content_hash: sha256Text(nextMarkdown),
+        completeness,
+        completeness_overridden: completenessOverridden,
         status: nextStatus,
         updated_at: now,
       };
@@ -1431,32 +1841,36 @@ export function createPucAssistantRouter(
         { upsert: true }
       );
 
-      const exportGate = canExportDeliverable(nextStatus, nextMarkdown);
-      const codeFiles = extractCodeFilesFromMarkdown(nextMarkdown);
-
-      // Publicação automática no GitHub ao marcar como "pronta" (se habilitada na tela GitHub)
+      // Publicação automática no GitHub ao validar (opção desligada por padrão na tela GitHub)
       let githubPublication: any = null;
       let githubWarning: string | null = null;
-      if (nextStatus === 'pronta' && exportGate.allowed) {
+      if (nextStatus === 'validada') {
         const ghStatus = await getGithubConfigStatus(db);
         const alreadySameHash = existing?.last_published_hash === sha256Text(nextMarkdown);
         if (ghStatus.configured && ghStatus.autoPublish && !ghStatus.expired && !alreadySameHash) {
           try {
             const pubRes = await executeGithubPublish(db, cid, aid);
             githubPublication = pubRes.publication;
+            nextStatus = pubRes.status; // 'entrega_gerada' somente após commit confirmado!
             versions = [];
           } catch (pubErr) {
+            // Falha mantém status 'validada' e devolve mensagem de erro
             githubWarning =
               pubErr instanceof Error ? pubErr.message : 'Falha ao publicar automaticamente no GitHub.';
           }
         }
       }
 
+      const exportGate = canExportDeliverable(nextStatus, nextMarkdown, effectiveCompleteness);
+      const publishGate = canPublishDeliverable(nextStatus, nextMarkdown, effectiveCompleteness);
+      const codeFiles = extractCodeFilesFromMarkdown(nextMarkdown);
+
       res.json({
         ok: true,
         status: nextStatus,
         statusLabel: DELIVERABLE_STATUS_LABEL[nextStatus],
         currentMarkdown: nextMarkdown,
+        completeness,
         groupMembers: patch.group_members ?? existing?.group_members ?? [],
         versions,
         githubPublication,
@@ -1464,6 +1878,7 @@ export function createPucAssistantRouter(
         hasCodeFiles: codeFiles.length > 0,
         codeFilesCount: codeFiles.length,
         exportGate,
+        publishGate,
       });
     } catch (err) {
       next(err);

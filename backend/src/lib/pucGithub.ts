@@ -71,7 +71,8 @@ export interface GithubPublishResult {
 
 export interface DeliverableGithubPaths {
   folderPath: string;
-  pdfPath: string;
+  pdfPath: string | null;
+  txtPath: string | null;
   mdPath: string;
   zipPath: string | null;
   codeFilePaths: Array<{ path: string; content: string }>;
@@ -177,14 +178,16 @@ export function sanitizeGithubRelativePath(rawPath: string, fallbackFile = 'arqu
 
 /**
  * Monta a estrutura padronizada no repositório privado:
- * `<semestre>/<sigla-do-curso>/<nome-do-trabalho-sanitizado>/entrega-v<N>.pdf`,
- * `entrega-v<N>.md` e, se houver código, `codigo-v<N>/...` e `codigo-v<N>.zip`.
+ * `<semestre>/<sigla-do-curso>/<nome-do-trabalho-sanitizado>/entrega-v<N>.md`,
+ * `entrega-v<N>.pdf` (quando digitada) ou `copiar-a-mao-v<N>.txt` (quando manuscrita)
+ * e, se houver código, `codigo-v<N>/...` e `codigo-v<N>.zip`.
  */
 export function buildDeliverableGithubPaths(params: {
   semester: string;
   courseAcronym: string;
   assignmentName: string;
   version: number;
+  isHandwritten?: boolean;
   codeFiles?: ExtractedCodeFile[];
 }): DeliverableGithubPaths {
   const semSeg = sanitizeGithubSegment(params.semester || 'sem-semestre', 'sem-semestre', false, 32);
@@ -194,7 +197,9 @@ export function buildDeliverableGithubPaths(params: {
   const ver = Math.max(1, Math.floor(params.version || 1));
 
   const folderPath = `${semSeg}/${acronymSeg}/${workSeg}`;
-  const pdfPath = `${folderPath}/entrega-v${ver}.pdf`;
+  const isHandwritten = Boolean(params.isHandwritten);
+  const pdfPath = isHandwritten ? null : `${folderPath}/entrega-v${ver}.pdf`;
+  const txtPath = isHandwritten ? `${folderPath}/copiar-a-mao-v${ver}.txt` : null;
   const mdPath = `${folderPath}/entrega-v${ver}.md`;
 
   const codeFiles = Array.isArray(params.codeFiles) ? params.codeFiles : [];
@@ -215,16 +220,37 @@ export function buildDeliverableGithubPaths(params: {
     .replace(/[\r\n]+/g, ' ')
     .trim()
     .slice(0, 120);
-  const commitMessage = `[${acronymSeg}] ${cleanTitle} - v${ver} (pronta)`;
+  const commitMessage = `[${acronymSeg}] ${cleanTitle} - v${ver} (validada)`;
 
   return {
     folderPath,
     pdfPath,
+    txtPath,
     mdPath,
     zipPath,
     codeFilePaths,
     commitMessage,
   };
+}
+
+/**
+ * Garante que SOMENTE arquivos da entrega do aluno dentro da pasta esperada sejam enviados ao GitHub.
+ * Bloqueia qualquer tentativa de subir materiais de curso, anexos de professores ou dados do Canvas.
+ */
+export function assertDeliverableOnlyFiles(
+  folderPath: string,
+  files: GithubFileToCommit[]
+): void {
+  const prefix = `${folderPath.replace(/\/+$/, '')}/`;
+  const allowedPattern = /^([^/]+\/){3}(entrega-v\d+\.(md|pdf)|copiar-a-mao-v\d+\.txt|codigo-v\d+\.zip|codigo-v\d+\/.+)$/;
+
+  for (const f of files) {
+    if (!f.path.startsWith(prefix) || f.path.includes('..') || !allowedPattern.test(f.path)) {
+      throw new Error(
+        `Arquivo bloqueado por política de privacidade ("${f.path}"): somente entregas do aluno podem ser publicadas no GitHub.`
+      );
+    }
+  }
 }
 
 export function resolveCourseAcronym(course: {
@@ -588,6 +614,9 @@ export async function publishDeliverableToGithub(
       );
     }
   }
+
+  // Garante que apenas arquivos da entrega sejam enviados (nunca anexos/dados do Canvas)
+  assertDeliverableOnlyFiles(params.folderPath, params.files);
 
   const baseRepoPath = `/repos/${encodeURIComponent(params.owner)}/${encodeURIComponent(params.repo)}`;
 

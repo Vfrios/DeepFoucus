@@ -15,7 +15,11 @@ import { jwtAuth } from '../middleware/jwtAuth';
 import { requireRole } from '../middleware/requireRole';
 import { createPucDownloadRouter } from './pucDownload';
 import { createPucAssistantRouter } from './pucAssistant';
-import { findPendingPlaceholders } from '../lib/pucAssistantCore';
+import {
+  findPendingPlaceholders,
+  isReadyToSubmitInCanvas,
+  normalizeDeliverableStatus,
+} from '../lib/pucAssistantCore';
 
 const r = Router();
 
@@ -66,6 +70,8 @@ function isValidSlug(raw: string): boolean {
 
 function mapAssignment(a: any, now: Date, deliverable?: any) {
   const deliveryStatus = classifyDeliveryStatus(a, now);
+  const deliverableStatus = deliverable?.status ? normalizeDeliverableStatus(deliverable.status) : null;
+  const readyToSubmit = isReadyToSubmitInCanvas(deliverableStatus, deliveryStatus);
   return {
     id: Number(a.canvas_id),
     courseId: Number(a.course_id),
@@ -93,7 +99,9 @@ function mapAssignment(a: any, now: Date, deliverable?: any) {
     projectId: a.project_id ?? null,
     partOrder: typeof a.part_order === 'number' ? a.part_order : null,
     dependsOn: typeof a.depends_on === 'number' ? a.depends_on : null,
-    deliverableStatus: deliverable?.status ?? null,
+    deliverableStatus,
+    readyToSubmit,
+    isHandwritten: Boolean(deliverable?.is_handwritten),
     githubUrl: deliverable?.last_published_url ?? null,
     pendingPlaceholdersCount: deliverable?.current_markdown
       ? findPendingPlaceholders(String(deliverable.current_markdown)).length
@@ -132,18 +140,21 @@ r.get('/status', async (_req, res, next) => {
     let dueToday = 0;
     let dueThisWeek = 0;
     let unreadAnnouncements = 0;
+    let readyToSubmit = 0;
     const awaitingReview = await db
       .collection('puc_deliverables')
-      .countDocuments({ status: { $in: ['entrega_gerada', 'revisada_por_mim'] } });
+      .countDocuments({ status: { $in: ['rascunho', 'revisada_por_mim', 'validada', 'pronta'] } });
 
     if (visibleIds.length > 0) {
-      const [allAssignments, unreadCount] = await Promise.all([
+      const [allAssignments, unreadCount, generatedDeliverables] = await Promise.all([
         db
           .collection('canvas_assignments')
           .find(
             { course_id: { $in: visibleIds } },
             {
               projection: {
+                course_id: 1,
+                canvas_id: 1,
                 due_at: 1,
                 locked_for_user: 1,
                 points_possible: 1,
@@ -162,9 +173,19 @@ r.get('/status', async (_req, res, next) => {
         db
           .collection('canvas_announcements')
           .countDocuments({ course_id: { $in: visibleIds }, read: { $ne: true } }),
+        db
+          .collection('puc_deliverables')
+          .find(
+            { course_id: { $in: visibleIds }, status: 'entrega_gerada' },
+            { projection: { course_id: 1, assignment_id: 1, status: 1 } }
+          )
+          .toArray(),
       ]);
 
       unreadAnnouncements = unreadCount;
+      const generatedKeySet = new Set(
+        generatedDeliverables.map((d) => `${d.course_id}:${d.assignment_id}`)
+      );
 
       for (const a of allAssignments) {
         const st = classifyDeliveryStatus(a as any, now);
@@ -172,6 +193,12 @@ r.get('/status', async (_req, res, next) => {
         else if (st === 'atrasado') overdue += 1;
         else if (st === 'entregue') submitted += 1;
         else if (st === 'corrigido') graded += 1;
+
+        // "Entrega gerada" continua contando em pending/overdue até o sync detectar 'entregue' no Canvas,
+        // e entra no contador "Prontas para enviar: N"
+        if (generatedKeySet.has(`${a.course_id}:${a.canvas_id}`) && isReadyToSubmitInCanvas('entrega_gerada', st)) {
+          readyToSubmit += 1;
+        }
 
         if ((st === 'pendente' || st === 'atrasado') && a.due_at) {
           const dueMs = new Date(a.due_at).getTime();
@@ -194,6 +221,7 @@ r.get('/status', async (_req, res, next) => {
         dueThisWeek,
         unreadAnnouncements,
         awaitingReview,
+        readyToSubmit,
       },
       lastSync: lastSync
         ? {
@@ -331,6 +359,7 @@ r.get('/courses', async (_req, res, next) => {
         termStartAt: c.term_start_at ?? null,
         hidden: Boolean(c.hidden),
         aiAllowed: c.ai_allowed !== false,
+        myProject: typeof c.my_project === 'string' ? c.my_project : '',
         groupMembers: Array.isArray(c.group_members) ? c.group_members : [],
         aliases: Array.isArray(c.aliases) ? c.aliases : [],
         autoAliases: Array.isArray(c.auto_aliases) ? c.auto_aliases : [],
@@ -361,6 +390,9 @@ r.patch('/courses/:cid', async (req, res, next) => {
     }
     if (typeof req.body?.aiAllowed === 'boolean') {
       patch.ai_allowed = req.body.aiAllowed;
+    }
+    if (typeof req.body?.myProject === 'string') {
+      patch.my_project = req.body.myProject.trim().slice(0, 6000);
     }
     if (Array.isArray(req.body?.aliases)) {
       const cleaned = Array.from(
@@ -393,6 +425,7 @@ r.patch('/courses/:cid', async (req, res, next) => {
       id: Number(result.canvas_id),
       hidden: Boolean(result.hidden),
       aiAllowed: result.ai_allowed !== false,
+      myProject: typeof result.my_project === 'string' ? result.my_project : '',
       aliases: Array.isArray(result.aliases) ? result.aliases : [],
       autoAliases: Array.isArray(result.auto_aliases) ? result.auto_aliases : [],
     });
@@ -439,7 +472,7 @@ r.get('/upcoming', async (_req, res, next) => {
         .collection('puc_deliverables')
         .find(
           { course_id: { $in: visibleIds } },
-          { projection: { course_id: 1, assignment_id: 1, status: 1, current_markdown: 1, last_published_url: 1 } }
+          { projection: { course_id: 1, assignment_id: 1, status: 1, current_markdown: 1, last_published_url: 1, is_handwritten: 1 } }
         )
         .toArray(),
     ]);
@@ -490,7 +523,7 @@ r.get('/:cid/assignments', async (req, res, next) => {
         .collection('puc_deliverables')
         .find(
           { course_id: cid },
-          { projection: { assignment_id: 1, status: 1, current_markdown: 1, last_published_url: 1 } }
+          { projection: { assignment_id: 1, status: 1, current_markdown: 1, last_published_url: 1, is_handwritten: 1 } }
         )
         .toArray(),
     ]);
