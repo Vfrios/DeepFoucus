@@ -380,6 +380,14 @@ export default function PagePUC() {
   const [downloadingKey, setDownloadingKey] = useState<string | null>(null);
   const [downloadError, setDownloadError] = useState('');
 
+  // Envio manual de anexos ao Canvas (somente dono)
+  const [submitPanelOpen, setSubmitPanelOpen] = useState(false);
+  const [submitFiles, setSubmitFiles] = useState<File[]>([]);
+  const [submitComment, setSubmitComment] = useState('');
+  const [submittingCanvas, setSubmittingCanvas] = useState(false);
+  const [submitError, setSubmitError] = useState('');
+  const [submitSuccess, setSubmitSuccess] = useState('');
+
   const loadBaseData = useCallback(async () => {
     setInitError('');
     try {
@@ -2056,10 +2064,22 @@ export default function PagePUC() {
                 <div className="row">
                   <button
                     type="button"
+                    className={`btn ghost${submitPanelOpen ? ' is-active-btn' : ''}`}
+                    onClick={() => {
+                      setSubmitPanelOpen((v) => !v);
+                      setSubmitError('');
+                      setSubmitSuccess('');
+                    }}
+                  >
+                    {submitPanelOpen ? 'Cancelar envio' : 'Enviar anexo'}
+                  </button>
+                  <button
+                    type="button"
                     className="btn ghost"
                     onClick={() => {
                       const target = { courseId: openAssignment.courseId, assignmentId: openAssignment.id };
                       setOpenAssignment(null);
+                      setSubmitPanelOpen(false);
                       setAssistantTarget(target);
                     }}
                   >
@@ -2075,12 +2095,149 @@ export default function PagePUC() {
                       Abrir no Canvas
                     </a>
                   )}
-                  <button type="button" className="btn" onClick={() => setOpenAssignment(null)}>
+                  <button
+                    type="button"
+                    className="btn"
+                    onClick={() => {
+                      setOpenAssignment(null);
+                      setSubmitPanelOpen(false);
+                    }}
+                  >
                     Fechar
                   </button>
                 </div>
               </div>
               <div className="puc-modal-body">
+                {submitPanelOpen && (
+                  <form
+                    className="puc-ai-box"
+                    style={{ marginBottom: 14 }}
+                    onSubmit={async (e) => {
+                      e.preventDefault();
+                      if (submitFiles.length === 0) {
+                        setSubmitError('Selecione pelo menos um arquivo para enviar.');
+                        return;
+                      }
+                      const fileListLabel = submitFiles.map((f) => f.name).join(', ');
+                      if (
+                        !window.confirm(
+                          `Confirmar envio para o Canvas?\n\nTrabalho: ${openAssignment.name}\nArquivos: ${fileListLabel}`
+                        )
+                      ) {
+                        return;
+                      }
+                      setSubmittingCanvas(true);
+                      setSubmitError('');
+                      setSubmitSuccess('');
+                      try {
+                        const encodedFiles = await Promise.all(
+                          submitFiles.map(
+                            (file) =>
+                              new Promise<{ name: string; mimeType: string; contentBase64: string }>(
+                                (resolve, reject) => {
+                                  const reader = new FileReader();
+                                  reader.onload = () => {
+                                    const res = String(reader.result || '');
+                                    const b64 = res.includes(',') ? res.split(',')[1] : res;
+                                    resolve({
+                                      name: file.name,
+                                      mimeType: file.type || 'application/octet-stream',
+                                      contentBase64: b64,
+                                    });
+                                  };
+                                  reader.onerror = () => reject(new Error(`Falha ao ler ${file.name}`));
+                                  reader.readAsDataURL(file);
+                                }
+                              )
+                          )
+                        );
+                        const resp = await api<{
+                          ok: boolean;
+                          submittedAt: string;
+                          workflowState: string;
+                          attachments?: AssignmentAttachment[];
+                        }>(`/puc/${openAssignment.courseId}/assignments/${openAssignment.id}/submit`, {
+                          method: 'POST',
+                          body: JSON.stringify({
+                            confirmSubmit: true,
+                            comment: submitComment.trim() || undefined,
+                            files: encodedFiles,
+                          }),
+                        });
+                        setSubmitSuccess('Anexo enviado para o Canvas com sucesso!');
+                        setSubmitFiles([]);
+                        setSubmitComment('');
+                        setOpenAssignment((prev) =>
+                          prev
+                            ? {
+                                ...prev,
+                                workflowState: resp.workflowState || 'submitted',
+                                submittedAt: resp.submittedAt || new Date().toISOString(),
+                                deliveryStatus: 'entregue',
+                                attachments: resp.attachments?.length ? resp.attachments : prev.attachments,
+                              }
+                            : prev
+                        );
+                        void loadBaseData();
+                      } catch (err) {
+                        setSubmitError(
+                          err instanceof Error ? err.message : 'Erro ao enviar anexo para o Canvas.'
+                        );
+                      } finally {
+                        setSubmittingCanvas(false);
+                      }
+                    }}
+                  >
+                    <div className="puc-ai-head">
+                      <strong>Enviar anexo para o Canvas (somente você)</strong>
+                    </div>
+                    <p className="puc-muted" style={{ margin: '4px 0 10px' }}>
+                      Envio manual direto para a PUC Minas. Máximo 5 arquivos (25 MB no total).
+                    </p>
+                    <input
+                      type="file"
+                      multiple
+                      disabled={submittingCanvas}
+                      onChange={(e) => {
+                        const list = e.target.files ? Array.from(e.target.files) : [];
+                        setSubmitFiles(list);
+                        setSubmitError('');
+                      }}
+                    />
+                    {submitFiles.length > 0 && (
+                      <ul className="puc-detail-sublist" style={{ marginTop: 8 }}>
+                        {submitFiles.map((f, idx) => (
+                          <li key={`${f.name}-${idx}`}>
+                            {f.name} ({formatFileSize(f.size)})
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                    <input
+                      type="text"
+                      placeholder="Comentário opcional para o professor..."
+                      value={submitComment}
+                      disabled={submittingCanvas}
+                      onChange={(e) => setSubmitComment(e.target.value)}
+                      style={{ marginTop: 8, width: '100%' }}
+                    />
+                    <div className="row" style={{ marginTop: 10 }}>
+                      <button
+                        type="submit"
+                        className="btn"
+                        disabled={submittingCanvas || submitFiles.length === 0}
+                      >
+                        {submittingCanvas ? 'Enviando para o Canvas...' : 'Confirmar e enviar para o Canvas'}
+                      </button>
+                    </div>
+                    {submitError && (
+                      <p className="puc-feedback is-error" role="alert">
+                        {submitError}
+                      </p>
+                    )}
+                    {submitSuccess && <p className="puc-feedback is-ok">{submitSuccess}</p>}
+                  </form>
+                )}
                 <div className="puc-detail-meta-grid">
                   <div>
                     <span className="puc-muted">Status</span>

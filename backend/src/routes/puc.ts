@@ -1,7 +1,7 @@
-import { NextFunction, Request, Response, Router } from 'express';
+import express, { NextFunction, Request, Response, Router } from 'express';
 import { askCanvasAI } from '../lib/canvasAi';
-import { CanvasApiError, validateCanvasToken } from '../lib/canvasApi';
-import { getCanvasTokenStatus, saveCanvasToken } from '../lib/canvasAuth';
+import { CanvasApiError, submitAssignmentFilesToCanvas, validateCanvasToken } from '../lib/canvasApi';
+import { getCanvasToken, getCanvasTokenStatus, markCanvasToken401, saveCanvasToken } from '../lib/canvasAuth';
 import {
   CanvasSyncMode,
   getCanvasSyncProgress,
@@ -728,5 +728,124 @@ r.get('/:cid/files', async (req, res, next) => {
     next(err);
   }
 });
+
+/**
+ * Segurança estrita para envio de tarefas ao Canvas:
+ * - Somente o dono (Vitor) autenticado via sessão JWT (role=owner + EMAIL_VITOR).
+ * - Bloqueia explicitamente x-api-token para impedir envio por scripts ou agentes.
+ */
+function ownerOnlySubmitAuth(req: Request, res: Response, next: NextFunction): void {
+  if (req.header('x-api-token')) {
+    res.status(403).json({ error: 'Somente o dono autenticado na interface pode enviar tarefas ao Canvas.' });
+    return;
+  }
+  jwtAuth(req, res, () =>
+    requireRole(['owner'])(req, res, () => {
+      const ownerEmail = (process.env.EMAIL_VITOR || '').trim().toLowerCase();
+      const userEmail = String((req as any).user?.email || '').trim().toLowerCase();
+      if (ownerEmail && userEmail && userEmail !== ownerEmail) {
+        res.status(403).json({ error: 'Apenas a conta do titular pode enviar anexos para a PUC.' });
+        return;
+      }
+      next();
+    })
+  );
+}
+
+// POST /api/puc/:cid/assignments/:aid/submit
+// Envio manual de anexos diretamente para o Canvas (somente dono)
+r.post(
+  '/:cid/assignments/:aid/submit',
+  ownerOnlySubmitAuth,
+  express.json({ limit: '35mb' }),
+  async (req, res, next) => {
+    try {
+      const cid = parseNumericId(req.params.cid);
+      const aid = parseNumericId(req.params.aid);
+      if (!cid || !aid) {
+        res.status(400).json({ error: 'course_id ou assignment_id inválido.' });
+        return;
+      }
+
+      const { confirmSubmit, comment, files } = req.body || {};
+      if (confirmSubmit !== true) {
+        res.status(400).json({ error: 'Confirmação explícita (confirmSubmit: true) obrigatória.' });
+        return;
+      }
+      if (!Array.isArray(files) || files.length === 0) {
+        res.status(400).json({ error: 'Selecione pelo menos um arquivo para enviar.' });
+        return;
+      }
+      if (files.length > 5) {
+        res.status(400).json({ error: 'Máximo de 5 arquivos por envio.' });
+        return;
+      }
+
+      const parsedFiles: Array<{ name: string; mimeType: string; buffer: Buffer }> = [];
+      let totalBytes = 0;
+      const MAX_TOTAL_BYTES = 25 * 1024 * 1024;
+
+      for (const f of files) {
+        const name = String(f?.name || '').trim();
+        const mimeType = String(f?.mimeType || 'application/octet-stream').trim();
+        const b64 = String(f?.contentBase64 || '').trim();
+        if (!name || !b64) {
+          res.status(400).json({ error: 'Arquivo inválido no envio.' });
+          return;
+        }
+        const buffer = Buffer.from(b64, 'base64');
+        if (buffer.length === 0) {
+          res.status(400).json({ error: `O arquivo "${name}" está vazio.` });
+          return;
+        }
+        totalBytes += buffer.length;
+        if (totalBytes > MAX_TOTAL_BYTES) {
+          res.status(413).json({ error: 'Tamanho total dos anexos excede o limite de 25 MB.' });
+          return;
+        }
+        parsedFiles.push({ name, mimeType, buffer });
+      }
+
+      const db = await getDb();
+      const tokenRes = await getCanvasToken(db);
+      if (!tokenRes.token) {
+        res.status(400).json({ error: 'Token do Canvas ausente ou inválido. Salve um token válido antes de enviar.' });
+        return;
+      }
+
+      const result = await submitAssignmentFilesToCanvas(cid, aid, parsedFiles, tokenRes.token, {
+        comment: typeof comment === 'string' ? comment : undefined,
+        onUnauthorized: () => markCanvasToken401(db),
+      });
+
+      const submittedAtDate = result.submitted_at ? new Date(result.submitted_at) : new Date();
+      await db.collection('canvas_assignments').updateOne(
+        { course_id: cid, canvas_id: aid },
+        {
+          $set: {
+            workflow_state: result.workflow_state || 'submitted',
+            submitted_at: submittedAtDate,
+            attachments: result.attachments,
+            updated_at: new Date(),
+          },
+        }
+      );
+
+      res.json({
+        ok: true,
+        submittedAt: submittedAtDate.toISOString(),
+        workflowState: result.workflow_state,
+        attempt: result.attempt,
+        attachments: result.attachments,
+      });
+    } catch (err) {
+      if (err instanceof CanvasApiError) {
+        res.status(err.status >= 400 && err.status < 600 ? err.status : 502).json({ error: err.message });
+        return;
+      }
+      next(err);
+    }
+  }
+);
 
 export default r;

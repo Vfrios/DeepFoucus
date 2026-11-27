@@ -486,3 +486,194 @@ export function getCanvasFileMeta(
   return canvasGetOne<CanvasFileApi>(`/api/v1/files/${fileId}`, token, opts);
 }
 
+export interface CanvasUploadFileInput {
+  name: string;
+  mimeType: string;
+  buffer: Buffer;
+}
+
+export interface CanvasSubmissionResult {
+  id: number;
+  workflow_state: string;
+  submitted_at: string | null;
+  attempt: number | null;
+  attachments: Array<{
+    display_name: string;
+    filename: string;
+    size: number;
+    url?: string;
+    content_type?: string;
+  }>;
+}
+
+/**
+ * Fluxo oficial de 3 etapas do Canvas LMS para envio manual de anexos pelo aluno:
+ * 1) Solicita URL de upload em /submissions/self/files
+ * 2) Faz POST multipart com upload_params + arquivo
+ * 3) Finaliza a submissão com submission_type="online_upload" e file_ids
+ */
+export async function submitAssignmentFilesToCanvas(
+  courseId: number,
+  assignmentId: number,
+  files: CanvasUploadFileInput[],
+  token: string,
+  opts: CanvasRequestOptions & { comment?: string } = {}
+): Promise<CanvasSubmissionResult> {
+  if (!files.length) {
+    throw new Error('Nenhum arquivo informado para envio.');
+  }
+
+  const uploadedFileIds: number[] = [];
+
+  for (const file of files) {
+    // Etapa 1: solicitar slot de upload no Canvas
+    const slotUrl = buildUrl(
+      `/api/v1/courses/${courseId}/assignments/${assignmentId}/submissions/self/files`
+    );
+    const slotRes = await fetch(slotUrl, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        Accept: 'application/json',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        name: file.name,
+        size: file.buffer.length,
+        content_type: file.mimeType || 'application/octet-stream',
+      }),
+    });
+
+    if (slotRes.status === 401) {
+      if (opts.onUnauthorized) await opts.onUnauthorized();
+      throw new CanvasApiError(401, slotUrl, 'Token do Canvas expirado ou inválido (401).');
+    }
+    if (!slotRes.ok) {
+      const txt = await slotRes.text().catch(() => '');
+      throw new CanvasApiError(
+        slotRes.status,
+        slotUrl,
+        `Erro ao iniciar upload de "${file.name}" no Canvas (HTTP ${slotRes.status}): ${txt.slice(0, 200)}`
+      );
+    }
+
+    const slotJson = (await slotRes.json()) as {
+      upload_url?: string;
+      upload_params?: Record<string, string>;
+    };
+    if (!slotJson.upload_url) {
+      throw new Error(`Canvas não retornou upload_url para "${file.name}".`);
+    }
+
+    // Etapa 2: enviar o arquivo via multipart/form-data
+    const form = new FormData();
+    for (const [k, v] of Object.entries(slotJson.upload_params || {})) {
+      form.append(k, String(v ?? ''));
+    }
+    const blob = new Blob([new Uint8Array(file.buffer)], {
+      type: file.mimeType || 'application/octet-stream',
+    });
+    form.append('file', blob, file.name);
+
+    const uploadRes = await fetch(slotJson.upload_url, {
+      method: 'POST',
+      body: form,
+      redirect: 'manual',
+    });
+
+    let fileObj: any = null;
+    if (uploadRes.status >= 300 && uploadRes.status < 400) {
+      const loc = uploadRes.headers.get('location');
+      if (!loc) {
+        throw new Error(`Redirect sem Location ao enviar "${file.name}" para o Canvas.`);
+      }
+      const confirmRes = await fetch(loc, {
+        method: 'GET',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          Accept: 'application/json',
+        },
+      });
+      if (!confirmRes.ok) {
+        const txt = await confirmRes.text().catch(() => '');
+        throw new CanvasApiError(
+          confirmRes.status,
+          loc,
+          `Erro ao confirmar upload de "${file.name}" no Canvas (HTTP ${confirmRes.status}): ${txt.slice(0, 200)}`
+        );
+      }
+      fileObj = await confirmRes.json();
+    } else if (uploadRes.ok) {
+      fileObj = await uploadRes.json();
+    } else {
+      const txt = await uploadRes.text().catch(() => '');
+      throw new CanvasApiError(
+        uploadRes.status,
+        slotJson.upload_url,
+        `Erro no upload de "${file.name}" (HTTP ${uploadRes.status}): ${txt.slice(0, 200)}`
+      );
+    }
+
+    const fileId = Number(fileObj?.id);
+    if (!Number.isSafeInteger(fileId) || fileId <= 0) {
+      throw new Error(`Canvas não retornou ID de arquivo válido para "${file.name}".`);
+    }
+    uploadedFileIds.push(fileId);
+  }
+
+  // Etapa 3: efetivar a submissão do trabalho
+  const submitUrl = buildUrl(
+    `/api/v1/courses/${courseId}/assignments/${assignmentId}/submissions`
+  );
+  const payload: Record<string, any> = {
+    submission: {
+      submission_type: 'online_upload',
+      file_ids: uploadedFileIds,
+    },
+  };
+  const trimmedComment = (opts.comment || '').trim();
+  if (trimmedComment) {
+    payload.comment = { text_comment: trimmedComment };
+  }
+
+  const submitRes = await fetch(submitUrl, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      Accept: 'application/json',
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(payload),
+  });
+
+  if (submitRes.status === 401) {
+    if (opts.onUnauthorized) await opts.onUnauthorized();
+    throw new CanvasApiError(401, submitUrl, 'Token do Canvas expirado ou inválido (401).');
+  }
+  if (!submitRes.ok) {
+    const txt = await submitRes.text().catch(() => '');
+    throw new CanvasApiError(
+      submitRes.status,
+      submitUrl,
+      `Erro ao finalizar entrega no Canvas (HTTP ${submitRes.status}): ${txt.slice(0, 240)}`
+    );
+  }
+
+  const sub = (await submitRes.json()) as any;
+  return {
+    id: Number(sub?.id || 0),
+    workflow_state: String(sub?.workflow_state || 'submitted'),
+    submitted_at: sub?.submitted_at ? String(sub.submitted_at) : new Date().toISOString(),
+    attempt: typeof sub?.attempt === 'number' ? sub.attempt : null,
+    attachments: Array.isArray(sub?.attachments)
+      ? sub.attachments.map((att: any) => ({
+          display_name: String(att.display_name || att.filename || ''),
+          filename: String(att.filename || att.display_name || ''),
+          size: Number(att.size || 0),
+          url: att.url ? String(att.url) : undefined,
+          content_type: att['content-type'] || att.content_type || undefined,
+        }))
+      : [],
+  };
+}
+
