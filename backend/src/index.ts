@@ -37,6 +37,7 @@ app.use(cors({ origin: process.env.FRONTEND_URL || true }));
 // A foto da nota/lista (JPEG reduzido) e entregas Markdown precisam de limites maiores que 100kb
 app.use('/api/shopping/receipt-scan', express.json({ limit: '4mb' }));
 app.use('/api/puc/assistant', express.json({ limit: '2mb' }));
+app.use('/api/puc/:cid/assignments/:aid/submit', express.json({ limit: '35mb' }));
 app.use(express.json({ limit: '100kb' }));
 app.use(deviceMiddleware);
 
